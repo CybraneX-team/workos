@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
-  Target, Zap, Clock, Scale, TrendingUp, TrendingDown, Minus,
-  Plus, ArrowRight, AlertTriangle, Check, X, Lock, BarChart2, Bell,
+  Target, Zap, Clock, Scale, TrendingUp,
+  Plus, ArrowRight, AlertTriangle, Check, X, Lock, BarChart2,
 } from 'lucide-react';
 import {
   useProjectsStore,
@@ -9,14 +9,10 @@ import {
   computeAlignmentScore,
   type TaskSuggestion,
 } from '../../lib/useProjectsStore';
+import { useBdtGoals } from '../../lib/db/metrics';
 import {
-  useBdtMetrics,
-  useBdtGoals,
-  bdtMetricDisplay,
-  bdtMetricTargetDisplay,
-  bdtMetricProgress,
-  bdtMetricAlerts,
-} from '../../lib/db/metrics';
+  useCanonicalMetrics, metricScope, metricProgress, formatMetricValue, formatMetricTarget,
+} from '../../lib/db/canonicalMetrics';
 import { useAuth } from '../../lib/auth';
 import { Bot } from 'lucide-react';
 import { useFounderWorkspace } from '../../context/FounderWorkspaceContext';
@@ -41,7 +37,7 @@ export function WorkspaceCanvasOverview() {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
   const { goals } = useBdtGoals(companyId);
-  const { metrics } = useBdtMetrics(companyId);
+  const { metrics } = useCanonicalMetrics(companyId, { status: 'active' });
   const { setActiveSidebarTab } = useFounderWorkspace();
 
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -49,13 +45,25 @@ export function WorkspaceCanvasOverview() {
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const metricAlerts = useMemo(() => bdtMetricAlerts(metrics), [metrics]);
+  // Adapt canonical metrics to the shape generateTaskSuggestions expects
+  // (value/target/baseline), carrying the real backend numbers.
+  const suggestionMetrics = useMemo(() => metrics.map(m => ({
+    id: m.id,
+    name: m.name,
+    scope: metricScope(m),
+    value: m.current_value ?? 0,
+    target: m.target_value,
+    baseline: m.baseline_value,
+    unit: m.unit,
+    higherIsBetter: m.direction !== 'lower_is_better',
+    trend: 'flat' as const,
+  })), [metrics]);
 
   const suggestions = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const all = generateTaskSuggestions(projects, tasks, decisions, risks, goals as any, metrics as any);
+    const all = generateTaskSuggestions(projects, tasks, decisions, risks, goals as any, suggestionMetrics as any);
     return all.filter(s => !dismissed.has(s.key));
-  }, [projects, tasks, decisions, risks, goals, metrics, dismissed]);
+  }, [projects, tasks, decisions, risks, goals, suggestionMetrics, dismissed]);
 
   const stats = useMemo(() => ({
     openTasks:      tasks.filter(t => t.status !== 'done').length,
@@ -104,21 +112,6 @@ export function WorkspaceCanvasOverview() {
         ))}
       </div>
 
-      {/* ── Metric Alerts ──────────────────────────────────────────────── */}
-      {metricAlerts.length > 0 && (
-        <div className="shrink-0 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 flex flex-col gap-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
-            <Bell className="w-3 h-3" /> Metric Alerts
-          </div>
-          {metricAlerts.map(a => (
-            <div key={a.metricId} className="flex items-center gap-2 text-[11px] text-white/60">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-              <span><span className="font-semibold text-amber-300">{a.name}</span> is at {a.progress}% — below {a.threshold}% alert threshold</span>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* ── Metric Impact ─────────────────────────────────────────────── */}
       <div className="shrink-0">
         <div className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/40 mb-2.5 flex items-center gap-1.5 px-0.5">
@@ -127,22 +120,19 @@ export function WorkspaceCanvasOverview() {
         </div>
         <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))' }}>
           {metrics.map(m => {
-            const pct   = bdtMetricProgress(m);
-            const good  = m.trend === 'flat' ? null : (m.trend === 'up') === m.higher_is_better;
-            const tc    = good === null ? '#94a3b8' : good ? '#34d399' : '#fb7185';
-            const TIcon = m.trend === 'up' ? TrendingUp : m.trend === 'down' ? TrendingDown : Minus;
+            const pct = metricProgress(m);
+            const tc  = pct >= 50 ? '#34d399' : '#fb7185';
             return (
               <div key={m.id} className="rounded-xl p-3 bg-white/[0.03] border border-white/8 hover:border-white/15 transition-all">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[9px] uppercase tracking-wider text-white/35">
-                    {m.scope === 'company' ? 'Company' : 'Dept'}
+                    {metricScope(m) === 'company' ? 'Company' : 'Dept'}
                   </span>
-                  <TIcon className="w-3 h-3" style={{ color: tc }} />
                 </div>
                 <div className="text-[12px] font-bold text-white leading-tight">{m.name}</div>
                 <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-[15px] font-bold leading-none" style={{ color: tc }}>{bdtMetricDisplay(m)}</span>
-                  <span className="text-[9px] text-white/30">/ {bdtMetricTargetDisplay(m)}</span>
+                  <span className="text-[15px] font-bold leading-none" style={{ color: tc }}>{formatMetricValue(m)}</span>
+                  <span className="text-[9px] text-white/30">/ {formatMetricTarget(m)}</span>
                 </div>
                 <div className="h-1 rounded-full bg-white/10 mt-2 overflow-hidden">
                   <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: tc }} />

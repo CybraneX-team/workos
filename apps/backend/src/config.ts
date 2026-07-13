@@ -10,27 +10,12 @@ const EnvSchema = z.object({
   WORKER_ID: z.string().default(`w-${process.pid}`),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
-  // ERPNext inventory + CRM chat — per-company site provisioning (see erpnextProvision.ts).
-  // Shared nginx endpoint every per-company site is reached through (site selection
-  // happens via the X-Frappe-Site-Name header, not the URL).
-  ERPNEXT_NGINX_URL: z.string().default('http://localhost:8081'),
-  // Local path to the frappe_docker checkout (infra/erpnext) — needed to shell out
-  // `docker compose exec` for site provisioning. Local dev only; set FRAPPE_DOCKER_DIR
-  // XOR ERPNEXT_PROVISION_URL depending on environment (see erpnextProvision.ts).
-  FRAPPE_DOCKER_DIR: z.string().optional(),
-  FRAPPE_DB_ROOT_PASSWORD: z.string().optional(),
-  FRAPPE_SITE_ADMIN_PASSWORD: z.string().optional(),
-  // Production provisioning: the backend has no docker socket access on Azure Container
-  // Apps, so it calls a small remote shim (running on the ERPNext VM) over HTTPS instead
-  // of shelling out to `docker compose exec` locally.
-  ERPNEXT_PROVISION_URL: z.string().optional(),
-  ERPNEXT_PROVISION_SECRET: z.string().optional(),
-  // SSO into per-company ERPNext desk UI (see routes/oidc.ts, lib/erpnextRoleMapping.ts).
-  // Only wired up on the remote-provisioning (Azure) path — local dev has no per-company
-  // subdomain routing (Phase 1 was built against the ERPNext VM only), so a Social Login
-  // Key would have nowhere reachable to redirect to. Frappe Users + roles are still
-  // provisioned locally; only the SSO bridge itself is skipped.
-  OIDC_ISSUER_URL: z.string().optional(),
+  ERPNEXT_CONTROL_PLANE_URL: z.string().url().default('http://localhost:8090'),
+  ERPNEXT_CONTROL_PLANE_TOKEN: z.string().min(16),
+  ERPNEXT_TARGET_ENV: z.enum(['local', 'remote']).default('local'),
+  RUN_ERPNEXT_OUTBOX_WORKER: z.enum(['true', 'false']).default('true').transform(v => v === 'true'),
+  OIDC_BROWSER_AUTHORIZE_URL: z.string().url().default('http://localhost:5173/oauth/authorize'),
+  OIDC_INTERNAL_BASE_URL: z.string().url().default('http://host.docker.internal:8080/api/oidc'),
   ERPNEXT_SUBDOMAIN_BASE: z.string().default('erp.os.cybranex.com'),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_RESPONSES_MODEL: z.string().default('gpt-4.1-mini'),
@@ -65,9 +50,4 @@ const EnvSchema = z.object({
 
 export const env = EnvSchema.parse(process.env);
 
-// Which environment this backend provisions ERPNext sites for. Mirrors the actual
-// provisioning path in erpnextProvision.ts: a backend with ERPNEXT_PROVISION_URL set
-// creates sites on the remote VM shim ('remote'); one without it shells out to local
-// docker ('local'). Used to scope the SHARED erpnext_provision_jobs queue so a local
-// dev worker can't claim (and mis-provision) a prod signup's job — see migration 033.
-export const provisionEnv: 'remote' | 'local' = env.ERPNEXT_PROVISION_URL ? 'remote' : 'local';
+export const provisionEnv = env.ERPNEXT_TARGET_ENV;

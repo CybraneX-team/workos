@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { authJwt } from '../middleware/authJwt.js';
 import { resolveErpNextCreds } from '../lib/erpnextConnection.js';
-import { listActiveBranchKeys as listOperationsActiveBranchKeys } from './erpnextOperations.js';
-import { listActiveBranchKeys as listSalesActiveBranchKeys } from './erpnextSales.js';
-import { listActiveBranchKeys as listProductsActiveBranchKeys } from './erpnextProducts.js';
+import { listActiveBranchKeys as listOperationsActiveBranchKeys } from '../domains/workos-erp/erpnextOperations.js';
+import { listActiveBranchKeys as listSalesActiveBranchKeys } from '../domains/workos-erp/erpnextSales.js';
+import { listActiveBranchKeys as listProductsActiveBranchKeys } from '../domains/workos-erp/erpnextProducts.js';
 import { supabaseAdmin } from '../db.js';
 
 // Returns the set of active BDT branches for a company. New bindings use the stable branch

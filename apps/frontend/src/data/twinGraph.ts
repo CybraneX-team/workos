@@ -10,8 +10,7 @@ import { INDUSTRIES } from '../db/industries';
 import { COMPANIES, getCompaniesByIndustry } from '../db/index';
 import { SIGNALS } from '../db/signals';
 import { getActiveCompanies, getCompanyById, companyToTwinNodeData } from '../lib/db/companies';
-import { useCompanyMetrics } from '../lib/db/metrics';
-import { computeHealth } from '../lib/health';
+import { computeHealth, useCompanyLatestMetrics } from '../lib/health';
 
 /* ──────────────────────────────────────────────────
    Internal nodes for YOUR company (WorkOS)
@@ -297,7 +296,7 @@ export function useTwinGraph(authCompanyId: string | null | undefined): {
       ]
     : [...twinEdges, ...allLiveEdges];
 
-  const { metrics } = useCompanyMetrics(authCompanyId ?? null);
+  const metrics = useCompanyLatestMetrics(authCompanyId ?? null);
   const overlay = useMemo(
     () => computeHealth(metrics, myCompanyNodeId),
     [metrics, myCompanyNodeId],

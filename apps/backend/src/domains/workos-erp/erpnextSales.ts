@@ -1,14 +1,14 @@
 import { Router } from 'express';
-import { getErpNextRecords, type ErpNextCreds, type ErpNextGenericRecord } from '../adapters/erpnext.js';
-import { pool } from '../db.js';
+import { getErpNextRecords, type ErpNextCreds, type ErpNextGenericRecord } from '../../adapters/erpnext.js';
+import { pool } from '../../db.js';
 import {
   erpnextDeskListUrl,
   erpnextDeskNewUrl,
   erpnextDeskRecordUrl,
   type ErpNextDeskAction,
-} from '../lib/erpnextDeskLinks.js';
-import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../lib/erpnextConnection.js';
-import { authJwt } from '../middleware/authJwt.js';
+} from '../../lib/erpnextDeskLinks.js';
+import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../../lib/erpnextConnection.js';
+import { authJwt } from '../../middleware/authJwt.js';
 import { buildSalesMetricStory, buildSalesRecommendations, type SalesEvidenceAttribute } from './erpnextSalesStories.js';
 
 // Sibling of erpnextOperations.ts — same node-aware summary pattern, adapted for the Sales
@@ -463,6 +463,7 @@ function metricCard(id: string, label: string, value: number | string, descripti
 }
 
 async function resolveNodePath(companyId: string, nodeId: string): Promise<NodePathRow[] | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nodeId)) return null;
   const { rows } = await pool.query<NodePathRow>(
     `WITH RECURSIVE node_path AS (
        SELECT n.id,

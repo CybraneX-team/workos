@@ -26,6 +26,7 @@ interface DeptConfig {
 }
 
 type Section = 'organization' | 'profile' | 'departments' | 'workspace' | 'notifications' | 'connections';
+type ErpNextStatus = { status: 'not_configured' | 'provisioning' | 'ready' | 'failed'; deskUrl?: string };
 
 const NAV: { id: Section; icon: React.ReactNode; label: string }[] = [
   { id: 'organization', icon: <Layers size={15} />, label: 'Organization' },
@@ -81,10 +82,20 @@ export default function SettingsPage() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [bdtCompanySize, setBdtCompanySize] = useState<UCompanySize>('standard');
   const [sizeSaving, setSizeSaving] = useState(false);
+  const [erpNextStatus, setErpNextStatus] = useState<ErpNextStatus | null>(null);
 
   useEffect(() => {
     if (profile?.company_id) void departmentStore.loadDepartments();
   }, [profile?.company_id, departmentStore.loadDepartments]);
+
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    let cancelled = false;
+    void api.get<ErpNextStatus>('/api/erpnext/status')
+      .then(status => { if (!cancelled) setErpNextStatus(status); })
+      .catch(() => { if (!cancelled) setErpNextStatus(null); });
+    return () => { cancelled = true; };
+  }, [profile?.company_id]);
 
   const displayDepts: DeptConfig[] = departmentStore.departments
     .filter(d => d.domain !== 'inactive' && !d.isDraft)
@@ -354,8 +365,8 @@ export default function SettingsPage() {
                   )
                 },
                 {
-                  label: 'WorkOS', content: company?.slug ? (
-                    <a href={`https://${company.slug}.erp.os.cybranex.com/app`} target="_blank" rel="noopener noreferrer"
+                  label: 'WorkOS', content: erpNextStatus?.status === 'ready' && erpNextStatus.deskUrl ? (
+                    <a href={`${erpNextStatus.deskUrl.replace(/\/+$/, '')}/login?redirect-to=/app`} target="_blank" rel="noopener noreferrer"
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
                         background: 'rgba(193,174,255,0.1)', border: `1px solid rgba(193,174,255,0.2)`, color: AC, textDecoration: 'none'
@@ -363,7 +374,9 @@ export default function SettingsPage() {
                       Open WorkOS <ExternalLink size={13} />
                     </a>
                   ) : (
-                    <span style={{ fontSize: 13, color: DIM }}>Not available yet</span>
+                    <span style={{ fontSize: 13, color: DIM }}>
+                      {erpNextStatus?.status === 'provisioning' ? 'Setting up ERPNext…' : erpNextStatus?.status === 'failed' ? 'ERPNext setup failed' : 'Not available yet'}
+                    </span>
                   )
                 },
               ].map((row) => (

@@ -1,4 +1,4 @@
-import type { ErpNextGenericRecord } from '../adapters/erpnext.js';
+import type { ErpNextGenericRecord } from '../../adapters/erpnext.js';
 
 export type SalesTemplateKey = 'generic' | 'rollup' | 'unsupported';
 export type SalesTone = 'good' | 'neutral' | 'warning' | 'critical';

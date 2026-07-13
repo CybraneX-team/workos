@@ -1,21 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scoreMetric } from '../src/lib/canonicalMetrics.js';
 import { selectMetaConversion } from '../src/adapters/metaAds.js';
 
-test('scores higher-is-better progress from baseline to target', () => {
-  assert.equal(scoreMetric(3, 2, 4, 'higher_is_better'), 50);
-  assert.equal(scoreMetric(5, 2, 4, 'higher_is_better'), 100);
-});
-
-test('scores lower-is-better progress and rejects equal baseline/target', () => {
-  assert.equal(scoreMetric(75, 100, 50, 'lower_is_better'), 50);
-  assert.equal(scoreMetric(50, 50, 50, 'lower_is_better'), null);
-});
-
-test('null raw values are not scorable', () => {
-  assert.equal(scoreMetric(null, 0, 10, 'higher_is_better'), null);
-});
+// scoreMetric coverage lives in packages/metrics/test/scoring.test.ts (its home
+// after extraction). This file now only covers Meta-adapter conversion logic.
 
 test('conversion count and CPA use the same selected Meta action', () => {
   const actions = [

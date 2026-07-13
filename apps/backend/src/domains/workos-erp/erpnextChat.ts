@@ -1,12 +1,13 @@
 import { Router } from 'express';
-import { env } from '../config.js';
-import { authJwt } from '../middleware/authJwt.js';
+import { env } from '../../config.js';
+import { authJwt } from '../../middleware/authJwt.js';
 import {
   getStockBalance, getItemList, getLowStockItems,
   getLeads, getOpportunities, getCustomers,
   type ErpNextCreds,
-} from '../adapters/erpnext.js';
-import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../lib/erpnextConnection.js';
+} from '../../adapters/erpnext.js';
+import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../../lib/erpnextConnection.js';
+import { getTenantStatus } from '../../lib/erpnextControlPlane.js';
 
 export const erpnextChatRouter = Router();
 
@@ -150,6 +151,18 @@ interface ChatHistoryMessage {
   sender: 'user' | 'assistant';
   text: string;
 }
+
+erpnextChatRouter.get('/status', authJwt, async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) return res.status(403).json({ error: 'no_company' });
+  try {
+    const status = await getTenantStatus(companyId);
+    return res.json({ status: status.status, siteName: status.siteName, deskUrl: status.deskUrl, error: status.lastError });
+  } catch (error) {
+    console.error('[erpnextStatus] failed', error);
+    return res.status(503).json({ status: 'not_configured', deskUrl: undefined, error: { code: 'control_plane_unavailable', message: 'ERPNext status is temporarily unavailable.', retryable: true } });
+  }
+});
 
 erpnextChatRouter.post('/chat', authJwt, async (req, res) => {
   const { messages } = req.body as { messages?: ChatHistoryMessage[] };

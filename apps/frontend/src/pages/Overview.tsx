@@ -8,7 +8,6 @@ import {
 import { keyMetrics, revenueHistory, departmentHealth, environmentSignals, activeTasks } from '../data/mockData';
 import { useAuth } from '../lib/auth';
 import { useCompany } from '../lib/db/companies';
-import { useCompanyMetrics } from '../lib/db/metrics';
 import { INDUSTRIES } from '../db/industries';
 import { api } from '../lib/api';
 import { getCurrencyCodeForCountry, getCurrencySymbol } from '../lib/currency';
@@ -24,7 +23,6 @@ const statusConfig = {
 export default function Overview() {
   const { profile } = useAuth();
   const { company } = useCompany(profile?.company_id);
-  const { metrics } = useCompanyMetrics(profile?.company_id ?? null);
 
   const currencySymbol = getCurrencySymbol(
     company?.currency || getCurrencyCodeForCountry(company?.country),
@@ -49,32 +47,6 @@ export default function Overview() {
       .then((rows) => { if (rows?.length) setChartData(rows); })
       .catch(() => {});
   }, [profile?.company_id]);
-
-  const liveKeyMetrics = useMemo<Metric[]>(() => {
-    const c = currencySymbol;
-    const ordered = [
-      { key: 'revenue',             name: 'Monthly Revenue',     unit: c },
-      { key: 'burn',                name: 'Monthly Burn',        unit: c },
-      { key: 'headcount',           name: 'Team Size',           unit: 'people' },
-      { key: 'signups',             name: 'User Acquisition',    unit: '/mo' },
-      { key: 'buyer_count',         name: 'Buyers',              unit: 'count' },
-      { key: 'conversion_rate',     name: 'Conversion',          unit: '%' },
-      { key: 'avg_order_value',     name: 'Avg Order Value',     unit: c },
-      { key: 'cogs',                name: 'COGS',                unit: c },
-      { key: 'customer_ltv',        name: 'Customer LTV',        unit: c },
-      { key: 'arpu',                name: 'ARPU',                unit: c },
-      { key: 'cpa',                 name: 'CPA',                 unit: c },
-      { key: 'contribution_margin', name: 'Contribution Margin', unit: c },
-    ];
-    return ordered
-      .map(({ key, name, unit }) => {
-        const m = metrics[key];
-        if (!m) return null;
-        const displayUnit = unit === c ? c : m.unit && m.unit !== 'count' ? m.unit : unit;
-        return { name, value: Number(m.value), unit: displayUnit, change: 0 } as Metric;
-      })
-      .filter(Boolean) as Metric[];
-  }, [metrics, currencySymbol]);
 
   const companyFallbackMetrics = useMemo<Metric[]>(() => {
     if (!company) return [];
@@ -101,10 +73,9 @@ export default function Overview() {
         { name: 'Runway',    value: simSnapshot.runway    ?? 0, unit: 'months', change: 0 },
       ];
     }
-    if (liveKeyMetrics.length > 0) return liveKeyMetrics.slice(0, 6);
     if (companyFallbackMetrics.length > 0) return companyFallbackMetrics;
     return keyMetrics.slice(0, 6);
-  }, [simSnapshot, liveKeyMetrics, companyFallbackMetrics, currencySymbol]);
+  }, [simSnapshot, companyFallbackMetrics, currencySymbol]);
 
   const [tab, setTab] = useState<'overview' | 'nodes'>('overview');
 

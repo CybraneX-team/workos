@@ -11,13 +11,16 @@
     "gen:bdt": "tsx scripts/genBdtSeed.ts",
     "gen:rbac-seed": "tsx scripts/genRbacSeed.ts",
     "validate:bdt": "tsx scripts/validate-bdt-seed.ts",
-    "seed:erpnext:sales": "tsx scripts/seed-erpnext-sales.ts",
+    "reset:development": "tsx scripts/reset-development-data.ts",
     "seed:stripe": "node scripts/seed-stripe-test-data.js",
     "test:excel": "pnpm build && node test/excelPipeline.test.mjs",
-    "test:metrics": "node --import tsx --test test/canonicalMeta.test.ts",
+    "test:metrics": "node --import tsx --test test/canonicalMeta.test.ts test/rollupParity.test.ts",
+    "test:erpnext-architecture": "node --import tsx --test test/erpnextArchitecture.test.ts",
     "test:rbac-seed": "node --import tsx --test test/rbacSeed.test.ts"
   },
   "dependencies": {
+    "@cybranex/erpnext-contracts": "workspace:*",
+    "@cybranex/metrics": "workspace:*",
     "@cybranex/permissions": "workspace:*",
     "@cybranex/shared-types": "workspace:*",
     "@google/genai": "^2.8.0",

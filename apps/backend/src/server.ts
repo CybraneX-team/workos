@@ -2,8 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import { env } from './config.js';
 import { startWorker } from './jobs/runner.js';
-import { startErpnextProvisionWorker } from './jobs/erpnextProvision.js';
-import { startErpnextRoleReconciliationWorker } from './lib/erpnextRoleSync.js';
+import { startErpNextOutboxWorker } from './lib/erpnextOutbox.js';
 import { ingestionRouter } from './routes/ingestion.js';
 import { metricsRouter } from './routes/metrics.js';
 import { integrationsRouter } from './routes/integrations.js';
@@ -21,11 +20,11 @@ import { rbacRouter } from './routes/rbac.js';
 import { departmentsRouter } from './routes/departments.js';
 import { referenceCompaniesRouter } from './routes/referenceCompanies.js';
 import { bdtCatalogRouter } from './routes/bdtCatalog.js';
-import { erpnextChatRouter } from './routes/erpnextChat.js';
-import { erpnextOperationsRouter } from './routes/erpnextOperations.js';
-import { erpnextSupplyChainRouter } from './routes/erpnextSupplyChain.js';
-import { erpnextSalesRouter } from './routes/erpnextSales.js';
-import { erpnextProductsRouter } from './routes/erpnextProducts.js';
+import { erpnextChatRouter } from './domains/workos-erp/erpnextChat.js';
+import { erpnextOperationsRouter } from './domains/workos-erp/erpnextOperations.js';
+import { erpnextSupplyChainRouter } from './domains/workos-erp/erpnextSupplyChain.js';
+import { erpnextSalesRouter } from './domains/workos-erp/erpnextSales.js';
+import { erpnextProductsRouter } from './domains/workos-erp/erpnextProducts.js';
 import { bdtNodeActivationRouter } from './routes/bdtNodeActivation.js';
 import { debugLogRouter } from './routes/debugLog.js';
 import { oidcRouter } from './routes/oidc.js';
@@ -99,10 +98,9 @@ initializeRbac()
       console.log(`[backend] listening on :${env.PORT}`);
       if (env.RUN_WORKER) {
         startWorker();
-        startErpnextProvisionWorker();
-        startErpnextRoleReconciliationWorker();
         console.log(`[backend] worker started (${env.WORKER_ID})`);
       }
+      if (env.RUN_ERPNEXT_OUTBOX_WORKER) startErpNextOutboxWorker();
     });
   })
   .catch((err) => {

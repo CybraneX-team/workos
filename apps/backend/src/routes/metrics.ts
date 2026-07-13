@@ -5,6 +5,7 @@ import { env } from '../config.js';
 import { authJwt } from '../middleware/authJwt.js';
 import { requirePermission } from '../rbac.js';
 import { recomputeCanonicalRollups } from '../lib/canonicalMetrics.js';
+import { scoreMetric } from '@cybranex/metrics';
 import { configureMetaMetric, isMetaMetricKey, setMetaConversionAction } from '../lib/metaMetricEngine.js';
 
 export const metricsRouter = Router();
@@ -202,18 +203,11 @@ function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
 }
 
+// Delegates to the canonical @cybranex/metrics normalization. This route needs a
+// non-null score for the NOT-NULL write path; baseline === target (unscorable →
+// null) preserves the historical behavior of returning 100.
 function scoreFor(value: number, baseline: number, target: number, direction: Direction): number {
-  if (direction === 'target_band') {
-    const span = Math.max(Math.abs(target - baseline), 1);
-    const distance = Math.abs(value - target);
-    return Math.max(0, Math.min(100, Math.round(100 - (distance / span) * 100)));
-  }
-  const span = target - baseline;
-  if (span === 0) return 100;
-  const raw = direction === 'lower_is_better'
-    ? ((baseline - value) / (baseline - target || span)) * 100
-    : ((value - baseline) / span) * 100;
-  return Math.max(0, Math.min(100, Math.round(raw)));
+  return scoreMetric(value, baseline, target, direction) ?? 100;
 }
 
 async function validateTarget(client: any, companyId: string, targetType: TargetType, targetId: string) {

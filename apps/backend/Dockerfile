@@ -14,16 +14,25 @@ WORKDIR /app
 # Copy workspace manifests first for better layer caching.
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc ./
 COPY packages/shared-types/package.json ./packages/shared-types/package.json
+COPY packages/permissions/package.json ./packages/permissions/package.json
+COPY packages/metrics/package.json ./packages/metrics/package.json
+COPY packages/erpnext-contracts/package.json ./packages/erpnext-contracts/package.json
 COPY apps/backend/package.json ./apps/backend/package.json
 
 RUN pnpm install --frozen-lockfile
 
 # Now copy source and build only what's needed.
 COPY packages/shared-types ./packages/shared-types
+COPY packages/permissions ./packages/permissions
+COPY packages/metrics ./packages/metrics
+COPY packages/erpnext-contracts ./packages/erpnext-contracts
 COPY apps/backend/tsconfig.json ./apps/backend/tsconfig.json
 COPY apps/backend/src ./apps/backend/src
 
 RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @cybranex/shared-types build
+RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @cybranex/permissions build
+RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @cybranex/metrics build
+RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @cybranex/erpnext-contracts build
 RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter backend build
 
 # Produce a pruned, deploy-only node_modules for the backend + its

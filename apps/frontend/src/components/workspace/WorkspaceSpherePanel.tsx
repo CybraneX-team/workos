@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import {
   Orbit, Target, Layers, CheckSquare, FileText, FolderOpen,
-  TrendingUp, TrendingDown, Minus, Zap,
+  TrendingUp, Zap,
   AlertTriangle, Scale, Clock, Plus,
 } from 'lucide-react';
 import { useProjectsStore, generateAlerts } from '../../lib/useProjectsStore';
-import { useBdtMetrics, useBdtGoals, bdtMetricDisplay, bdtMetricProgress } from '../../lib/db/metrics';
+import { useBdtGoals } from '../../lib/db/metrics';
 import { useAuth } from '../../lib/auth';
 import { useFounderWorkspace } from '../../context/FounderWorkspaceContext';
-import { useCanonicalMetrics, isMetricAdmin } from '../../lib/db/canonicalMetrics';
+import { useCanonicalMetrics, isMetricAdmin, metricProgress, formatMetricValue } from '../../lib/db/canonicalMetrics';
 import { useTeamMembers } from '../../lib/db/team';
 import { MetricCreateWizard, MetricRollupHealthPanel } from './metrics/MetricSystem';
 
@@ -23,9 +23,8 @@ export function WorkspaceSpherePanel() {
   const { profile, role } = useAuth();
   const companyId = profile?.company_id ?? null;
   const { goals } = useBdtGoals(companyId);
-  const { metrics } = useBdtMetrics(companyId);
   const { setActiveSidebarTab, notes, departments } = useFounderWorkspace();
-  const { rollups, createMetric, createDraft } = useCanonicalMetrics(companyId, { target_type: 'department', status: 'active' });
+  const { metrics, rollups, createMetric, createDraft } = useCanonicalMetrics(companyId, { status: 'active' });
   const { members: teamMembers } = useTeamMembers(companyId);
   const canEditMetrics = isMetricAdmin(role);
   const [metricWizardTarget, setMetricWizardTarget] = useState<{ id: string; label: string } | null>(null);
@@ -113,17 +112,14 @@ export function WorkspaceSpherePanel() {
           </div>
           <div className="grid grid-cols-2">
             {topMetrics.map((m, i) => {
-              const pct = bdtMetricProgress(m);
-              const good = m.trend === 'flat' ? null : (m.trend === 'up') === m.higher_is_better;
-              const tc = good === null ? '#94a3b8' : good ? '#34d399' : '#fb7185';
-              const TIcon = m.trend === 'up' ? TrendingUp : m.trend === 'down' ? TrendingDown : Minus;
+              const pct = metricProgress(m);
+              const tc = pct >= 50 ? '#34d399' : '#fb7185';
               return (
                 <div key={m.id} className="py-2" style={{ borderLeft: i % 2 > 0 ? `1px solid ${B}` : 'none', paddingLeft: i % 2 > 0 ? 12 : 0 }}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[9px] text-white/35 truncate">{m.name}</span>
-                    <TIcon className="w-3 h-3 shrink-0" style={{ color: tc }} />
                   </div>
-                  <div className="text-base font-bold leading-none mb-1.5" style={{ color: tc }}>{bdtMetricDisplay(m)}</div>
+                  <div className="text-base font-bold leading-none mb-1.5" style={{ color: tc }}>{formatMetricValue(m)}</div>
                   <div className="h-1 rounded-full bg-white/10 overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: tc }} />
                   </div>

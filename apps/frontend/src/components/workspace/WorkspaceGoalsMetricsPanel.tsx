@@ -1,18 +1,21 @@
 import { useMemo } from 'react';
 import {
-  Target, TrendingUp, TrendingDown, Minus, CheckCircle2, Circle, Gauge,
+  Target, CheckCircle2, Circle, Gauge,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useFounderWorkspace } from '../../context/FounderWorkspaceContext';
-import { useBdtGoals, useBdtMetrics, bdtMetricDisplay, bdtMetricTargetDisplay, bdtMetricProgress } from '../../lib/db/metrics';
-import type { BdtMetric } from '../../lib/db/metrics';
+import { useBdtGoals } from '../../lib/db/metrics';
+import {
+  useCanonicalMetrics, metricScope, metricProgress, formatMetricValue, formatMetricTarget,
+} from '../../lib/db/canonicalMetrics';
+import type { CanonicalMetric } from '../../lib/db/canonicalMetrics';
 
 const ACCENT = '#C1AEFF';
 const B = 'rgba(255,255,255,0.08)';
 
-function metricIsGood(m: BdtMetric): boolean | null {
-  if (m.trend === 'flat') return null;
-  return (m.trend === 'up') === m.higher_is_better;
+/** A metric is "on track" when its direction-aware progress reaches halfway. */
+function metricOnTrack(m: CanonicalMetric): boolean {
+  return metricProgress(m) >= 50;
 }
 
 function computeHealthScore(goalCompletionPct: number, onTrackMetricPct: number | null): number {
@@ -40,20 +43,17 @@ function HealthGauge({ value }: { value: number }) {
   );
 }
 
-function MetricCard({ m }: { m: BdtMetric }) {
-  const pct = bdtMetricProgress(m);
-  const good = metricIsGood(m);
-  const tc = good === null ? '#94a3b8' : good ? '#34d399' : '#fb7185';
-  const TIcon = m.trend === 'up' ? TrendingUp : m.trend === 'down' ? TrendingDown : Minus;
+function MetricCard({ m }: { m: CanonicalMetric }) {
+  const pct = metricProgress(m);
+  const tc = pct >= 50 ? '#34d399' : '#fb7185';
   return (
     <div className="rounded-xl p-3 border" style={{ borderColor: B, background: 'rgba(255,255,255,0.02)' }}>
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-white/40 truncate">{m.name}</span>
-        <TIcon className="w-3 h-3 shrink-0" style={{ color: tc }} />
       </div>
       <div className="flex items-baseline gap-1.5 mb-1.5">
-        <span className="text-base font-bold leading-none" style={{ color: tc }}>{bdtMetricDisplay(m)}</span>
-        <span className="text-[10px] text-white/25">/ {bdtMetricTargetDisplay(m)} target</span>
+        <span className="text-base font-bold leading-none" style={{ color: tc }}>{formatMetricValue(m)}</span>
+        <span className="text-[10px] text-white/25">/ {formatMetricTarget(m)} target</span>
       </div>
       <div className="h-1 rounded-full bg-white/10 overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: tc }} />
@@ -66,7 +66,7 @@ export function WorkspaceGoalsMetricsPanel() {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
   const { goals: bdtGoals } = useBdtGoals(companyId);
-  const { metrics } = useBdtMetrics(companyId);
+  const { metrics } = useCanonicalMetrics(companyId, { status: 'active' });
   const { goals: workspaceGoals, goalProgress, toggleGoal } = useFounderWorkspace();
 
   const goalCompletionPct = useMemo(() => {
@@ -78,15 +78,14 @@ export function WorkspaceGoalsMetricsPanel() {
   }, [bdtGoals, goalProgress]);
 
   const onTrackMetricPct = useMemo(() => {
-    const judged = metrics.map(metricIsGood).filter((g): g is boolean => g !== null);
-    if (!judged.length) return null;
-    return Math.round((judged.filter(Boolean).length / judged.length) * 100);
+    if (!metrics.length) return null;
+    return Math.round((metrics.filter(metricOnTrack).length / metrics.length) * 100);
   }, [metrics]);
 
   const healthScore = computeHealthScore(goalCompletionPct, onTrackMetricPct);
 
-  const companyMetrics = metrics.filter(m => m.scope === 'company');
-  const deptMetrics = metrics.filter(m => m.scope === 'department');
+  const companyMetrics = metrics.filter(m => metricScope(m) === 'company');
+  const deptMetrics = metrics.filter(m => metricScope(m) === 'department');
 
   return (
     <div className="w-full h-full overflow-y-auto scrollbar-hide flex flex-col gap-5 pb-6 pr-1">
@@ -104,7 +103,7 @@ export function WorkspaceGoalsMetricsPanel() {
               ? 'Strong shape — most goals and metrics are on track.'
               : healthScore >= 40
                 ? 'Mixed signal — some goals or metrics need attention.'
-                : 'Needs attention — goal completion or metric trends are lagging.'}
+                : 'Needs attention — goal completion or metric progress is lagging.'}
             {' '}Combines goal completion ({goalCompletionPct}%) and on-track metrics{onTrackMetricPct != null ? ` (${onTrackMetricPct}%)` : ''}.
           </p>
         </div>
@@ -202,7 +201,7 @@ export function WorkspaceGoalsMetricsPanel() {
       {companyMetrics.length === 0 && deptMetrics.length === 0 && (
         <div className="py-8 text-center rounded-xl border border-dashed" style={{ borderColor: B }}>
           <div className="text-sm text-white/35">No metrics tracked yet</div>
-          <div className="text-[11px] text-white/20 mt-1">Metrics you connect will show trend and target progress here.</div>
+          <div className="text-[11px] text-white/20 mt-1">Metrics you connect will show target progress here.</div>
         </div>
       )}
     </div>

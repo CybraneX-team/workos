@@ -1,0 +1,102 @@
+# Guarded development reset runbook
+
+Last verified: 2026-07-13.
+
+Scope: destructive reset of the configured shared Supabase development project and local `.localhost` Frappe sites only.
+
+## What it removes
+
+- Company-owned application data through truncation and foreign-key cascades.
+- Companies, memberships, profiles, legacy ERPNext connection/provisioning rows, WorkOS ERP command rows, OIDC clients/codes/tokens, and all Supabase Auth users.
+- Every table in the control-plane-owned `erpnext` schema.
+- Local Frappe sites matching `erp-<slug>.localhost`.
+- Auth-owned public rows discovered from foreign keys; required references are truncated and nullable audit references are cleared.
+
+It does not delete production ERPNext VM sites. The script's site matcher only accepts local `.localhost` names. It restores the system role reference seed after deletion.
+
+## Safety gates
+
+Execution requires all of the following:
+
+- a dry run first;
+- explicit `--execute`;
+- exact phrase `--confirm=DELETE_SHARED_WORKOS_DEVELOPMENT_DATA`;
+- exact `--project-ref=<value shown by dry run>`;
+- a successful timestamped PostgreSQL custom-format backup;
+- Frappe site backups before deletion when local sites exist.
+
+The Supabase project reference is derived from `SUPABASE_URL`; do not copy a remembered value from documentation or another environment.
+
+## Prerequisites
+
+- Backend environment has valid `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.
+- `pg_dump`, Docker, and Docker Compose are available.
+- The local Frappe stack is running so sites can be listed and backed up.
+- The operator understands that Auth users and data visible to any application connected to the displayed shared project will be deleted.
+
+## 1. Dry run
+
+From the repository root:
+
+```bash
+pnpm --filter backend reset:development
+```
+
+Read and independently confirm:
+
+- `mode` is `dry-run`;
+- `sharedSupabaseProjectRef` is the intended development project;
+- company and Auth user counts are plausible;
+- every listed Frappe site is a disposable local `.localhost` site;
+- `productionFrappeSitesWillBeDeleted` is `false`.
+
+Stop if any value is unexpected.
+
+## 2. Execute with the displayed project reference
+
+```bash
+pnpm --filter backend reset:development -- \
+  --execute \
+  --confirm=DELETE_SHARED_WORKOS_DEVELOPMENT_DATA \
+  --project-ref=<exact-project-ref-from-dry-run>
+```
+
+If the Compose directory differs from `FRAPPE_DOCKER_DIR`, add:
+
+```text
+--frappe-dir=/absolute/path/to/infra/erpnext
+```
+
+Do not bypass or weaken the confirmation phrase, project match, or backup gates.
+
+## 3. Verify
+
+Confirm the command reports the database backup path and final Auth user/site counts. Backups are written under `backups/development-reset/` in the repository; Frappe backups remain in the sites volume.
+
+Then verify:
+
+```sql
+select count(*) from public.companies;
+select count(*) from public.company_members;
+select count(*) from public.oidc_clients;
+select count(*) from public.erpnext_command_outbox;
+select count(*) from auth.users;
+select count(*) from public.roles;
+```
+
+The first five should be zero. `public.roles` should contain the restored system reference roles. Confirm `erpnext` schema tables are empty and `bench list-sites` no longer lists the deleted local tenant sites.
+
+## Backup and restore note
+
+The PostgreSQL backup is a custom-format `pg_dump` file suitable for `pg_restore`. A restore is a separate destructive operation: review the target database and coordinate it explicitly rather than running it as part of this reset runbook.
+
+## Authoritative files
+
+- `apps/backend/scripts/reset-development-data.ts`
+- `apps/backend/package.json`
+- `apps/frontend/supabase/migrations/20260628210100_baseline_reference_seed.sql`
+- `../infra/erpnext/pwd.yml`
+
+## Update this runbook when
+
+- reset scope, safety gates, backup location/format, local site naming, Auth deletion behavior, reference-data restoration, or required environment variables change.

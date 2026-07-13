@@ -10,9 +10,9 @@ import {
   getShipments,
   getStockBalances,
   getWarehouses,
-} from '../adapters/erpnext.js';
-import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../lib/erpnextConnection.js';
-import { authJwt } from '../middleware/authJwt.js';
+} from '../../adapters/erpnext.js';
+import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../../lib/erpnextConnection.js';
+import { authJwt } from '../../middleware/authJwt.js';
 
 export const erpnextSupplyChainRouter = Router();
 

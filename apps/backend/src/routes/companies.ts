@@ -3,7 +3,7 @@ import { authJwt } from '../middleware/authJwt.js';
 import { supabaseAdmin, pool } from '../db.js';
 import { requirePermission } from '../rbac.js';
 import { BDT_SEED_DEPARTMENTS, type BdtSeedDepartment } from '../data/bdtSeed.js';
-import { provisionEnv } from '../config.js';
+import { enqueueErpNextSetup } from '../lib/erpnextOutbox.js';
 
 export const companiesRouter = Router();
 companiesRouter.use(authJwt);
@@ -249,14 +249,7 @@ companiesRouter.post('/', async (req: any, res: any) => {
     // target_env scopes this job to a worker that provisions in the matching place,
     // so a local dev worker can't claim a prod signup's job off the shared queue
     // (see config.ts provisionEnv + migration 033).
-    const { error: provisionEnqueueErr } = await supabaseAdmin.from('erpnext_provision_jobs').insert({
-      company_id: company.id,
-      payload: { company_slug: company.slug },
-      target_env: provisionEnv,
-    });
-    if (provisionEnqueueErr) {
-      console.error('[companies] erpnext provision job enqueue failed', provisionEnqueueErr);
-    }
+    await enqueueErpNextSetup(company.id, company.slug);
 
     return res.status(201).json({ company });
   } catch (err: any) {

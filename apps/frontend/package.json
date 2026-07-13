@@ -13,6 +13,7 @@
     "e2e:rbac:list": "playwright test e2e/rbac --list"
   },
   "dependencies": {
+    "@cybranex/metrics": "workspace:*",
     "@cybranex/permissions": "workspace:*",
     "@cybranex/shared-types": "workspace:*",
     "@react-three/drei": "^10.7.7",

@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { getErpNextRecords, type ErpNextCreds, type ErpNextGenericRecord } from '../adapters/erpnext.js';
-import { pool } from '../db.js';
-import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../lib/erpnextConnection.js';
-import { authJwt } from '../middleware/authJwt.js';
+import { getErpNextRecords, type ErpNextCreds, type ErpNextGenericRecord } from '../../adapters/erpnext.js';
+import { pool } from '../../db.js';
+import { getErpNextNotConfiguredMessage, resolveErpNextCreds } from '../../lib/erpnextConnection.js';
+import { authJwt } from '../../middleware/authJwt.js';
 
 // Sibling of erpnextOperations.ts / erpnextSales.ts, scoped to the Product department. Only
 // the "Products" branch item under "Product Portfolio" is ERPNext-Item-shaped — every other
@@ -269,6 +269,7 @@ function recommendationsFor(mappingDef: MappingDefinition, reads: Array<{ defini
 }
 
 async function resolveNodePath(companyId: string, nodeId: string): Promise<NodePathRow[] | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nodeId)) return null;
   const { rows } = await pool.query<NodePathRow>(
     `WITH RECURSIVE node_path AS (
        SELECT n.id, n.parent_node_id, n.label, n.node_type, n.node_level, n.metadata, ml.metric_key,

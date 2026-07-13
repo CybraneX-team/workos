@@ -14,6 +14,12 @@ importers:
 
   apps/backend:
     dependencies:
+      '@cybranex/erpnext-contracts':
+        specifier: workspace:*
+        version: link:../../packages/erpnext-contracts
+      '@cybranex/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       '@cybranex/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
@@ -85,8 +91,45 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  apps/erpnext-control-plane:
+    dependencies:
+      '@cybranex/erpnext-contracts':
+        specifier: workspace:*
+        version: link:../../packages/erpnext-contracts
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      express:
+        specifier: ^4.21.2
+        version: 4.22.2
+      pg:
+        specifier: ^8.13.1
+        version: 8.22.0
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
+      '@types/pg':
+        specifier: ^8.11.11
+        version: 8.20.0
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   apps/frontend:
     dependencies:
+      '@cybranex/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       '@cybranex/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
@@ -208,6 +251,28 @@ importers:
       vite-plugin-glsl:
         specifier: ^1.3.0
         version: 1.6.0(esbuild@0.28.1)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1))
+
+  packages/erpnext-contracts:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/metrics:
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   packages/permissions:
     devDependencies:
@@ -3416,11 +3481,11 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
 
   '@types/cors@2.8.19':
     dependencies:
@@ -3456,7 +3521,7 @@ snapshots:
 
   '@types/express-serve-static-core@4.19.9':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
       '@types/qs': 6.15.1
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -3519,16 +3584,16 @@ snapshots:
   '@types/send@0.17.6':
     dependencies:
       '@types/mime': 1.3.5
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
 
   '@types/send@1.2.1':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
 
   '@types/serve-static@1.15.10':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
       '@types/send': 0.17.6
 
   '@types/stats.js@0.17.4': {}
@@ -4743,7 +4808,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
       long: 5.3.2
 
   proxy-addr@2.0.7:

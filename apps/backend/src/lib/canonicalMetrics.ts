@@ -1,28 +1,18 @@
 import type { PoolClient } from 'pg';
 
-export type MetricDirection = 'higher_is_better' | 'lower_is_better' | 'target_band';
-
-export function scoreMetric(
-  value: number | null,
-  baseline: number,
-  target: number,
-  direction: MetricDirection,
-): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  if (direction === 'target_band') {
-    const span = Math.max(Math.abs(target - baseline), 1);
-    return Math.max(0, Math.min(100, Math.round(100 - (Math.abs(value - target) / span) * 100)));
-  }
-  if (target === baseline) return null;
-  const raw = direction === 'lower_is_better'
-    ? ((baseline - value) / (baseline - target)) * 100
-    : ((value - baseline) / (target - baseline)) * 100;
-  return Math.max(0, Math.min(100, Math.round(raw)));
-}
+// `scoreMetric` (per-metric normalization) now lives in @cybranex/metrics, the
+// single source of truth shared with the frontend. Re-export it here so existing
+// backend importers of this module keep working.
+export { scoreMetric, type MetricDirection } from '@cybranex/metrics';
 
 /**
  * Rebuilds materialized rollups from canonical metrics only. Stored manual BDT
  * scores remain untouched; API readers overlay these computed rows.
+ *
+ * The weighted-mean below — ROUND(SUM(normalized_score * weight) /
+ * NULLIF(SUM(weight), 0)) — is the SQL twin of `rollupHealth()` in
+ * @cybranex/metrics, and the final AVG(goal scores) is `strategicScore()`.
+ * Keep the two in sync; `test/rollupParity.test.ts` guards the formula.
  */
 export async function recomputeCanonicalRollups(client: PoolClient, companyId: string): Promise<void> {
   await client.query(`DELETE FROM public.metric_rollups WHERE company_id = $1`, [companyId]);

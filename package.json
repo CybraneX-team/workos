@@ -7,8 +7,13 @@
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "build:backend": "pnpm --filter \"backend...\" build",
     "build:frontend": "pnpm --filter \"frontend...\" build",
+    "build:erpnext-control-plane": "pnpm --filter \"erpnext-control-plane...\" build",
     "typecheck:backend": "pnpm --filter backend typecheck",
-    "typecheck:frontend": "pnpm --filter frontend build"
+    "typecheck:frontend": "pnpm --filter frontend build",
+    "typecheck:erpnext-control-plane": "pnpm --filter erpnext-control-plane typecheck",
+    "dev:workos-erpnext": "pnpm --parallel --filter backend --filter frontend --filter erpnext-control-plane dev",
+    "frappe:up": "docker compose -f ../infra/erpnext/pwd.yml up -d",
+    "frappe:down": "docker compose -f ../infra/erpnext/pwd.yml down"
   },
   "pnpm": {
     "overrides": {

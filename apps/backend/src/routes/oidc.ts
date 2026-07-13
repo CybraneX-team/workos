@@ -91,9 +91,9 @@ oidcRouter.post('/token', express.urlencoded({ extended: true }), async (req, re
 
   const accessToken = genToken();
   await pool.query(
-    `insert into public.oidc_access_tokens (token, user_id, company_id, email, expires_at)
-     values ($1, $2, $3, $4, now() + interval '1 millisecond' * $5)`,
-    [accessToken, authCode.user_id, authCode.company_id, authCode.email, ACCESS_TOKEN_TTL_MS],
+    `insert into public.oidc_access_tokens (token, client_id, user_id, company_id, email, expires_at)
+     values ($1, $2, $3, $4, $5, now() + interval '1 millisecond' * $6)`,
+    [accessToken, clientId, authCode.user_id, authCode.company_id, authCode.email, ACCESS_TOKEN_TTL_MS],
   );
 
   res.json({ access_token: accessToken, token_type: 'bearer', expires_in: ACCESS_TOKEN_TTL_MS / 1000 });
@@ -118,12 +118,31 @@ oidcRouter.get('/userinfo', async (req, res) => {
 });
 
 export async function registerOidcClient(companyId: string, redirectUri: string): Promise<{ clientId: string; clientSecret: string }> {
+  return getOrCreateOidcClient(companyId, 'remote', 'workos', redirectUri);
+}
+
+export async function getOrCreateOidcClient(
+  companyId: string,
+  environment: 'local' | 'remote',
+  providerName: string,
+  redirectUri: string,
+): Promise<{ clientId: string; clientSecret: string }> {
+  const existing = await pool.query<{ client_id: string; client_secret_enc: string }>(
+    `select client_id,client_secret_enc from public.oidc_clients where company_id=$1 and environment=$2 and provider_name=$3`,
+    [companyId, environment, providerName],
+  );
+  if (existing.rows[0]) {
+    await pool.query('update public.oidc_clients set redirect_uri=$2 where client_id=$1', [existing.rows[0].client_id, redirectUri]);
+    return { clientId: existing.rows[0].client_id, clientSecret: decrypt(existing.rows[0].client_secret_enc) };
+  }
   const clientId = `wos_${randomBytes(16).toString('hex')}`;
   const clientSecret = randomBytes(32).toString('hex');
-  await pool.query(
-    `insert into public.oidc_clients (client_id, client_secret_enc, company_id, redirect_uri)
-     values ($1, $2, $3, $4)`,
-    [clientId, encrypt(clientSecret), companyId, redirectUri],
+  await pool.query(`insert into public.oidc_clients(client_id,client_secret_enc,company_id,redirect_uri,environment,provider_name)
+    values($1,$2,$3,$4,$5,$6) on conflict(company_id,environment,provider_name) do nothing`,
+    [clientId, encrypt(clientSecret), companyId, redirectUri, environment, providerName]);
+  const created = await pool.query<{ client_id: string; client_secret_enc: string }>(
+    `select client_id,client_secret_enc from public.oidc_clients where company_id=$1 and environment=$2 and provider_name=$3`,
+    [companyId, environment, providerName],
   );
-  return { clientId, clientSecret };
+  return { clientId: created.rows[0].client_id, clientSecret: decrypt(created.rows[0].client_secret_enc) };
 }

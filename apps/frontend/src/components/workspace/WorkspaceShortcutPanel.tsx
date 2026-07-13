@@ -2,11 +2,11 @@ import { useMemo } from 'react';
 import {
   Map, DollarSign, Mic2, Swords,
   CheckCircle2, Clock, AlertCircle, Circle,
-  TrendingUp, TrendingDown, Minus,
   ChevronRight, ArrowRight,
 } from 'lucide-react';
 import { useProjectsStore } from '../../lib/useProjectsStore';
-import { useBdtGoals, useBdtMetrics, bdtMetricDisplay, bdtMetricProgress } from '../../lib/db/metrics';
+import { useBdtGoals } from '../../lib/db/metrics';
+import { useCanonicalMetrics, metricProgress, formatMetricValue } from '../../lib/db/canonicalMetrics';
 import { useAuth } from '../../lib/auth';
 import { useFounderWorkspace } from '../../context/FounderWorkspaceContext';
 
@@ -154,16 +154,10 @@ const FUNDRAISING_MILESTONES = [
 
 function FundraisingView() {
   const { profile } = useAuth();
-  const { metrics } = useBdtMetrics(profile?.company_id ?? null);
+  const { metrics } = useCanonicalMetrics(profile?.company_id ?? null, { status: 'active' });
 
   const runway = useMemo(() => metrics.find(m => m.name.toLowerCase().includes('runway')), [metrics]);
   const mrr    = useMemo(() => metrics.find(m => m.name.toLowerCase().includes('mrr') || m.name.toLowerCase().includes('revenue')), [metrics]);
-
-  const TrendIcon = ({ trend }: { trend?: string }) => {
-    if (trend === 'up') return <TrendingUp className="w-3 h-3 text-emerald-400" />;
-    if (trend === 'down') return <TrendingDown className="w-3 h-3 text-rose-400" />;
-    return <Minus className="w-3 h-3 text-white/30" />;
-  };
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">
@@ -177,14 +171,13 @@ function FundraisingView() {
       <div className="shrink-0 grid grid-cols-2 gap-2.5 mb-4">
         {[runway, mrr].filter(Boolean).map(m => {
           if (!m) return null;
-          const pct = bdtMetricProgress(m);
+          const pct = metricProgress(m);
           return (
             <div key={m.id} className="rounded-xl p-3 bg-white/[0.03] border border-white/8">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[9px] uppercase tracking-wider text-white/35">{m.name}</span>
-                <TrendIcon trend={m.trend} />
               </div>
-              <div className="text-lg font-bold text-white leading-none">{bdtMetricDisplay(m)}</div>
+              <div className="text-lg font-bold text-white leading-none">{formatMetricValue(m)}</div>
               <div className="h-1 rounded-full bg-white/10 mt-2 overflow-hidden">
                 <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#34d399' }} />
               </div>
