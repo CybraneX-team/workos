@@ -1,0 +1,19 @@
+{
+  "name": "cybranex-workos",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build:packages": "pnpm --filter \"./packages/**\" build",
+    "build:backend": "pnpm --filter \"backend...\" build",
+    "build:frontend": "pnpm --filter \"frontend...\" build",
+    "typecheck:backend": "pnpm --filter backend typecheck",
+    "typecheck:frontend": "pnpm --filter frontend build"
+  },
+  "pnpm": {
+    "overrides": {
+      "google-auth-library": "10.9.0",
+      "zustand": "5.0.14"
+    }
+  }
+}

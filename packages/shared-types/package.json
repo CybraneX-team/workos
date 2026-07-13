@@ -1,0 +1,14 @@
+{
+  "name": "@cybranex/shared-types",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

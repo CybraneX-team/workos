@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Work OS — Execution Status (honest, per-item)</title>
+  <style>
+    :root {
+      --bg: #07070b;
+      --panel: rgba(255, 255, 255, 0.035);
+      --line: rgba(255, 255, 255, 0.10);
+      --txt: #ECEAF6;
+      --mut: rgba(236, 234, 246, 0.55);
+      --mut2: rgba(236, 234, 246, 0.33);
+      --done: #34d399;
+      --partial: #fbbf24;
+      --pending: #fb7185;
+      --backend: #60a5fa;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      background: radial-gradient(1000px 600px at 80% -10%, rgba(155, 125, 255, 0.12), transparent 60%), var(--bg);
+      color: var(--txt);
+      line-height: 1.5;
+      padding: 0 0 100px
+    }
+
+    .wrap {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px
+    }
+
+    header {
+      padding: 54px 0 26px;
+      text-align: center
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      color: #C1AEFF;
+      font-weight: 700
+    }
+
+    h1 {
+      font-size: 32px;
+      margin: 12px 0 8px;
+      letter-spacing: -.02em
+    }
+
+    .sub {
+      color: var(--mut);
+      font-size: 14px;
+      max-width: 680px;
+      margin: 0 auto
+    }
+
+    .updated {
+      font-size: 11px;
+      color: var(--mut2);
+      margin-top: 10px
+    }
+
+    .legend {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 22px 0 8px;
+      font-size: 12px;
+      color: var(--mut)
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      display: inline-block
+    }
+
+    section {
+      padding: 26px 0;
+      border-top: 1px solid var(--line)
+    }
+
+    .shead {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 4px;
+      flex-wrap: wrap
+    }
+
+    .snum {
+      font-size: 11px;
+      font-weight: 800;
+      color: #1a1430;
+      background: #C1AEFF;
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      flex: none
+    }
+
+    h2 {
+      font-size: 20px
+    }
+
+    .score {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--mut2);
+      font-weight: 600
+    }
+
+    .sdesc {
+      color: var(--mut2);
+      font-size: 12.5px;
+      margin: 4px 0 16px
+    }
+
+    .item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      margin-bottom: 7px
+    }
+
+    .pill {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 6px;
+      flex: none;
+      margin-top: 1px;
+      min-width: 74px;
+      text-align: center
+    }
+
+    .p-done {
+      background: rgba(52, 211, 153, 0.16);
+      color: var(--done);
+      border: 1px solid rgba(52, 211, 153, 0.3)
+    }
+
+    .p-partial {
+      background: rgba(251, 191, 36, 0.16);
+      color: var(--partial);
+      border: 1px solid rgba(251, 191, 36, 0.3)
+    }
+
+    .p-pending {
+      background: rgba(251, 113, 133, 0.14);
+      color: var(--pending);
+      border: 1px solid rgba(251, 113, 133, 0.3)
+    }
+
+    .p-backend {
+      background: rgba(96, 165, 250, 0.14);
+      color: var(--backend);
+      border: 1px solid rgba(96, 165, 250, 0.3)
+    }
+
+    .itxt {
+      font-size: 13px
+    }
+
+    .itxt b {
+      font-weight: 600
+    }
+
+    .inote {
+      font-size: 11.5px;
+      color: var(--mut2);
+      margin-top: 2px
+    }
+
+    footer {
+      padding: 34px 0 0;
+      border-top: 1px solid var(--line);
+      margin-top: 30px;
+      color: var(--mut2);
+      font-size: 12px;
+      text-align: center
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">Work OS · BDT + IDT</div>
+      <h1>Execution Status — honest &amp; per-item</h1>
+      <p class="sub">What is actually built on the frontend today, broken down to the sub-feature level. Updated every
+        time a feature ships. Verification steps live in <b>verification-guide.html</b>.</p>
+      <div class="updated">Last updated: this session (June 2026) · frontend only (localStorage, no backend yet)</div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--done)"></i> Done (frontend)</span>
+        <span><i class="dot" style="background:var(--partial)"></i> Partial</span>
+        <span><i class="dot" style="background:var(--pending)"></i> Pending</span>
+        <span><i class="dot" style="background:var(--backend)"></i> Needs backend / AI</span>
+      </div>
+    </header>
+
+    <!-- 1 -->
+    <section>
+      <div class="shead">
+        <div class="snum">01</div>
+        <h2>Core operating loop</h2><span class="score">~55% — major gaps closed this session</span>
+      </div>
+      <p class="sdesc">signal → node → card → discussion → decision → task → project → execution → metric →
+        recommendation</p>
+      <div class="item"><span class="pill p-pending">Pending</span>
+        <div><span class="itxt"><b>Signal → node</b></span>
+          <div class="inote">Live Signals panel is static mock data; no pipeline turning a signal into a node/card.
+          </div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Node → card</b></span>
+          <div class="inote">Save a node in the IDT → it appears as a card on the Saved Nodes canvas.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Card → discussion</b></span>
+          <div class="inote">Per-card chat (text). Voice present but needs backend token.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Card → task (PM)</b></span>
+          <div class="inote">&ldquo;Add to Project&rdquo; button with project picker. Routes directly to project kanban.
+            Old &ldquo;Convert to Task&rdquo; still adds to founder tasks board.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Card → project</b></span>
+          <div class="inote">&ldquo;Convert to Project&rdquo; creates a new Superspace project pre-filled from node
+            title and description.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-pending">Pending</span>
+        <div><span class="itxt"><b>Card → decision</b></span>
+          <div class="inote">No decision object/queue yet.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Project → execution</b></span>
+          <div class="inote">Draggable kanban; drag a task to Done.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Execution → metric impact</b></span>
+          <div class="inote">Goal progress rolls up from task completion. Project health now computed live. Full metric
+            chain not built.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Rule-based recommendations (Suggestive Engine)</b></span>
+          <div class="inote">generateAlerts() produces overdue/at-risk/decision/overallocation alerts; wired into
+            Superspace.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section>
+      <div class="shead">
+        <div class="snum">02</div>
+        <h2>Node → Card (InfoCard)</h2><span class="score">~60% — core done, depth pending</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Identity</b> — role, level, tag, title, breadcrumb, saved-time</span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Context summary</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Chat</b> (text)</span>
+          <div class="inote">Voice toggle present → backend token needed for live voice.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Actions: Convert to Task, Link to Goal, Open, Remove</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Export to Workspace button</b> — fixed</span>
+          <div class="inote">Works from the IDT; hidden when already inside the workspace (was redundant/dead there).
+          </div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Key metrics</b></span>
+          <div class="inote">Tiles show source/confidence/updated/level — derived/static, not live numbers.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Relationships</b></span>
+          <div class="inote">Chips for company/lens/tag/root/branch. No real cross-node graph links.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Evidence</b></span>
+          <div class="inote">Shows your note + “saved from universe.” No file/doc attachments.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Sync status</b></span>
+          <div class="inote">Shows “Draft · local.” Real sync to the twin needs backend.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Version history</b></span>
+          <div class="inote">Single “saved” entry; no real change log.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-pending">Pending</span>
+        <div><span class="itxt"><b>Secondary actions: Compare · Assign · Run Agent · Simulate</b></span>
+          <div class="inote">Visible but show “coming in a later phase.”</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-pending">Pending</span>
+        <div><span class="itxt"><b>Multi-card connections</b> (edges between cards on canvas)</span></div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section>
+      <div class="shead">
+        <div class="snum">03</div>
+        <h2>Project Management — Superspace</h2><span class="score">~95% — delays and blockers control views now live</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>All active projects grid</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Create project</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Member assignment</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Project health — live computed</b></span>
+          <div class="inote">computeHealth() derives health from task completion %, overdue task penalty, and high-risk
+            penalty. Auto-syncs on mount.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Resource load · over-allocation</b></span>
+          <div class="inote">Collapsible member load panel: task count, overdue count, project spread per member. Color
+            coded green/yellow/red.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Decision queue · approve / reject</b></span>
+          <div class="inote">Open decisions surface in Superspace overview with direct Review link to project.
+            In-project Decisions tab: approve/reject inline.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Suggestive alert panel</b></span>
+          <div class="inote">Rule-based: overdue tasks, at-risk projects (health &lt;40%), open decisions,
+            over-allocated members (&gt;3 tasks). Collapsible, severity sorted.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Delays · blockers · budget</b></span>
+          <div class="inote">Formal milestone dependency/blocking chain now live in both database schemas, milestone selectors, and Kanban board cards. Overdue & blocked items bubble up to a unified Delays & Blockers Superspace control panel.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-pending">Pending</span>
+        <div><span class="itxt"><b>Metric-impact map</b> (visual)</span>
+          <div class="inote">A Goals &amp; Metrics page exists, but there is no visual &ldquo;map.&rdquo;</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section>
+      <div class="shead">
+        <div class="snum">04</div>
+        <h2>Project / Product Space</h2><span class="score">~95% — source cards panel now fully integrated</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Tasks (draggable kanban)</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Goal link (explicit picker)</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Milestones</b></span>
+          <div class="inote">Add, complete, due dates. Dependencies between milestones still pending.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Decisions</b> — log, approve / reject, rationale</span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Risks</b> — severity, mitigate toggle</span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Files / evidence</b></span>
+          <div class="inote">Links &amp; notes. Real file uploads need backend storage.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Project chat (team + AI)</b></span>
+          <div class="inote">Members post; the AI button gives a status-aware reply from local project data (no backend
+            yet).</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Project context</b></span>
+          <div class="inote">Description, goal link, and cards can now be added via &ldquo;Add to Project&rdquo; from
+            any saved node.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Source cards panel · task dependencies</b></span>
+          <div class="inote">The "Sources" project sub-tab displays all linked Saved Node workflow cards (auto-wired from conversion actions, or manually linked/unlinked via a dropdown search) along with task status associations.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Configured agents · live metric impact</b></span></div>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section>
+      <div class="shead">
+        <div class="snum">05</div>
+        <h2>Member Space (My Work)</h2><span class="score">~95% — task drawer, agent execution logs, and blockers notifications live</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Unified task inbox</b> (kanban across all projects)</span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Today plan</b> (by deadline / impact)</span>
+          <div class="inote">Open tasks sorted by due date soonest first, then in-progress &gt; review &gt; todo. Toggle
+            between Today Plan and All Tasks.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Goal context per task</b></span>
+          <div class="inote">Shows which goal the task serves (via project &rarr; goal link) inline under each task
+            chip.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Personal metrics</b></span>
+          <div class="inote">Done this week · Due this week · Overdue · On-time rate — all computed live from task data.
+          </div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Task chat · agent execution</b></span>
+          <div class="inote">The slide-over Task Detail Drawer houses a local Task Copilot Agent Chat and a high-fidelity automated simulated agent execution with live step-by-step terminal logging and synthesized document drafting.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Dependency alerts</b></span>
+          <div class="inote">Tasks blocked by other uncompleted tasks show a visual lock warning on both the Today Plan list and the Kanban boards, resolving dynamically when blockers are completed.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section>
+      <div class="shead">
+        <div class="snum">06</div>
+        <h2>Goal Superalignment</h2><span class="score">~55% — built, needs your verification</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Goal hierarchy (8 horizons)</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Create goal · project→goal picker</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Progress rollup from task completion</b></span>
+          <div class="inote">Implemented — needs end-to-end testing (see verification guide).</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Suggested actions surface (Canvas Overview)</b></span>
+          <div class="inote">Rule-based suggestions from goal gaps, blockers, overdue tasks, at-risk projects and pending decisions — shown in the Canvas Overview with Create/Dismiss/Navigate actions.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-pending">Pending</span>
+        <div><span class="itxt"><b>Variance analysis · alignment score</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Alignment score</b></span>
+          <div class="inote">Formula needs real impact/effort/confidence inputs.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section>
+      <div class="shead">
+        <div class="snum">07</div>
+        <h2>Metric Impact Engine</h2><span class="score">~15% — mostly backend/AI</span>
+      </div>
+      <div class="item"><span class="pill p-partial">Partial</span>
+        <div><span class="itxt"><b>Metric tiles (company/dept, value→target, trend)</b></span>
+          <div class="inote">Static seeded values — not live or computed.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Impact flow</b> task → project → dept → company → goal → strategic score</span>
+          <div class="inote">Roll-up chain not built; needs data model + compute.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Estimated impact</b> — how it's calculated</span>
+          <div class="inote">Honest answer: <b>not implemented</b>. This is an AI/heuristic + backend job; the frontend
+            only has placeholders. It was wrongly marked green before.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Estimated → committed → actual → variance → learning</b></span>
+          <div class="inote">Requires execution data + a model. Backend.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section>
+      <div class="shead">
+        <div class="snum">08</div>
+        <h2>Suggestive Task Engine</h2><span class="score">~75% — both rule layers + UI done, AI scoring pending</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Rule-based alert engine</b> (Superspace)</span>
+          <div class="inote">generateAlerts() — overdue tasks, at-risk health, open decisions, over-allocated members. Wired into Superspace and Left Panel AI Suggestions.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Suggestive Task Engine surface (Canvas Overview)</b></span>
+          <div class="inote">generateTaskSuggestions() — 5 rule types: goal_gap, blocker, overdue, at_risk, decision. Priority-ranked. Each suggestion has Create / Navigate / Dismiss. "Create" adds directly to the linked project's task board. "Go" navigates to Goals & Metrics for goal_gap type.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Metric impact snapshot in Canvas Overview</b></span>
+          <div class="inote">4 live metric tiles (MRR, Runway, Activation, Churn) with progress bars and trend arrows, shown above suggestions.</div>
+        </div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>AI priority scoring &amp; smart ranking</b></span></div>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section>
+      <div class="shead">
+        <div class="snum">09</div>
+        <h2>Agent Execution Layer</h2><span class="score">Pending</span>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Agents (research / coding / data / writing)</b> with context pack + review</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section>
+      <div class="shead">
+        <div class="snum">10</div>
+        <h2>Voice AI</h2><span class="score">Frontend done · backend pending</span>
+      </div>
+      <div class="item"><span class="pill p-done">Done</span>
+        <div><span class="itxt"><b>Card chat Text/Voice toggle + context injection (frontend)</b></span></div>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend/AI</span>
+        <div><span class="itxt"><b>Ephemeral-token endpoint + workspace tool-calling</b></span>
+          <div class="inote">“Import node / create task / run agent by voice” needs the server token mint + tool
+            declarations.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section>
+      <div class="shead">
+        <div class="snum">11</div>
+        <h2>Visibility &amp; Permissions (RBAC)</h2><span class="score">Deferred to backend</span>
+      </div>
+      <div class="item"><span class="pill p-backend">Backend</span>
+        <div><span class="itxt"><b>Role enforcement</b></span>
+          <div class="inote">By your decision — built later on the backend endpoint. Member roles are modeled in the UI
+            but not enforced.</div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      This file is the single source of truth for status. The companion <b>verification-guide.html</b> lists how to test
+      each ✅/🟡 item on the live platform.
+    </footer>
+  </div>
+</body>
+
+</html>

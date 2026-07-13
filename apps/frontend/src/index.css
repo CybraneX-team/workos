@@ -1,0 +1,2492 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-absolute: #161618;
+    --bg-relative: #1B1B1D;
+    --text-primary: #FFFFFF;
+    --text-secondary: #5E5E5E;
+    --cta-from: #F9C6FF;
+    --cta-to: #C1AEFF;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #161618;
+    color: #FFFFFF;
+    margin: 0;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a2c transparent;
+  }
+}
+
+/* Custom Components */
+/* Foreground cards — no stroke, relative bg */
+.glass-card {
+  background: rgba(27, 27, 29, 0.85);
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.metric-card {
+  background: rgba(27, 27, 29, 0.85);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1.25rem;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.metric-card:hover {
+  background: rgba(32, 32, 36, 0.9);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+.status-pulse {
+  animation: pulse-anim 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-anim {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* CTA gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #F9C6FF, #C1AEFF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* CTA gradient button */
+.cta-gradient {
+  background: linear-gradient(135deg, #F9C6FF, #C1AEFF);
+  color: #161618;
+  font-weight: 600;
+}
+
+.cta-gradient:hover {
+  opacity: 0.9;
+}
+
+/* App background */
+.cosmos-bg {
+  background: #161618;
+}
+
+/* Product workspace — enter/exit from polytope core */
+@keyframes workspace-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+    filter: blur(12px);
+  }
+
+  55% {
+    opacity: 1;
+    filter: blur(2px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes workspace-exit {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+    filter: blur(14px);
+  }
+}
+
+@keyframes core-dive-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+
+  35% {
+    opacity: 0.85;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+.workspace-panel-enter {
+  animation: workspace-enter 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.workspace-panel-exit {
+  animation: workspace-exit 0.52s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+.core-dive-flash {
+  animation: core-dive-flash 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes open-workspace-chevron-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  35% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+
+.open-workspace-cue {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 12px 0;
+}
+
+.open-workspace-cue__chevron {
+  animation: open-workspace-chevron-rise 1.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.open-workspace-cue__chevron--second {
+  animation-delay: 0.4s;
+}
+
+.open-workspace-cue:hover .open-workspace-cue__chevron {
+  animation-duration: 1.35s;
+}
+
+/* ── 3D Twin → workspace transition ── */
+.twin-universe-viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.universe-refresh-chip {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 3.65rem;
+  z-index: 18;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(193, 174, 255, 0.22);
+  background: rgba(0, 0, 0, 0.54);
+  color: rgba(226, 218, 255, 0.82);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.research-status-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.research-status-card__bar {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  opacity: 0.78;
+}
+
+.research-status-card__ring {
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: currentColor;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+/* BH polytope layer — pointer-events toggled inline when insideBH is active */
+.universe-bh-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Catches pointer events over the universe while workspace is open (grid gaps pass through shell). */
+.twin-universe-interaction-blocker {
+  position: absolute;
+  inset: 0;
+  z-index: 23;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.universe-galaxy-sidebar-host {
+  z-index: 22;
+  transition:
+    opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.universe-galaxy-sidebar-host--float {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 1rem;
+}
+
+.universe-galaxy-sidebar-host--exit {
+  opacity: 0;
+  transform: translateX(-28px) scale(0.94);
+  pointer-events: none;
+}
+
+.twin-workspace-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  padding: 3.5rem 0.75rem 0.5rem;
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr) 268px;
+  grid-template-rows: 34vh minmax(0, 1fr);
+  gap: 12px;
+  pointer-events: none;
+  background: transparent;
+  transition:
+    grid-template-columns 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    grid-template-rows 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    gap 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    padding-left 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    padding-right 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+.twin-workspace-panel {
+  pointer-events: auto;
+  min-height: 0;
+  opacity: 0;
+  transition: transform 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), opacity 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+.twin-workspace-shell--open .twin-workspace-panel {
+  animation: none !important;
+}
+
+/* Keep the canvas panel visible and in position even during fullscreen */
+.twin-workspace-shell--open .twin-workspace-panel--canvas {
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+/* Remove transform and animation layer in open phase for left/right panels so they can transition out in fullscreen */
+.twin-workspace-shell--open:not(:has(.ws-canvas-wrap--fullscreen)) .twin-workspace-panel--left,
+.twin-workspace-shell--open:not(:has(.ws-canvas-wrap--fullscreen)) .twin-workspace-panel--right {
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.twin-workspace-panel--left {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  transform: translateX(-110%);
+  justify-self: start;
+}
+
+.twin-workspace-panel--right {
+  grid-column: 3;
+  grid-row: 1 / -1;
+  transform: translateX(110%);
+  justify-self: end;
+}
+
+
+.twin-workspace-panel--canvas {
+  grid-column: 2;
+  grid-row: 2;
+  transform: translateY(110%);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.twin-workspace-panel--in {
+  animation: twin-panel-snap-in 0.68s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.twin-workspace-panel--left.twin-workspace-panel--in {
+  animation-name: twin-panel-from-left;
+}
+
+.twin-workspace-panel--right.twin-workspace-panel--in {
+  animation-name: twin-panel-from-right;
+  animation-delay: 0.06s;
+}
+
+.twin-workspace-panel--canvas.twin-workspace-panel--in {
+  animation-name: twin-panel-from-bottom;
+  animation-delay: 0.1s;
+}
+
+.twin-workspace-panel--out {
+  animation: twin-panel-snap-out 0.62s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.twin-workspace-panel--left.twin-workspace-panel--out {
+  animation-name: twin-panel-to-left;
+}
+
+.twin-workspace-panel--right.twin-workspace-panel--out {
+  animation-name: twin-panel-to-right;
+  animation-delay: 0.04s;
+}
+
+.twin-workspace-panel--canvas.twin-workspace-panel--out {
+  animation-name: twin-panel-to-bottom;
+  animation-delay: 0.08s;
+}
+
+/* Container for the fullscreen mode pill — sits in the TopBar zone, transparent */
+.twin-workspace-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3.5rem;
+  z-index: 10;
+  pointer-events: none; /* individual pill buttons override with pointer-events: auto */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.twin-workspace-close {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  align-self: end;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.85rem 0.15rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  animation: twin-workspace-close-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.42s forwards;
+  transition: transform 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), opacity 2.2s ease;
+}
+
+.twin-workspace-shell--closing .twin-workspace-close {
+  animation: twin-workspace-close-out 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+.twin-workspace-close:disabled {
+  cursor: default;
+}
+
+.twin-workspace-close__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.2s ease;
+}
+
+.twin-workspace-close:hover .twin-workspace-close__label {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.twin-workspace-close__chevrons {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 2rem;
+  height: 1.65rem;
+}
+
+.twin-workspace-close__chevron {
+  position: absolute;
+  top: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: rgba(255, 255, 255, 0.55);
+  animation: twin-workspace-close-chevron 1.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.twin-workspace-close__chevron--second {
+  animation-delay: 0.4s;
+}
+
+.twin-workspace-close:hover .twin-workspace-close__chevron {
+  color: #c1aeff;
+  animation-duration: 1.35s;
+}
+
+@keyframes twin-workspace-close-chevron {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  35% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes twin-workspace-close-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes twin-workspace-close-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes twin-panel-to-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(-110%);
+  }
+}
+
+@keyframes twin-panel-to-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(110%);
+  }
+}
+
+@keyframes twin-panel-to-bottom {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+}
+
+@keyframes twin-panel-snap-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes twin-panel-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-110%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes twin-panel-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(110%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes twin-panel-from-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.workspace-bg-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.workspace-insight-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.workspace-insight-card:hover:not(.workspace-insight-card--pinned) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  border-color: rgba(193, 174, 255, 0.25) !important;
+}
+
+.workspace-pin-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.workspace-pin-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes workspace-zone-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(193, 174, 255, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(193, 174, 255, 0.15);
+  }
+}
+
+.workspace-zone-drop-target {
+  animation: workspace-zone-pulse 1.2s ease-in-out infinite;
+  border-color: rgba(193, 174, 255, 0.45) !important;
+  background: rgba(193, 174, 255, 0.06) !important;
+}
+
+/* Industry OS workspace — glassmorphic shell */
+.ws-shell {
+  background-color: #0a1428;
+  background-image: url('/workspace_bg.png');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+.ws-glass {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+/* Shared panel glass — left nav, active canvas, etc. */
+.ws-panel-glass {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.ws-glass-strong {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-right-color: rgba(148, 163, 255, 0.2);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset -1px 0 0 rgba(129, 140, 248, 0.12);
+}
+
+
+.ws-glass-panel {
+  background: linear-gradient(165deg,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.ws-zone-active {
+  background: rgba(193, 174, 255, 0.08) !important;
+  border-color: rgba(193, 174, 255, 0.28) !important;
+  box-shadow:
+    0 0 0 1px rgba(193, 174, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.ws-input {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.ws-input:focus {
+  border-color: rgba(193, 174, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(193, 174, 255, 0.1);
+  outline: none;
+}
+
+.ws-btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ws-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.ws-btn-primary {
+  background: linear-gradient(135deg, rgba(249, 198, 255, 0.22), rgba(193, 174, 255, 0.14));
+  border: 1px solid rgba(193, 174, 255, 0.35);
+  color: #f0e8ff;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ws-btn-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 20px rgba(193, 174, 255, 0.15);
+}
+
+.ws-drop-surface {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.ws-drop-surface-active {
+  border-color: rgba(193, 174, 255, 0.4) !important;
+  background: rgba(193, 174, 255, 0.04) !important;
+}
+
+.workspace-insight-card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.workspace-pin-card {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.workspace-pin-card:hover {
+  border-color: rgba(193, 174, 255, 0.2) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ── BDT Product Workspace (screenshot layout) ── */
+.ws-layout {
+  max-width: 1920px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ws-planet-zone {
+  height: min(38vh, 340px);
+  min-height: 260px;
+  transition: height 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), min-height 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), opacity 2.2s ease, transform 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), margin 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+.ws-planet-svg {
+  filter: drop-shadow(0 0 48px rgba(129, 140, 248, 0.15));
+}
+
+.ws-canvas-wrap {
+  perspective: 1400px;
+  perspective-origin: 50% 20%;
+  container-type: inline-size;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.ws-canvas-trapezium {
+  width: 100%;
+  transform: rotateX(0deg);
+  /* Reset 3D tilt to ensure text sharpness and prevent rasterization blur */
+  transform-origin: 50% 0%;
+}
+
+.ws-canvas-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: visible;
+  /* Do NOT put `filter` here: any non-none `filter` on an ancestor creates a
+     CSS "backdrop root", which caps what a descendant's `backdrop-filter`
+     (the LiquidGlass layer in WorkspaceCanvasFrame.tsx) can sample — it would
+     only see this subtree's own near-empty content instead of the real page
+     behind it. The equivalent drop-shadow now lives on the sibling SVG below. */
+}
+
+.ws-canvas-frame-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  filter:
+    drop-shadow(0 8px 32px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.25));
+}
+
+.ws-canvas-frame-fill {
+  fill: none;
+}
+
+.ws-canvas-frame-stroke {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: geometricPrecision;
+}
+
+.ws-canvas-frame-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Visual fill now comes from the LiquidGlass layer rendered inside — see WorkspaceCanvasFrame.tsx. */
+}
+
+.ws-canvas-tab-slot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ws-canvas-tab-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-left: -160px;
+}
+
+.ws-canvas-toolbar {
+  margin-top: 0px !important;
+}
+
+.ws-canvas-frame-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  padding-top: 64px !important;
+}
+
+/* Inset header content so it sits between the two raised top shoulders */
+/* Collapsed version */
+.ws-canvas-inset {
+  margin-left: 6%;
+  margin-right: 6%;
+  transition: margin-left 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), margin-right 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+
+/* Expanded version (fullscreen) */
+.ws-canvas-wrap--fullscreen .ws-canvas-inset {
+  margin-left: 3%;
+  margin-right: 3%;
+}
+
+/* Stage stays inside the shape near the top (which is narrowest); the
+     splayed lower body provides decorative margin around the cards. */
+.ws-canvas-stage-pad {
+  padding-left: 13%;
+  padding-right: 13%;
+}
+
+.ws-canvas-toolbar-divider {
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.1) 20%,
+      rgba(255, 255, 255, 0.1) 80%,
+      transparent 100%);
+}
+
+.ws-canvas-stage {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(56, 189, 248, 0.05) 0%, transparent 55%);
+  background-size: 28px 28px, 28px 28px, 100% 100%;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+}
+
+.ws-glass-block {
+  --extrude: 5px;
+  --radius: 14px;
+  position: absolute;
+  z-index: 1;
+}
+
+.ws-glass-block--hero {
+  z-index: 3;
+}
+
+/* darker base slab — visible bottom/right edge for 3D depth */
+.ws-glass-block__extrude {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  transform: translate(var(--extrude), var(--extrude));
+  background: linear-gradient(160deg,
+      color-mix(in srgb, var(--card-accent) 22%, transparent) 0%,
+      transparent 75%);
+  border: 1px solid color-mix(in srgb, var(--card-accent) 22%, rgba(255, 255, 255, 0.06));
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 0 20px color-mix(in srgb, var(--card-accent) 15%, transparent);
+  z-index: 0;
+}
+
+/* top glass face */
+.ws-glass-block__face {
+  position: absolute;
+  inset: 0;
+  padding: 11px 12px;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(152deg,
+      color-mix(in srgb, var(--card-accent) 26%, transparent) 0%,
+      color-mix(in srgb, var(--card-accent) 8%, transparent) 42%,
+      transparent 100%),
+    rgba(8, 12, 24, 0.32);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid color-mix(in srgb, var(--card-accent) 38%, rgba(255, 255, 255, 0.1));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 1px 0 0 color-mix(in srgb, var(--card-accent) 45%, rgba(255, 255, 255, 0.06)),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 0 0 1px color-mix(in srgb, var(--card-accent) 20%, transparent),
+    0 0 12px color-mix(in srgb, var(--card-accent) 10%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.22);
+  z-index: 1;
+  overflow: hidden;
+}
+
+/* bright accent rim along top edge */
+.ws-glass-block__face::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 6%;
+  right: 6%;
+  height: 1px;
+  border-radius: 1px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      var(--card-accent) 35%,
+      color-mix(in srgb, var(--card-accent) 70%, white) 50%,
+      var(--card-accent) 65%,
+      transparent 100%);
+  opacity: 0.85;
+  filter: blur(0.4px);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* top-left sheen + left accent glow */
+.ws-glass-block__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(125deg, rgba(255, 255, 255, 0.09) 0%, transparent 38%),
+    linear-gradient(90deg, color-mix(in srgb, var(--card-accent) 12%, transparent) 0%, transparent 18%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ws-glass-block--hero .ws-glass-block__face {
+  background:
+    linear-gradient(152deg,
+      color-mix(in srgb, var(--card-accent) 38%, transparent) 0%,
+      color-mix(in srgb, var(--card-accent) 12%, transparent) 38%,
+      transparent 100%),
+    rgba(8, 12, 24, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 1px 0 0 color-mix(in srgb, var(--card-accent) 55%, rgba(255, 255, 255, 0.08)),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 0 0 1px color-mix(in srgb, var(--card-accent) 28%, transparent),
+    0 0 16px color-mix(in srgb, var(--card-accent) 12%, transparent),
+    0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+.ws-glass-block--hero .ws-glass-block__extrude {
+  background: linear-gradient(160deg,
+      color-mix(in srgb, var(--card-accent) 28%, transparent) 0%,
+      transparent 75%);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.6),
+    0 0 28px color-mix(in srgb, var(--card-accent) 22%, transparent);
+}
+
+/* keep content above pseudo-layers */
+.ws-glass-block__face>* {
+  position: relative;
+  z-index: 3;
+}
+
+.ws-card-eyebrow {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.ws-card-close {
+  color: rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.ws-card-close:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ws-hero-tag {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(224, 235, 255, 0.85);
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(147, 197, 253, 0.25);
+}
+
+.ws-conn-node {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #bfdbfe;
+  box-shadow:
+    0 0 0 2px rgba(8, 12, 26, 0.9),
+    0 0 8px rgba(147, 197, 253, 0.9);
+  z-index: 3;
+}
+
+.ws-left-nav {
+  width: 228px;
+  padding: 20px 14px 16px;
+  border-radius: 20px;
+  /* Visual fill (background/border/backdrop-filter) now comes from the
+     LiquidGlass layer rendered inside — see WorkspaceLeftPanel.tsx. */
+}
+
+.ws-right-panel {
+  width: 268px;
+}
+
+
+.ws-nav-section {
+  padding-bottom: 4px;
+}
+
+.ws-nav-section-title {
+  padding: 0 10px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.ws-nav-divider {
+  margin: 12px 8px 14px;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ws-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ws-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.ws-nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ws-nav-item--active {
+  color: #ffffff;
+  background: linear-gradient(102deg,
+      rgba(120, 108, 255, 0.38) 0%,
+      rgba(88, 80, 200, 0.22) 42%,
+      rgba(25, 32, 72, 0.42) 100%);
+  border-color: rgba(186, 168, 255, 0.52);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.28),
+    0 0 22px rgba(124, 58, 237, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 1px 0 0 rgba(196, 181, 253, 0.14);
+}
+
+.ws-nav-item--active:hover {
+  color: #ffffff;
+  background: linear-gradient(102deg,
+      rgba(130, 118, 255, 0.44) 0%,
+      rgba(92, 84, 210, 0.26) 42%,
+      rgba(28, 36, 80, 0.46) 100%);
+  border-color: rgba(196, 181, 253, 0.62);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    0 0 26px rgba(124, 58, 237, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 1px 0 0 rgba(196, 181, 253, 0.18);
+}
+
+.ws-nav-item--active svg {
+  filter: drop-shadow(0 0 5px rgba(167, 139, 250, 0.65));
+}
+
+.ws-nav-item--active .ws-nav-chevron {
+  color: rgba(186, 210, 255, 0.55);
+}
+
+.ws-nav-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #7c3aed;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
+}
+
+.ws-nav-new-shortcut {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ws-nav-new-shortcut:hover {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.ws-back-fab {
+  position: absolute;
+  top: calc(3.5rem + 14px);
+  left: 248px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(12, 14, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.ws-back-fab:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ws-back-fab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ws-signal-card {
+  background: transparent;
+  transition: border-color 0.2s ease;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.05);
+}
+
+.ws-signal-card:hover {
+  border-color: rgba(193, 174, 255, 0.2);
+}
+
+.ws-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease;
+}
+
+.ws-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.ws-btn-share {
+  background: rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  color: #f0e8ff;
+}
+
+.ws-btn-share:hover {
+  background: rgba(139, 92, 246, 0.35);
+}
+
+.ws-mini-btn {
+  width: 20px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ws-toolbar-ai {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.45), rgba(193, 174, 255, 0.25));
+  border: 1px solid rgba(193, 174, 255, 0.4);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2);
+}
+
+.ws-toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Focus Today panel — visual fill now comes from the LiquidGlass wrapper in WorkspaceFocusToday.tsx */
+.ws-focus-panel {
+  padding: 16px 16px 14px;
+  border-radius: 16px;
+}
+
+.ws-focus-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ws-focus-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.ws-focus-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -2px;
+  padding: 2px;
+  color: rgba(255, 255, 255, 0.38);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.ws-focus-close:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ws-focus-status {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(186, 210, 255, 0.55);
+}
+
+.ws-focus-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ws-focus-progress-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.ws-focus-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4f5cff 0%, #7c5cff 45%, #a855f7 100%);
+  box-shadow:
+    0 0 14px rgba(168, 85, 247, 0.55),
+    0 0 6px rgba(99, 102, 241, 0.4);
+  transition: width 0.4s cubic-bezier(0.22, 0.85, 0.28, 1);
+}
+
+.ws-focus-pct {
+  flex-shrink: 0;
+  min-width: 2.25rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: right;
+}
+
+.ws-focus-list {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ws-focus-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ws-focus-check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ws-focus-check--done {
+  background: linear-gradient(135deg, #5b6cff 0%, #8b5cf6 55%, #a855f7 100%);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.45);
+}
+
+.ws-focus-check--open {
+  border: 1.5px solid rgba(255, 255, 255, 0.38);
+  background: transparent;
+}
+
+.ws-focus-task-label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.ws-focus-task-label--done {
+  color: rgba(230, 236, 255, 0.72);
+}
+
+.ws-focus-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.38);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.ws-focus-more:hover {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Canvas minimap (right panel, below Focus Today) */
+.ws-minimap-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-left: 0px;
+  flex-shrink: 0;
+}
+
+.ws-minimap-panel {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 14px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.ws-minimap-view {
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ws-minimap-viewport {
+  position: absolute;
+  left: 22%;
+  top: 18%;
+  width: 56%;
+  height: 52%;
+  border: 1.5px solid rgba(193, 174, 255, 0.75);
+  border-radius: 2px;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+  pointer-events: none;
+}
+
+.ws-minimap-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.ws-minimap-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.ws-minimap-control-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+@keyframes energyOrbRingSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.energy-orb-ring-spin {
+  transform-origin: center;
+  animation: energyOrbRingSpin 14s linear infinite;
+}
+
+/* Fullscreen Active Canvas frame and layout rules */
+.ws-canvas-frame-fill,
+.ws-canvas-frame-stroke,
+.ws-canvas-clip-path {
+  transition: d 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+
+
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) {
+  grid-template-columns: 0px minmax(0, 1fr) 0px;
+  grid-template-rows: 0vh minmax(0, 1fr);
+  gap: 0px;
+  padding-left: 0px;
+  padding-right: 0px;
+}
+
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-panel--left {
+  transform: translateX(-115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-panel--right {
+  transform: translateX(115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Product Workspace full-width transitions when active canvas is fullscreen */
+.ws-layout {
+  transition: gap 2.2s cubic-bezier(0.645, 0.045, 0.355, 1), padding 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+.ws-left-nav,
+.ws-right-panel {
+  transition:
+    transform 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    opacity 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    width 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    margin 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    padding 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    border-width 2.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+.ws-layout:has(.ws-canvas-wrap--fullscreen) {
+  gap: 0px !important;
+  padding-left: 0px !important;
+  padding-right: 0px !important;
+}
+
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .ws-left-nav {
+  transform: translateX(-115%) !important;
+  opacity: 0 !important;
+  width: 0px !important;
+  margin-right: 0px !important;
+  padding-left: 0px !important;
+  padding-right: 0px !important;
+  border-width: 0px !important;
+  pointer-events: none !important;
+}
+
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .ws-right-panel {
+  transform: translateX(115%) !important;
+  opacity: 0 !important;
+  width: 0px !important;
+  margin-left: 0px !important;
+  padding-left: 0px !important;
+  padding-right: 0px !important;
+  border-width: 0px !important;
+  pointer-events: none !important;
+}
+
+.ws-center:has(.ws-canvas-wrap--fullscreen) .ws-planet-zone {
+  height: 0px !important;
+  min-height: 0px !important;
+  margin: 0px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-100%) scale(0.9) !important;
+}
+
+/* When active canvas is fullscreen, disable pointer events on the 3D viewport.
+   Descendant rule is required because UniverseController sets inline pointer-events on canvas. */
+div:has(.ws-canvas-wrap--fullscreen) .twin-universe-viewport,
+div:has(.ws-canvas-wrap--fullscreen) .twin-universe-viewport canvas {
+  pointer-events: none !important;
+}
+
+/* Root-nodes 3D canvas (CompanyPlanet3DView): shift up + fade when workspace goes fullscreen,
+   matching the ws-planet-zone behaviour on industry/subdomain pages. */
+/* Outer shell is a pass-through; only the inner surface receives hits when active. */
+.universe-planet-root-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  transition:
+    transform 2.2s cubic-bezier(0.645, 0.045, 0.355, 1),
+    opacity 2.2s ease;
+}
+
+div:has(.ws-canvas-wrap--fullscreen) .universe-planet-root-zone {
+  transform: translateY(-100%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Container Queries for responsive active workspace canvas content */
+@container (max-width: 1200px) {
+  .ws-canvas-tab-slot {
+    left: 8% !important;
+  }
+
+  .ws-canvas-tab-label {
+    margin-left: -60px !important;
+  }
+
+  .ws-canvas-toolbar {
+    margin-top: 0px !important;
+  }
+}
+
+@container (max-width: 880px) {
+
+  /* Position the Active Canvas tab slot and label properly at the top-left corner */
+  .ws-canvas-tab-slot {
+    left: 16px !important;
+    width: auto !important;
+  }
+
+  .ws-canvas-tab-label {
+    margin-left: 0px !important;
+    margin-top: 8px !important;
+  }
+
+  /* Reset the body paddingTop to a clean fixed offset and place the toolbar inline */
+  .ws-canvas-frame-body {
+    padding-top: 54px !important;
+  }
+
+  .ws-canvas-toolbar {
+    margin-top: 0px !important;
+    margin-left: 16px !important;
+    margin-right: 16px !important;
+  }
+
+  /* Make the canvas stage pad scrollable vertically and reduce side spacing */
+  .ws-canvas-stage-pad {
+    overflow-y: auto !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+    padding-bottom: 24px !important;
+  }
+
+  /* Hide connection lines and connector nodes */
+  .ws-canvas-stage-area>svg,
+  .ws-conn-node {
+    display: none !important;
+  }
+
+  /* Convert the absolute stage area to an auto-wrapping CSS Grid */
+  .ws-canvas-stage-area {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+    gap: 20px !important;
+    padding: 12px 0px !important;
+  }
+
+  /* Make glass blocks relative and auto-sized so they stack in the grid */
+  .ws-glass-block {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 160px !important;
+    margin: 0 !important;
+  }
+
+  .ws-glass-block__extrude {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    transform: translate(var(--extrude), var(--extrude)) !important;
+  }
+
+  .ws-glass-block__face {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+}
+
+@container (max-width: 500px) {
+
+  /* Handle micro-responsiveness of toolbar */
+  .ws-canvas-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+}
+
+/* ── Glassmorphic Range Sliders ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  height: 5px;
+  outline: none;
+  transition: background 0.2s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a855f7;
+  cursor: pointer;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.6);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background: #c084fc;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a855f7;
+  cursor: pointer;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.6);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  background: #c084fc;
+}
+
+/* ── Card Expansion Morph Animations ── */
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-slide-up-fade {
+  animation: slideUpFade 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Stagger delay classes */
+.delay-50 {
+  animation-delay: 50ms;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-150 {
+  animation-delay: 150ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-250 {
+  animation-delay: 250ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+/* ── Saved Nodes canvas ─────────────────────────────────────────── */
+@keyframes wsSnIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.ws-sn-card {
+  position: relative;
+  overflow: hidden;
+  animation: wsSnIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.35s ease,
+              box-shadow 0.35s ease;
+  will-change: transform;
+}
+
+.ws-sn-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--sn-accent, #C1AEFF) 55%, transparent) !important;
+  box-shadow:
+    0 14px 38px rgba(0, 0, 0, 0.4),
+    0 0 24px color-mix(in srgb, var(--sn-accent, #C1AEFF) 22%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* light sheen sweep on hover */
+.ws-sn-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 32%, rgba(255, 255, 255, 0.08) 50%, transparent 68%);
+  transform: translateX(-130%);
+  transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.ws-sn-card:hover::after {
+  transform: translateX(130%);
+}
+
+@keyframes wsSnFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+@keyframes wsSnPulse {
+  0%   { transform: scale(0.85); opacity: 0.55; }
+  70%  { opacity: 0; }
+  100% { transform: scale(1.9);  opacity: 0; }
+}
+
+.ws-sn-orb { animation: wsSnFloat 4s ease-in-out infinite; }
+.ws-sn-ring { animation: wsSnPulse 2.8s ease-out infinite; }
+
+@keyframes wsSnDetailIn {
+  from { opacity: 0; transform: scale(0.975) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.ws-sn-detail { animation: wsSnDetailIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-sn-card, .ws-sn-orb, .ws-sn-ring, .ws-sn-detail { animation: none; }
+  .ws-sn-card::after { display: none; }
+}
+
+/* Full node-workspace overlay — smooth expand in / collapse out */
+@keyframes wsNodeWsIn {
+  from { opacity: 0; transform: scale(0.965); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes wsNodeWsOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.985); }
+}
+.ws-node-ws-overlay {
+  transform-origin: center;
+  animation: wsNodeWsIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.ws-node-ws-overlay--closing {
+  animation: wsNodeWsOut 0.3s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws-node-ws-overlay, .ws-node-ws-overlay--closing { animation: none; }
+}
+
+/* Stage area override when card is active */
+.ws-canvas-stage-area--active {
+  position: absolute !important;
+  inset: 0px !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  z-index: 10 !important;
+}
+
+/* Active expanded glass block card override */
+.ws-glass-block--active {
+  position: absolute !important;
+  left: 0% !important;
+  top: 0% !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 50 !important;
+  transform: none !important;
+}
+
+/* Ensure absolute children of glass block face are positioned absolute, bypassing face > * relative override */
+.ws-glass-block__face>.absolute {
+  position: absolute !important;
+}
+
+/* Custom sleek scrollbar for the Copilot chat messages container */
+.ws-chat-messages-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ws-chat-messages-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ws-chat-messages-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.ws-chat-messages-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+@keyframes slideLeftFade {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-left-fade {
+  animation: slideLeftFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Fullscreen hover zone to trigger left panel slide-in */
+.twin-workspace-fullscreen-hover-zone {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 18px; /* Slightly wider hover trigger area for easier access */
+  z-index: 99;  /* Ensure it sits above the canvas but below the panel when hovered */
+  background: transparent;
+  pointer-events: none;
+}
+
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone,
+.ws-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone {
+  pointer-events: auto;
+}
+
+/* Subtle hover indicator line on the left edge of the screen in fullscreen mode */
+.twin-workspace-fullscreen-hover-zone::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.15), transparent);
+  border-radius: 1px;
+  opacity: 0.5;
+  transition: opacity 0.3s, background-color 0.3s, width 0.3s;
+}
+
+.twin-workspace-fullscreen-hover-zone:hover::after {
+  background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.45), transparent);
+  opacity: 1;
+  width: 3px;
+}
+
+/* Persistent grab-handle pill — visible before hover so the panel is discoverable, not just a faint line */
+.twin-workspace-fullscreen-hover-zone::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  background: rgba(147, 197, 253, 0.35);
+  box-shadow: 0 0 8px rgba(147, 197, 253, 0.25);
+  transition: background-color 0.2s, box-shadow 0.2s, height 0.2s;
+}
+
+.twin-workspace-fullscreen-hover-zone:hover::before {
+  background: rgba(147, 197, 253, 0.75);
+  box-shadow: 0 0 12px rgba(147, 197, 253, 0.45);
+  height: 40px;
+}
+
+/* ──────────────────────────────────────────────────
+   1. TwinWorkspaceLayout Fullscreen Hover Sidepanel
+   ────────────────────────────────────────────────── */
+/* Fast transition and initial hidden state in fullscreen */
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-panel--left {
+  position: fixed;
+  left: 0;
+  top: 56px; /* below TopBar header */
+  bottom: 8px;
+  height: calc(100vh - 64px);
+  width: 228px !important;
+  z-index: 100;
+  transform: translateX(-115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out !important;
+}
+
+/* Slide left panel in on hover */
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone:hover + .twin-workspace-panel--left,
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-panel--left:hover {
+  transform: translateX(12px) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 100;
+  box-shadow: 20px 0 50px rgba(0, 0, 0, 0.95);
+}
+
+/* ──────────────────────────────────────────────────
+   2. ProductWorkspace Fullscreen Hover Sidepanel
+   ────────────────────────────────────────────────── */
+/* Re-style ws-left-nav to slide out over full-screen canvas instead of collapsing to 0px */
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .ws-left-nav {
+  position: fixed;
+  left: 0;
+  top: 60px; /* Leave space for TopBar header */
+  bottom: 12px;
+  height: calc(100vh - 72px);
+  width: 228px !important;
+  z-index: 100;
+  transform: translateX(-115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  background: rgba(10, 10, 12, 0.85) !important;
+  backdrop-filter: blur(30px) saturate(1.5);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5);
+  box-shadow: none;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out !important;
+}
+
+/* Slide ws-left-nav in on hover */
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone:hover + .ws-left-nav,
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .ws-left-nav:hover {
+  transform: translateX(12px) !important; /* Slide slightly in with an elegant gap from left edge */
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  box-shadow: 20px 0 50px rgba(0, 0, 0, 0.95);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Fullscreen hover zone to trigger right panel slide-in */
+.twin-workspace-fullscreen-hover-zone-right {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 18px; /* Slightly wider hover trigger area for easier access */
+  z-index: 99;  /* Ensure it sits above the canvas but below the panel when hovered */
+  background: transparent;
+  pointer-events: none;
+}
+
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone-right,
+.ws-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone-right {
+  pointer-events: auto;
+}
+
+/* Subtle hover indicator line on the right edge of the screen in fullscreen mode */
+.twin-workspace-fullscreen-hover-zone-right::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.15), transparent);
+  border-radius: 1px;
+  opacity: 0.5;
+  transition: opacity 0.3s, background-color 0.3s, width 0.3s;
+}
+
+.twin-workspace-fullscreen-hover-zone-right:hover::after {
+  background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.45), transparent);
+  opacity: 1;
+  width: 3px;
+}
+
+/* Persistent grab-handle pill — visible before hover so the panel is discoverable, not just a faint line */
+.twin-workspace-fullscreen-hover-zone-right::before {
+  content: '';
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  background: rgba(147, 197, 253, 0.35);
+  box-shadow: 0 0 8px rgba(147, 197, 253, 0.25);
+  transition: background-color 0.2s, box-shadow 0.2s, height 0.2s;
+}
+
+.twin-workspace-fullscreen-hover-zone-right:hover::before {
+  background: rgba(147, 197, 253, 0.75);
+  box-shadow: 0 0 12px rgba(147, 197, 253, 0.45);
+  height: 40px;
+}
+
+/* ──────────────────────────────────────────────────
+   1. TwinWorkspaceLayout Fullscreen Hover Right Sidepanel
+   ────────────────────────────────────────────────── */
+/* Fast transition and initial hidden state in fullscreen */
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-panel--right {
+  position: fixed;
+  right: 0;
+  top: 56px; /* below TopBar header */
+  bottom: 8px;
+  height: calc(100vh - 64px);
+  width: 268px !important; /* Right panel base width */
+  z-index: 100;
+  transform: translateX(115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out !important;
+}
+
+/* Slide right panel in on hover */
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone-right:hover + .twin-workspace-panel--right,
+.twin-workspace-shell:has(.ws-canvas-wrap--fullscreen) .twin-workspace-panel--right:hover {
+  transform: translateX(-12px) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 100;
+  box-shadow: -20px 0 50px rgba(0, 0, 0, 0.95);
+}
+
+/* ──────────────────────────────────────────────────
+   2. ProductWorkspace Fullscreen Hover Right Sidepanel
+   ────────────────────────────────────────────────── */
+/* Re-style ws-right-panel to slide out over full-screen canvas instead of collapsing to 0px */
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .ws-right-panel {
+  position: fixed;
+  right: 0;
+  top: 60px; /* Leave space for TopBar header */
+  bottom: 12px;
+  height: calc(100vh - 72px);
+  width: 268px !important;
+  z-index: 100;
+  transform: translateX(115%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  background: rgba(10, 10, 12, 0.85) !important;
+  backdrop-filter: blur(30px) saturate(1.5);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5);
+  box-shadow: none;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out !important;
+}
+
+/* Slide ws-right-panel in on hover */
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .twin-workspace-fullscreen-hover-zone-right:hover + .ws-right-panel,
+.ws-layout:has(.ws-canvas-wrap--fullscreen) .ws-right-panel:hover {
+  transform: translateX(-12px) !important; /* Slide slightly in with an elegant gap from right edge */
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  box-shadow: -20px 0 50px rgba(0, 0, 0, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Scroll transition-override helper rules */
+.twin-workspace-shell--scrolling,
+.twin-workspace-shell--scrolling .twin-workspace-panel {
+  transition: none !important;
+}
+
+.ws-canvas-wrap--scrolling .ws-canvas-frame-fill,
+.ws-canvas-wrap--scrolling .ws-canvas-frame-stroke,
+.ws-canvas-wrap--scrolling .ws-canvas-clip-path {
+  transition: none !important;
+}
+
+/* ==========================================
+   Notes Component Styling
+   ========================================== */
+
+/* Apple-style floating copy tooltip */
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -90%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+.animate-tooltip-in {
+  animation: tooltip-fade-in 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Toast animations */
+@keyframes slide-up-toast {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: slide-up-toast 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom styles for tables within blocks */
+.ws-notes-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ws-notes-table th, 
+.ws-notes-table td {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ws-notes-table input {
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.ws-notes-table input:focus {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Scrollbar adjustment for notes list */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hover controls styling */
+.group:hover .group-hover\:opacity-100 {
+  opacity: 1;
+}
+
+/* Typography styles in raw preview */
+.underline {
+  text-decoration: underline;
+}
+
+strong {
+  font-weight: 700;
+  color: #fff;
+}
+
+em {
+  font-style: italic;
+}
+/* ═══════════════════════════════════════════════════════════════
+   FILES LIBRARY DASHBOARD  ws-files-*
+   ════════════════════════════════════════════════════════════════ */
+.ws-files-dashboard {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0; overflow: hidden;
+}
+.ws-files-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 16px 10px; flex-shrink: 0;
+}
+.ws-files-stats-bar {
+  display: flex; align-items: center; gap: 0;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  margin-bottom: 4px; flex-shrink: 0;
+}
+.ws-files-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  flex: 1; border-right: 1px solid rgba(255,255,255,0.05); padding: 4px 8px;
+}
+.ws-files-stat:last-child { border-right: none; }
+.ws-files-stat-val { font-size: 15px; font-weight: 700; color: rgba(255,255,255,0.85); line-height: 1; }
+.ws-files-stat-label { font-size: 9.5px; font-weight: 500; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.06em; }
+.ws-files-search-box {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px; padding: 5px 10px; transition: border-color 0.2s;
+}
+.ws-files-search-box:focus-within { border-color: rgba(168,85,247,0.4); }
+.ws-files-search-input {
+  background: transparent; border: none; outline: none;
+  color: rgba(255,255,255,0.7); font-size: 12px; width: 130px;
+}
+.ws-files-search-input::placeholder { color: rgba(255,255,255,0.2); }
+.ws-files-upload-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px;
+  background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.25);
+  border-radius: 10px; color: rgba(196,148,255,0.9);
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.ws-files-upload-btn:hover {
+  background: rgba(168,85,247,0.22); border-color: rgba(168,85,247,0.45); color: #d8b4fe;
+}
+.ws-files-folder-grid { display: flex; flex-direction: column; gap: 6px; }
+.ws-files-folder-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px; cursor: pointer; transition: all 0.2s; text-align: left; width: 100%;
+}
+.ws-files-folder-card:hover {
+  background: rgba(255,255,255,0.06); border-color: rgba(251,191,36,0.25);
+  transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+.ws-files-folder-icon-wrap {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.15);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.ws-files-type-badge {
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
+  padding: 2px 6px; border-radius: 5px;
+  background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.4);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.ws-files-file-list { display: flex; flex-direction: column; gap: 4px; }
+.ws-files-file-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 12px; transition: all 0.2s;
+}
+.ws-files-file-row:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+.ws-files-file-icon-wrap {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.ws-files-action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.15s;
+}
+.ws-files-action-btn:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
+.ws-files-action-btn--danger:hover {
+  background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.25); color: #f87171;
+}
+/* FILE PREVIEWER MODAL */
+.ws-files-previewer-backdrop {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(12px);
+  animation: ws-fade-in 0.2s ease;
+}
+@keyframes ws-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.ws-files-previewer-modal {
+  display: flex; flex-direction: column;
+  width: min(900px, 92vw); height: min(620px, 88vh);
+  background: rgba(12,12,20,0.97); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04);
+  animation: ws-modal-in 0.25s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes ws-modal-in {
+  from { opacity: 0; transform: scale(0.94) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.ws-files-previewer-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02); flex-shrink: 0;
+}
+/* PDF Viewer */
+.ws-files-pdf-sidebar {
+  width: 140px; flex-shrink: 0;
+  background: rgba(0,0,0,0.3); border-right: 1px solid rgba(255,255,255,0.06);
+  padding: 14px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+}
+.ws-files-pdf-thumb {
+  display: flex; flex-direction: column; gap: 3px; padding: 8px 10px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; cursor: pointer; text-align: left; transition: all 0.15s;
+  color: rgba(255,255,255,0.55);
+}
+.ws-files-pdf-thumb:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.8); }
+.ws-files-pdf-thumb.active { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.25); color: #fca5a5; }
+.ws-files-pdf-doc { padding-bottom: 24px; }
+.ws-files-pdf-stamp {
+  width: 48px; height: 48px; border-radius: 12px;
+  background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.2);
+  color: #f87171; font-size: 10px; font-weight: 900; letter-spacing: 0.05em;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.ws-files-pdf-section-header {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ws-files-pdf-section-badge {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+  padding: 3px 8px; border-radius: 6px;
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2);
+  color: #fca5a5; flex-shrink: 0;
+}
+.ws-files-pdf-field {
+  display: flex; flex-direction: column; gap: 5px; padding: 12px 14px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px;
+}
+.ws-files-pdf-field label {
+  font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.3);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.ws-files-pdf-field p { font-size: 13.5px; color: rgba(255,255,255,0.65); line-height: 1.55; }
+.ws-files-pdf-evidence-box {
+  padding: 14px; background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;
+}
+/* Excel Viewer */
+.ws-files-excel-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: rgba(16,185,129,0.05);
+  border: 1px solid rgba(16,185,129,0.12); border-radius: 12px;
+}
+.ws-files-excel-grid { border-collapse: collapse; font-size: 12.5px; }
+.ws-files-excel-header {
+  background: rgba(16,185,129,0.07); border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid rgba(255,255,255,0.05); padding: 9px 14px; text-align: left;
+  font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.5);
+  text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;
+}
+.ws-files-excel-row-num {
+  background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-right: 1px solid rgba(255,255,255,0.06); padding: 8px 10px;
+  text-align: center; font-size: 10px; color: rgba(255,255,255,0.2); font-weight: 600;
+  width: 32px; min-width: 32px;
+}
+.ws-files-excel-row:hover { background: rgba(255,255,255,0.025); }
+.ws-files-excel-row:nth-child(even) { background: rgba(255,255,255,0.012); }
+.ws-files-excel-cell {
+  border-bottom: 1px solid rgba(255,255,255,0.04); border-right: 1px solid rgba(255,255,255,0.04);
+  padding: 8px 14px; color: rgba(255,255,255,0.65); white-space: nowrap;
+}
+/* Text Reader */
+.ws-files-text-reader {
+  background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px; padding: 24px; min-height: 100%;
+}

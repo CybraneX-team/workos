@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BDT + IDT Workspace & Project Execution System — Visual Spec</title>
+<style>
+  :root{
+    --bg:#07070b; --bg2:#0c0c14; --panel:rgba(255,255,255,0.035);
+    --panel2:rgba(255,255,255,0.06); --line:rgba(255,255,255,0.10);
+    --txt:#ECEAF6; --mut:rgba(236,234,246,0.55); --mut2:rgba(236,234,246,0.35);
+    --violet:#C1AEFF; --violet2:#9b7dff; --cyan:#5fd0e6; --amber:#fbbf24;
+    --green:#34d399; --rose:#fb7185; --blue:#60a5fa;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+    background:
+      radial-gradient(1200px 700px at 80% -10%, rgba(155,125,255,0.14), transparent 60%),
+      radial-gradient(900px 600px at 0% 100%, rgba(95,208,230,0.08), transparent 55%),
+      var(--bg);
+    color:var(--txt); line-height:1.55; -webkit-font-smoothing:antialiased;
+    padding-bottom:120px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  a{color:var(--violet);text-decoration:none}
+
+  /* ---------- header ---------- */
+  header.hero{padding:64px 0 36px;text-align:center;position:relative}
+  .eyebrow{font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--violet);font-weight:700}
+  h1{font-size:40px;line-height:1.1;margin:14px 0 12px;letter-spacing:-.02em}
+  h1 span{background:linear-gradient(90deg,var(--violet),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{max-width:720px;margin:0 auto;color:var(--mut);font-size:15px}
+  .pill-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+  .pill{font-size:11px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--mut)}
+
+  /* ---------- section ---------- */
+  section{padding:40px 0;border-top:1px solid var(--line)}
+  .sec-head{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .sec-num{font-size:12px;font-weight:800;color:var(--bg);background:linear-gradient(135deg,var(--violet),var(--violet2));
+    width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+  h2{font-size:24px;letter-spacing:-.01em}
+  .sec-desc{color:var(--mut);font-size:14px;margin:6px 0 26px;max-width:760px}
+
+  /* ---------- progress highlighter ---------- */
+  .hl{border-radius:3px;padding:0 .28em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+  .hl-done{background:rgba(52,211,153,0.32)}
+  .hl-partial{background:rgba(251,146,60,0.34)}
+  .hl-next{background:rgba(251,191,36,0.32)}
+  .hl-left{background:rgba(251,113,133,0.30)}
+  .hl-legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:16px;font-size:12px;color:var(--mut)}
+  .hl-legend span{display:inline-flex;align-items:center;gap:6px}
+  .hl-dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+
+  .glass{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:880px){.g2,.g3{grid-template-columns:1fr}}
+
+  .loc{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.04em;
+    padding:4px 9px;border-radius:7px;background:rgba(193,174,255,.12);color:var(--violet);border:1px solid rgba(193,174,255,.28)}
+  .loc.cy{background:rgba(95,208,230,.12);color:var(--cyan);border-color:rgba(95,208,230,.28)}
+  .loc.am{background:rgba(251,191,36,.12);color:var(--amber);border-color:rgba(251,191,36,.28)}
+  .loc.gr{background:rgba(52,211,153,.12);color:var(--green);border-color:rgba(52,211,153,.28)}
+
+  /* ---------- annotated layout mockup ---------- */
+  .mock{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--line);
+    background:linear-gradient(180deg,#0a0a12,#070710)}
+  .mock-top{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+  .dotset{display:flex;gap:6px}.dotset i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.14)}
+  .mt-mid{display:flex;align-items:center;gap:8px}
+  .chip{font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid var(--line);color:var(--mut)}
+  .chip.on{background:rgba(193,174,255,.16);border-color:rgba(193,174,255,.3);color:var(--violet)}
+  .mock-body{display:grid;grid-template-columns:170px 1fr 210px;gap:10px;padding:10px;min-height:430px}
+  .zone{border:1px dashed rgba(255,255,255,.16);border-radius:12px;padding:10px;position:relative;background:rgba(255,255,255,.018)}
+  .ztag{position:absolute;top:-10px;left:10px;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 7px;border-radius:6px;background:#11111b;border:1px solid var(--line)}
+  .num{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;font-size:10px;font-weight:800;
+    background:var(--violet);color:#1a1430;margin-right:6px;flex:none}
+  .navrow{display:flex;align-items:center;font-size:11px;color:var(--mut);padding:6px 8px;border-radius:8px}
+  .navrow.act{background:rgba(193,174,255,.12);color:var(--txt)}
+  .navhead{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut2);margin:10px 4px 4px}
+  .cv-card{border:1px solid var(--line);border-radius:10px;padding:9px;background:rgba(255,255,255,.03);font-size:11px;margin-bottom:8px}
+  .cv-card b{font-size:11px}
+  .barwrap{height:5px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
+  .barwrap i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--violet),var(--cyan))}
+  .sig{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px}
+  .sig b{color:var(--txt);font-weight:600}
+  .dock{display:flex;gap:6px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+  .dbtn{font-size:10px;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--mut)}
+  .dbtn.ai{background:linear-gradient(135deg,rgba(193,174,255,.2),rgba(95,208,230,.12));color:var(--violet);border-color:rgba(193,174,255,.34)}
+  .legend{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:18px}
+  @media(max-width:880px){.legend{grid-template-columns:1fr}.mock-body{grid-template-columns:1fr}}
+  .legend .li{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--mut)}
+  .legend .li b{color:var(--txt);font-weight:600}
+
+  /* ---------- feature cards ---------- */
+  .feat{padding:18px}
+  .feat h3{font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .feat .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:14px;flex:none;
+    background:rgba(193,174,255,.12);border:1px solid rgba(193,174,255,.26)}
+  .feat p{font-size:12.5px;color:var(--mut);margin:6px 0 10px}
+  .feat .where{font-size:11px;color:var(--mut2)}
+  .demo{border:1px solid var(--line);border-radius:12px;padding:11px;background:rgba(0,0,0,.25);margin:10px 0}
+
+  /* mini infocard */
+  .ic-card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.03)}
+  .ic-h{padding:9px 11px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .ic-sec{padding:7px 11px;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px;color:var(--mut);display:flex;gap:8px}
+  .ic-sec b{color:var(--txt);font-weight:600;min-width:78px;display:inline-block}
+  .ic-sec:last-child{border-bottom:0}
+  .tag{font-size:9px;padding:2px 7px;border-radius:5px;font-weight:700}
+  .tag.dr{background:rgba(251,191,36,.16);color:var(--amber)} .tag.sy{background:rgba(52,211,153,.16);color:var(--green)}
+
+  /* modes tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .tab{font-size:12px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--mut);cursor:pointer;transition:.15s}
+  .tab.on{background:rgba(193,174,255,.16);border-color:rgba(193,174,255,.36);color:var(--txt)}
+  .tabpane{display:none;animation:fade .25s ease} .tabpane.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* loop */
+  .loop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
+  .lstep{font-size:11.5px;font-weight:600;padding:9px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+  .larr{color:var(--violet);font-size:14px}
+
+  /* spaces */
+  .space{padding:16px;border-radius:14px;border:1px solid var(--line);background:var(--panel)}
+  .space h4{font-size:14px;margin-bottom:3px;display:flex;gap:8px;align-items:center}
+  .who{font-size:10.5px;color:var(--violet);margin-bottom:10px}
+  .space ul{list-style:none;font-size:12px;color:var(--mut)}
+  .space li{padding:5px 0 5px 16px;position:relative;border-bottom:1px solid rgba(255,255,255,.04)}
+  .space li:before{content:"";position:absolute;left:2px;top:11px;width:5px;height:5px;border-radius:50%;background:var(--violet)}
+
+  /* goal ladder */
+  .ladder{display:flex;flex-direction:column;gap:6px}
+  .rung{display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+  .rung .h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;min-width:96px;color:var(--violet)}
+  .rung .ex{font-size:12px;color:var(--mut)} .rung .ow{margin-left:auto;font-size:10.5px;color:var(--mut2)}
+
+  /* metric flow */
+  .flow{display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding-bottom:6px}
+  .fnode{flex:none;min-width:128px;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--panel);text-align:center}
+  .fnode .t{font-size:11px;font-weight:700} .fnode .d{font-size:10px;color:var(--mut);margin-top:3px}
+  .fsep{display:grid;place-items:center;color:var(--violet);font-weight:800}
+
+  /* rbac table */
+  table{width:100%;border-collapse:collapse;font-size:12px;overflow:hidden;border-radius:12px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut2);background:rgba(255,255,255,.02)}
+  td:first-child{font-weight:600;color:var(--txt)} td{color:var(--mut)}
+  .yes{color:var(--green)} .ro{color:var(--amber)} .no{color:var(--mut2)}
+
+  /* agent chips */
+  .agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:880px){.agrid{grid-template-columns:1fr}.agid{grid-template-columns:1fr}}
+  .ag{padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel)}
+  .ag .n{font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center}
+  .ag .o{font-size:11px;color:var(--mut);margin-top:5px}
+
+  .note{font-size:12px;color:var(--mut2);margin-top:10px;font-style:italic}
+  footer{padding:40px 0 0;border-top:1px solid var(--line);margin-top:40px;color:var(--mut2);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">BDT + IDT Workspace &amp; Project Execution System</div>
+    <h1>Turning twin nodes into <span>cards, projects &amp; measurable impact</span></h1>
+    <p class="sub">A visual map of every feature in the specification — what it looks like, what it does, and exactly where it lives inside the Product Workspace (the one opened by the “Open Workspace” cue on the 3D page).</p>
+    <div class="pill-row">
+      <span class="pill">Node → Card</span>
+      <span class="pill">Workspace Canvas</span>
+      <span class="pill">Project Superspaces</span>
+      <span class="pill">Goal Superalignment</span>
+      <span class="pill">Metric Impact Engine</span>
+      <span class="pill">Suggestive Tasks</span>
+      <span class="pill">Agent Execution</span>
+      <span class="pill">RBAC Visibility</span>
+    </div>
+    <div class="hl-legend">
+      <span><i class="hl-dot" style="background:rgba(52,211,153,0.55)"></i> Done (frontend)</span>
+      <span><i class="hl-dot" style="background:rgba(251,146,60,0.6)"></i> Partial</span>
+      <span><i class="hl-dot" style="background:rgba(251,191,36,0.55)"></i> Next</span>
+      <span><i class="hl-dot" style="background:rgba(251,113,133,0.55)"></i> Left / later</span>
+      <span style="font-size:11px;color:var(--mut2)">· detailed per-item status in execution-status.html</span>
+    </div>
+  </header>
+
+  <!-- 0 CORE LOOP -->
+  <section>
+    <div class="sec-head"><div class="sec-num">01</div><h2><span class="hl hl-partial">The core operating loop</span></h2></div>
+    <p class="sec-desc">Every feature exists to keep this loop turning. An external (IDT) or internal (BDT) signal becomes a node, then a card you can reason with, then a decision/task/project, executed and measured back into the twin — which produces the next recommendation.</p>
+    <div class="glass" style="padding:22px">
+      <div class="loop">
+        <span class="lstep">Signal</span><span class="larr">→</span>
+        <span class="lstep">Node</span><span class="larr">→</span>
+        <span class="lstep">Card</span><span class="larr">→</span>
+        <span class="lstep">Discussion</span><span class="larr">→</span>
+        <span class="lstep">Decision / Task / Project</span><span class="larr">→</span>
+        <span class="lstep">Execution</span><span class="larr">→</span>
+        <span class="lstep">Metric impact</span><span class="larr">→</span>
+        <span class="lstep">Twin update</span><span class="larr">↺</span>
+        <span class="lstep">New recommendation</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 LAYOUT MAP -->
+  <section>
+    <div class="sec-head"><div class="sec-num">02</div><h2><span class="hl hl-done">Where everything lives — the workspace map</span></h2></div>
+    <p class="sec-desc">The specification’s six canvas areas mapped onto our actual panels. Numbers ① – ⑥ mark where each feature group is located; the legend below ties them to the doc.</p>
+
+    <div class="mock">
+      <div class="mock-top">
+        <div class="dotset"><i></i><i></i><i></i></div>
+        <div class="mt-mid">
+          <span class="chip on">Founder</span>
+          <span class="chip">Explore</span><span class="chip">Decision</span>
+          <span class="chip">Execution</span><span class="chip">Review</span><span class="chip">Agent</span>
+        </div>
+        <span class="chip">🎙 Voice</span>
+      </div>
+      <div class="mock-body">
+
+        <!-- LEFT -->
+        <div class="zone">
+          <span class="ztag">② Left rail</span>
+          <div class="navhead">My Universe</div>
+          <div class="navrow">◎ Sphere</div>
+          <div class="navrow act">▦ Canvas</div>
+          <div class="navrow">📡 Signals</div>
+          <div class="navhead">My Work</div>
+          <div class="navrow"><span class="num">④</span>Projects</div>
+          <div class="navrow">☑ Tasks</div>
+          <div class="navrow">◎ Goals</div>
+          <div class="navrow">▤ Notes</div>
+          <div class="navrow">🗂 Files</div>
+        </div>
+
+        <!-- CENTER -->
+        <div class="zone">
+          <span class="ztag">① Center canvas</span>
+          <div class="cv-card"><span class="num">③</span><b>Competitor signal — Acme cut price 20%</b><br>
+            <span style="color:var(--mut)">imported card · chat · convert ▸</span></div>
+          <div class="cv-card"><b>Pricing Positioning Sprint</b> · project
+            <div class="barwrap"><i style="width:46%"></i></div></div>
+          <div style="display:flex;gap:8px">
+            <div class="cv-card" style="flex:1"><b>Win rate</b><br><span style="color:var(--green)">+3% est.</span></div>
+            <div class="cv-card" style="flex:1"><b>Margin</b><br><span style="color:var(--rose)">−1% est.</span></div>
+          </div>
+          <div class="cv-card" style="border-color:rgba(193,174,255,.4);background:rgba(193,174,255,.07)">
+            ✦ <b>Suggested next action:</b> interview 10 churned customers</div>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="zone">
+          <span class="ztag">⑤ Right rail</span>
+          <div class="sig"><b>📡 Live signal</b><br>Acme launches lower tier · 2m</div>
+          <div class="sig"><span class="num">⑥</span><b>Metric alert</b><br>Retention −4% vs target</div>
+          <div class="sig"><b>✦ Agent suggestion</b><br>Run churn analysis</div>
+          <div class="sig"><b>✓ Approvals</b><br>1 decision pending</div>
+          <div class="sig" style="border-color:rgba(95,208,230,.3)"><b>Goals strip</b><br>Q: 62% · M: 41%</div>
+        </div>
+      </div>
+      <!-- BOTTOM DOCK -->
+      <div style="padding:0 12px 12px">
+        <div class="zone" style="border-style:solid">
+          <span class="ztag">⑦ Bottom action dock + chat</span>
+          <div class="dock">
+            <span class="dbtn">＋ Card</span><span class="dbtn">＋ Project</span>
+            <span class="dbtn">＋ Task</span><span class="dbtn">⤴ Export node</span>
+            <span class="dbtn">◔ Simulate</span><span class="dbtn">◎ Link goal</span>
+            <span class="dbtn ai">✦ Ask Agent</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="li"><span class="loc">① Center canvas</span><div><b>Cards, connections, decision &amp; goal maps.</b> The primary working area where nodes become actionable.</div></div>
+      <div class="li"><span class="loc cy">② Left rail</span><div><b>Navigation &amp; saved spaces</b> — BDT, IDT, Superspace, project &amp; member spaces, pinned views.</div></div>
+      <div class="li"><span class="loc am">③ Info card</span><div><b>A live instance of a twin node</b> with chat, metrics, relationships, actions, sync status.</div></div>
+      <div class="li"><span class="loc">④ Project spaces</span><div><b>Superspace / Project / Member</b> — the embedded project-management layer.</div></div>
+      <div class="li"><span class="loc gr">⑤ Right rail</span><div><b>Live signals &amp; context</b> — market signals, metric alerts, goal gaps, agent suggestions, approvals.</div></div>
+      <div class="li"><span class="loc gr">⑥ Goal / metric strip</span><div><b>Alignment visibility</b> across daily → long-term horizons.</div></div>
+      <div class="li"><span class="loc cy">⑦ Bottom dock + chat</span><div><b>Create &amp; act</b> — add card, project, task, ask agent, simulate, export; conversational dock.</div></div>
+    </div>
+  </section>
+
+  <!-- 2 NODE TO CARD -->
+  <section>
+    <div class="sec-head"><div class="sec-num">03</div><h2><span class="hl hl-partial">The Node → Card model</span></h2></div>
+    <p class="sec-desc">Every BDT/IDT node can be imported into the canvas as an <b>information card</b> — not a copy-paste block, but a live instance carrying source data, chat memory, actions, permissions and sync state. <span class="loc am">Center canvas · created via Export / + Card</span></p>
+    <div class="grid g2">
+      <div>
+        <div class="ic-card">
+          <div class="ic-h"><b style="font-size:13px">Acme Corp — Competitor</b><span class="tag dr">DRAFT</span></div>
+          <div class="ic-sec"><b>Identity</b><span>Company · IDT · owner: Founder · permission: full</span></div>
+          <div class="ic-sec"><b>Context</b><span>Launched a 20% cheaper plan targeting our SMB base.</span></div>
+          <div class="ic-sec"><b>Key metrics</b><span>Price −20% · est. overlap 38% · confidence 0.7</span></div>
+          <div class="ic-sec"><b>Relationships</b><span>↔ Pricing · ↔ SMB customers · ↔ Q3 revenue goal</span></div>
+          <div class="ic-sec"><b>Evidence</b><span>2 sources · pricing page snapshot · note</span></div>
+          <div class="ic-sec"><b>Chat</b><span>“What changed and what should we do?”</span></div>
+          <div class="ic-sec"><b>Actions</b><span>Ask · Compare · Convert ▸ Project · Assign · Simulate</span></div>
+          <div class="ic-sec"><b>Sync</b><span><span class="tag sy">→ propose update to twin</span></span></div>
+        </div>
+        <p class="note">Card sections mirror the doc’s card schema (Identity, Context, Metrics, Relationships, Evidence, Chat, Actions, Sync, Version history).</p>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr;gap:12px">
+        <div class="glass feat">
+          <h3><span class="ic">⤴</span>Import / “Export to Workspace”</h3>
+          <p>From any node (or the IDT action workspace) one click drops a card onto the canvas. This is the today-dead “Export To WorkOs” button, made real.</p>
+          <span class="where">Where: node context menu · bottom dock <b>⤴ Export node</b></span>
+        </div>
+        <div class="glass feat">
+          <h3><span class="ic">💬</span>Card chat &amp; updates</h3>
+          <p>Ask, explain, compare, edit fields. Soft notes apply instantly; field/metric/decision updates create an audit log and may require approval.</p>
+          <span class="where">Where: card body · chat dock</span>
+        </div>
+        <div class="glass feat">
+          <h3><span class="ic">🔗</span>Multi-card connections</h3>
+          <p>Cards link through typed edges — dependency, evidence, conflict, opportunity, risk, goal-link, metric-impact — drawn as light threads.</p>
+          <span class="where">Where: center canvas</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 WORKSPACE MODES -->
+  <section>
+    <div class="sec-head"><div class="sec-num">04</div><h2><span class="hl hl-left">Workspace modes</span></h2></div>
+    <p class="sec-desc">Modes replace today’s confusing 0→100 expand-scroll. The mode decides which surfaces show, instead of continuously resizing the whole grid. <span class="loc">Top mode bar</span></p>
+    <div class="tabs">
+      <div class="tab on" data-t="m0">Explore</div>
+      <div class="tab" data-t="m1">Decision</div>
+      <div class="tab" data-t="m2">Execution</div>
+      <div class="tab" data-t="m3">Review</div>
+      <div class="tab" data-t="m4">Agent</div>
+    </div>
+    <div class="glass" style="padding:18px">
+      <div class="tabpane on" id="m0"><b>Explore</b> — gather and understand context by importing BDT/IDT nodes as cards. <span class="where">Best for: founder, strategy, product, sales, investor. Canvas shows imported cards + live signals.</span></div>
+      <div class="tabpane" id="m1"><b>Decision</b> — compare cards side-by-side, simulate options, choose a path (ghost outcome objects). <span class="where">Best for: founders, department heads, project owners.</span></div>
+      <div class="tabpane" id="m2"><b>Execution</b> — convert cards into tasks/projects and track work; hero collapses, kanban &amp; project board take focus. <span class="where">Best for: project teams, members, managers.</span></div>
+      <div class="tabpane" id="m3"><b>Review</b> — measure what changed: estimated vs actual metric impact, goal variance, what must happen next. <span class="where">Best for: leadership, departments, investors, board.</span></div>
+      <div class="tabpane" id="m4"><b>Agent</b> — delegate implementation steps to agents with a context pack, plan approval and reviewable outputs. <span class="where">Best for: members, operators, builders, analysts.</span></div>
+    </div>
+  </section>
+
+  <!-- 4 PROJECT SPACES -->
+  <section>
+    <div class="sec-head"><div class="sec-num">05</div><h2><span class="hl hl-partial">Project management spaces</span></h2></div>
+    <p class="sec-desc">The PM layer is not a separate tool — it lives under the <b>Projects</b> item in the left rail and is represented as nodes back in the BDT. Three nested spaces serve three altitudes.</p>
+    <div class="grid g3">
+      <div class="space">
+        <h4>🛰 Superspace</h4>
+        <div class="who">Founders · super-admin · CXOs · dept heads</div>
+        <ul>
+          <li>All active products &amp; projects</li>
+          <li>Project health, delays, blockers, budget</li>
+          <li>Goal-alignment &amp; metric-impact map</li>
+          <li>Resource load &amp; over-allocation</li>
+          <li>Decision queue (approve / reject)</li>
+          <li><b>Create projects · assign members</b></li>
+        </ul>
+      </div>
+      <div class="space">
+        <h4>📁 Project / Product Space</h4>
+        <div class="who">Project owner · dept heads · assigned members</div>
+        <ul>
+          <li>Project context &amp; source cards</li>
+          <li>Goal links (daily → long-term)</li>
+          <li>Milestones &amp; dependencies</li>
+          <li>Tasks · decisions · risks</li>
+          <li>Files / evidence · project chat</li>
+          <li>Configured agents · metric impact</li>
+        </ul>
+      </div>
+      <div class="space">
+        <h4>👤 Member Space</h4>
+        <div class="who">Each individual contributor</div>
+        <ul>
+          <li>Unified task inbox (all projects)</li>
+          <li>“Today” plan by deadline + impact</li>
+          <li>Goal context per task</li>
+          <li>Task chat &amp; agent execution</li>
+          <li>Dependency alerts</li>
+          <li>Personal metrics (velocity, quality)</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">RBAC note: company-level roles already exist; we add a project-level tier (owner / manager / contributor / viewer) so managers can create projects and assign multiple members.</p>
+  </section>
+
+  <!-- 5 GOAL SUPERALIGNMENT -->
+  <section>
+    <div class="sec-head"><div class="sec-num">06</div><h2><span class="hl hl-partial">Goal superalignment</span></h2></div>
+    <p class="sec-desc">Every card, task, project, decision and metric links to a goal across eight horizons, so work never runs disconnected from strategy. <span class="loc gr">Goal/metric strip + Goals tab</span></p>
+    <div class="ladder">
+      <div class="rung"><span class="h">Daily</span><span class="ex">Complete 5 critical tasks today</span><span class="ow">Member / owner</span></div>
+      <div class="rung"><span class="h">Weekly</span><span class="ex">Ship onboarding improvements by Friday</span><span class="ow">Project owner</span></div>
+      <div class="rung"><span class="h">Monthly</span><span class="ex">Trial→paid 8% → 11%</span><span class="ow">Dept head / growth</span></div>
+      <div class="rung"><span class="h">Quarterly</span><span class="ex">₹50L MRR · churn −20%</span><span class="ow">Founder / CXO</span></div>
+      <div class="rung"><span class="h">Annual</span><span class="ex">Reach profitability · 3 product lines</span><span class="ow">Leadership</span></div>
+      <div class="rung"><span class="h">Round-based</span><span class="ex">Metrics for Series A / credit line</span><span class="ow">Finance / IR</span></div>
+      <div class="rung"><span class="h">3-year</span><span class="ex">Category leader in target vertical</span><span class="ow">Founder / board</span></div>
+      <div class="rung"><span class="h">Long-term</span><span class="ex">Mission &amp; durable market position</span><span class="ow">Founder / board</span></div>
+    </div>
+    <div class="glass" style="padding:14px;margin-top:14px;font-size:12.5px;color:var(--mut)">
+      <b style="color:var(--txt)">Alignment score</b> = Goal Relevance × Expected Impact × Confidence × Urgency × Dependency Value ÷ Effort — surfaces which task deserves attention when many compete for time.
+    </div>
+  </section>
+
+  <!-- 6 METRIC IMPACT -->
+  <section>
+    <div class="sec-head"><div class="sec-num">07</div><h2><span class="hl hl-left">Metric impact engine</span></h2></div>
+    <p class="sec-desc">Each decision/task carries an <b>estimated</b> impact, then a measured <b>actual</b>, with variance feeding model learning. Impact rolls up from task to strategic score. <span class="loc gr">Review mode + right-rail alerts</span></p>
+    <div class="flow">
+      <div class="fnode"><div class="t">Task / Decision</div><div class="d">estimated impact</div></div>
+      <div class="fsep">→</div>
+      <div class="fnode"><div class="t">Project metric</div><div class="d">progress · quality</div></div>
+      <div class="fsep">→</div>
+      <div class="fnode"><div class="t">Department metric</div><div class="d">velocity · CAC · churn</div></div>
+      <div class="fsep">→</div>
+      <div class="fnode"><div class="t">Company metric</div><div class="d">revenue · runway</div></div>
+      <div class="fsep">→</div>
+      <div class="fnode"><div class="t">Goal progress</div><div class="d">variance</div></div>
+      <div class="fsep">→</div>
+      <div class="fnode" style="border-color:rgba(193,174,255,.4)"><div class="t">Strategic score</div><div class="d">learning update</div></div>
+    </div>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="glass feat"><h3><span class="ic">◔</span>Estimated → Committed → Actual</h3><p>Predicted before execution, target accepted on approval, measured after completion. Variance trains the model.</p></div>
+      <div class="glass feat"><h3><span class="ic">📊</span>Per-layer metrics</h3><p>Company, department, project, member and signal metric layers, each visible only at the right permission level.</p></div>
+    </div>
+  </section>
+
+  <!-- 7 SUGGESTIVE TASKS -->
+  <section>
+    <div class="sec-head"><div class="sec-num">08</div><h2><span class="hl hl-next">Suggestive task engine</span></h2></div>
+    <p class="sec-desc">Runs in parallel with PM — watches goals, metrics, signals, dependencies and recommends the highest-impact next task. <span class="loc gr">Right rail · agent suggestions</span></p>
+    <div class="grid g2">
+      <div class="glass" style="padding:6px 6px 6px 6px">
+        <table>
+          <tr><th>Trigger</th><th>Suggested task</th></tr>
+          <tr><td>Goal behind schedule</td><td>Build recovery plan, defer non-critical work</td></tr>
+          <tr><td>Metric gap</td><td>Run churn analysis (retention below target)</td></tr>
+          <tr><td>Competitor signal</td><td>Compare pricing &amp; update positioning</td></tr>
+          <tr><td>Customer signal</td><td>Interview 10 affected customers</td></tr>
+          <tr><td>Dependency blocked</td><td>Escalate owner, create alternate path</td></tr>
+          <tr><td>Round milestone</td><td>Prepare investor metric pack</td></tr>
+        </table>
+      </div>
+      <div class="glass feat" style="display:flex;flex-direction:column;justify-content:center">
+        <h3><span class="ic">⚡</span>Priority score</h3>
+        <p style="font-size:13px;color:var(--txt)">(Metric Impact × Goal Alignment × Urgency × Confidence × Dependency-Unlock) ÷ Effort</p>
+        <p>Ranks suggestions so the team always sees the single most valuable thing to do next — surfaced as the canvas “Suggested next action”.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 AGENT LAYER -->
+  <section>
+    <div class="sec-head"><div class="sec-num">09</div><h2><span class="hl hl-left">Agent execution layer</span></h2></div>
+    <p class="sec-desc">Agents are execution companions attached to cards, tasks, projects and goals — they operate with a context pack, propose a plan, and produce reviewable, traceable output. <span class="loc">Bottom dock “Ask Agent” · Agent mode · Voice</span></p>
+    <div class="agrid">
+      <div class="ag"><div class="n">🔎 Research</div><div class="o">Competitor / market / customer briefs</div></div>
+      <div class="ag"><div class="n">🧭 Strategy</div><div class="o">Options, tradeoffs, recommendations</div></div>
+      <div class="ag"><div class="n">📋 Project</div><div class="o">Goals → milestones → tasks → owners</div></div>
+      <div class="ag"><div class="n">⌨ Coding</div><div class="o">PR draft, code patch, test cases</div></div>
+      <div class="ag"><div class="n">📈 Data</div><div class="o">Metric analysis, churn drivers</div></div>
+      <div class="ag"><div class="n">✍ Writing</div><div class="o">Emails, specs, investor updates</div></div>
+      <div class="ag"><div class="n">💰 Finance</div><div class="o">Forecasts, burn / runway, variance</div></div>
+      <div class="ag"><div class="n">⚖ Legal/Compliance</div><div class="o">Checklists, risk flags, drafts</div></div>
+      <div class="ag"><div class="n">🗒 Meeting</div><div class="o">Decision log, tasks, card updates</div></div>
+    </div>
+    <div class="glass" style="padding:16px;margin-top:14px">
+      <div class="loop" style="justify-content:flex-start">
+        <span class="lstep">Select target + agent</span><span class="larr">→</span>
+        <span class="lstep">Context pack</span><span class="larr">→</span>
+        <span class="lstep">Agent proposes plan</span><span class="larr">→</span>
+        <span class="lstep">User approves</span><span class="larr">→</span>
+        <span class="lstep">Output + evidence</span><span class="larr">→</span>
+        <span class="lstep">Review</span><span class="larr">→</span>
+        <span class="lstep">Sync to BDT</span><span class="larr">→</span>
+        <span class="lstep">Metric/goal update</span>
+      </div>
+      <p class="note">Guardrail: agents may draft, analyze, suggest and implement within permission boundaries — never silently mutate canonical twin data without traceability and approval.</p>
+    </div>
+  </section>
+
+  <!-- 9 VOICE -->
+  <section>
+    <div class="sec-head"><div class="sec-num">10</div><h2><span class="hl hl-done">Voice AI — operating the workspace</span></h2></div>
+    <p class="sec-desc">The voice assistant (already present) gains <b>tools</b> so it can act, not just talk — import nodes, create tasks/projects, run agents, simulate impact, navigate. <span class="loc">Top bar 🎙 · floating orb</span></p>
+    <div class="grid g3">
+      <div class="glass feat"><h3><span class="ic">🎙</span>“Pull the Acme signal onto my canvas”</h3><p>→ <code>import_node_as_card</code> drops the card, then compares pricing.</p></div>
+      <div class="glass feat"><h3><span class="ic">🎙</span>“Start a pricing sprint, assign Sales &amp; Product”</h3><p>→ <code>create_project</code> + <code>create_task</code> (RBAC-checked).</p></div>
+      <div class="glass feat"><h3><span class="ic">🎙</span>“Why is activation behind, what do we do?”</h3><p>→ data agent analyzes &amp; suggests recovery tasks.</p></div>
+    </div>
+  </section>
+
+  <!-- 10 RBAC -->
+  <section>
+    <div class="sec-head"><div class="sec-num">11</div><h2><span class="hl hl-left">Visibility &amp; permissions</span></h2></div>
+    <p class="sec-desc">Different roles see different spaces, cards, metrics and actions. Company-level RBAC already exists; the new layer is project-level membership. <span class="loc cy">Left rail spaces · Team &amp; Access page</span></p>
+    <div class="glass" style="padding:6px">
+      <table>
+        <tr><th>Role</th><th>Sees</th><th>Projects</th><th>Metrics</th><th>Decisions</th></tr>
+        <tr><td>Founder / Super-admin</td><td>Everything</td><td class="yes">create · assign · all</td><td class="yes">all</td><td class="yes">approve</td></tr>
+        <tr><td>CXO / Dept head</td><td>Dept + cross-fn</td><td class="yes">create dept · assign</td><td class="yes">dept</td><td class="yes">dept approve</td></tr>
+        <tr><td>Project owner</td><td>Their project</td><td class="yes">manage · assign</td><td class="ro">project</td><td class="yes">project</td></tr>
+        <tr><td>Team member</td><td>Assigned spaces</td><td class="ro">contribute</td><td class="ro">own tasks</td><td class="no">propose only</td></tr>
+        <tr><td>Investor / Board</td><td>Approved view</td><td class="no">read selected</td><td class="ro">approved</td><td class="no">comment</td></tr>
+        <tr><td>External collaborator</td><td>Shared items only</td><td class="ro">scoped</td><td class="no">—</td><td class="no">—</td></tr>
+      </table>
+    </div>
+    <p class="note"><span class="yes">●</span> full &nbsp; <span class="ro">●</span> read / scoped &nbsp; <span class="no">●</span> none. Every significant update carries an audit trail (who / what / when / why).</p>
+  </section>
+
+  <!-- 11 BUILD ORDER -->
+  <section>
+    <div class="sec-head"><div class="sec-num">12</div><h2>MVP build order</h2></div>
+    <p class="sec-desc">Prove the core loop first: node → card → chat → task/project → goal link → metric impact → update.</p>
+    <div class="grid g3">
+      <div class="glass feat"><h3><span class="hl hl-done">Phase 1 · Card Workspace</span></h3><p>Import nodes as cards, card chat, manual updates, links. <i>Reason with multiple cards, convert one to a task.</i></p></div>
+      <div class="glass feat"><h3><span class="hl hl-partial">Phase 2 · Project Spaces</span></h3><p>Superspace, project &amp; member spaces with tasks + ownership.</p></div>
+      <div class="glass feat"><h3><span class="hl hl-partial">Phase 3 · Goal Alignment</span></h3><p>Daily→annual hierarchy and goal links on every project/task.</p></div>
+      <div class="glass feat"><h3><span class="hl hl-left">Phase 4 · Metric Impact</span></h3><p>Dept/company metric model, estimated vs actual tracking.</p></div>
+      <div class="glass feat"><h3><span class="hl hl-next">Phase 5 · Suggestive Tasks</span></h3><p>Recommendations from gaps, goals, blocked dependencies.</p></div>
+      <div class="glass feat"><h3><span class="hl hl-left">Phase 6 · Agents</span></h3><p>Attach agents to card/task/project with review &amp; approval.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    Visual specification generated from <b>BDT_IDT_Workspace_Project_Goal_Execution_System</b> · mapped onto the Product Workspace (TwinWorkspaceLayout / ProductWorkspace) · companion to <b>WORKSPACE_IMPLEMENTATION_REPORT.md</b>
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+      document.querySelectorAll('.tabpane').forEach(x=>x.classList.remove('on'));
+      t.classList.add('on');
+      document.getElementById(t.dataset.t).classList.add('on');
+    });
+  });
+</script>
+</body>
+</html>

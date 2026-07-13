@@ -1,0 +1,15 @@
+node_modules
+dist
+.env
+.env.*
+*.zip
+.DS_Store
+.git
+.gitignore
+README.md
+pnpm-lock.yaml
+test
+deploy.sh
+.deployment
+coverage*
+*.log

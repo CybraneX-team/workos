@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Work OS — Verification Guide</title>
+  <style>
+    :root {
+      --bg: #07070b;
+      --panel: rgba(255, 255, 255, 0.035);
+      --line: rgba(255, 255, 255, 0.10);
+      --txt: #ECEAF6;
+      --mut: rgba(236, 234, 246, 0.6);
+      --mut2: rgba(236, 234, 246, 0.35);
+      --acc: #C1AEFF;
+      --done: #34d399;
+      --partial: #fbbf24;
+      --pending: #fb7185;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      background: radial-gradient(1000px 600px at 80% -10%, rgba(95, 208, 230, 0.10), transparent 60%), var(--bg);
+      color: var(--txt);
+      line-height: 1.55;
+      padding: 0 0 100px;
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 24px
+    }
+
+    header {
+      padding: 54px 0 22px;
+      text-align: center
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      color: var(--acc);
+      font-weight: 700
+    }
+
+    h1 {
+      font-size: 32px;
+      margin: 12px 0 8px
+    }
+
+    .sub {
+      color: var(--mut);
+      font-size: 14px;
+      max-width: 680px;
+      margin: 0 auto
+    }
+
+    .updated {
+      font-size: 11px;
+      color: var(--mut2);
+      margin-top: 10px
+    }
+
+    .path {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--mut);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 12px
+    }
+
+    .path b {
+      color: var(--txt)
+    }
+
+    /* progress bar */
+    .progress-wrap {
+      margin: 20px 0 0;
+    }
+
+    .progress-label {
+      font-size: 11px;
+      color: var(--mut2);
+      margin-bottom: 6px
+    }
+
+    .progress-track {
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--acc), var(--done));
+      transition: width .4s
+    }
+
+    /* section groups */
+    .group-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--acc);
+      margin: 32px 0 10px;
+      opacity: .7
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 18px 20px;
+      margin: 10px 0;
+      backdrop-filter: blur(12px)
+    }
+
+    .card.start {
+      border-color: rgba(193, 174, 255, 0.3);
+      background: rgba(193, 174, 255, 0.06)
+    }
+
+    .card.new {
+      border-color: rgba(52, 211, 153, 0.2);
+      background: rgba(52, 211, 153, 0.04)
+    }
+
+    .ch {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      user-select: none
+    }
+
+    .box {
+      width: 22px;
+      height: 22px;
+      border-radius: 7px;
+      border: 1.5px solid rgba(255, 255, 255, 0.25);
+      display: grid;
+      place-items: center;
+      flex: none;
+      transition: .15s
+    }
+
+    .ch.on .box {
+      background: var(--done);
+      border-color: var(--done)
+    }
+
+    .ch.on .box svg {
+      opacity: 1
+    }
+
+    .box svg {
+      opacity: 0;
+      width: 12px;
+      height: 12px
+    }
+
+    .ttl {
+      font-size: 15px;
+      font-weight: 700
+    }
+
+    .ch.on .ttl {
+      color: var(--mut);
+      text-decoration: line-through
+    }
+
+    .badge {
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 5px;
+      margin-left: 6px;
+      vertical-align: middle
+    }
+
+    .b-new {
+      background: rgba(52, 211, 153, 0.18);
+      color: var(--done);
+      border: 1px solid rgba(52, 211, 153, 0.35)
+    }
+
+    .tag {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-left: auto;
+      flex: none
+    }
+
+    .t-done {
+      background: rgba(52, 211, 153, 0.16);
+      color: var(--done);
+      border: 1px solid rgba(52, 211, 153, 0.3)
+    }
+
+    .t-partial {
+      background: rgba(251, 191, 36, 0.16);
+      color: var(--partial);
+      border: 1px solid rgba(251, 191, 36, 0.3)
+    }
+
+    .body {
+      padding: 14px 0 2px 34px
+    }
+
+    ol {
+      margin: 0 0 12px;
+      padding-left: 18px
+    }
+
+    ol li {
+      font-size: 13px;
+      color: var(--mut);
+      margin-bottom: 6px
+    }
+
+    ol li b {
+      color: var(--txt);
+      font-weight: 600
+    }
+
+    .exp {
+      font-size: 12.5px;
+      color: var(--txt);
+      background: rgba(52, 211, 153, 0.08);
+      border-left: 2px solid var(--done);
+      border-radius: 0 8px 8px 0;
+      padding: 8px 12px;
+      margin-bottom: 4px
+    }
+
+    .exp b {
+      color: var(--done)
+    }
+
+    .warn {
+      font-size: 12.5px;
+      color: var(--txt);
+      background: rgba(251, 191, 36, 0.08);
+      border-left: 2px solid var(--partial);
+      border-radius: 0 8px 8px 0;
+      padding: 8px 12px;
+      margin-top: 6px
+    }
+
+    .warn b {
+      color: var(--partial)
+    }
+
+    kbd {
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 1px 6px
+    }
+
+    footer {
+      padding: 30px 0 0;
+      border-top: 1px solid var(--line);
+      margin-top: 30px;
+      color: var(--mut2);
+      font-size: 12px;
+      text-align: center
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">Work OS · Test Plan</div>
+      <h1>Verification Guide</h1>
+      <p class="sub">Click each test to check it off as you verify it on the live platform. Only features that are
+        actually built (Done / Partial) are listed. Status lives in <b>execution-status.html</b>.</p>
+      <div class="updated">Last updated: 19 June 2026 — reflects all features shipped through Session 2</div>
+      <div class="path">Get there: <b>3D Twin</b> → click the <b>"Open Workspace"</b> text (bottom-centre) → the
+        workspace panels slide in.</div>
+      <div class="progress-wrap">
+        <div class="progress-label" id="prog-label">0 / 26 verified</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="prog-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── PRE-REQ ─────────────────────────────────────────────────────────── -->
+    <div class="card start ch" onclick="t(this)">
+      <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+          <path d="M5 13l4 4L19 7" />
+        </svg></span>
+      <span class="ttl">Pre-req — open the workspace</span>
+    </div>
+
+    <!-- ─── GROUP: SAVED NODES ───────────────────────────────────────────────── -->
+    <div class="group-label">Saved Nodes (IDT → Canvas)</div>
+
+    <!-- T1 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">1 · Save a node → it appears on the canvas</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>On <b>3D Twin</b>, click into a company planet and open an <b>action node</b>.</li>
+          <li>Click <b>Save Workflow</b> (top-right). Button flips to <b>Saved</b>.</li>
+          <li>Close it, then click <b>Open Workspace</b> → left rail <b>Canvas</b> (default).</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the node shows as a card under <b>Saved Nodes</b> with role chip, breadcrumb,
+          and time.</div>
+      </div>
+    </div>
+
+    <!-- T2 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">2 · Export to Workspace (from the IDT)</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open a fresh action node from the universe.</li>
+          <li>Click <b>Export To Workspace</b> (top-right).</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the workspace opens focused on that node's card.<br><b>Also verify the fix:</b>
+          open a node that's <i>already saved</i> from the Canvas → the <b>Export</b> button is now <b>hidden</b> (was
+          dead before).</div>
+      </div>
+    </div>
+
+    <!-- T3 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">3 · Open node inline (ActionNodeWorkspace overlay)</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Click a saved card → its InfoCard opens.</li>
+          <li>If it's an action-level node, click <b>Open Workspace</b>.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the full node workspace scales in smoothly as a full-cover overlay. <b>Close
+            Workspace</b> returns you to the card.</div>
+      </div>
+    </div>
+
+    <!-- T4 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">4 · InfoCard — chat, tabs, Link to Goal</span>
+        <span class="tag t-partial">Partial</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open a saved card. Use <b>Card Chat</b> (right): try <b>Summarize</b> / <b>Why it matters</b> /
+            <b>Generate tasks</b>. Toggle <b>Voice</b> (visual only — no backend token yet).
+          </li>
+          <li>Browse the tabs: <b>Overview · Relationships · Evidence · History</b>.</li>
+          <li>Click <b>Link to Goal</b> → toast confirms.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> chat replies with node-aware text; Link to Goal produces a real goal entry.
+        </div>
+        <div class="warn"><b>Known partial:</b> metric tiles, relationships, evidence, version history are derived
+          placeholders. Compare / Assign / Agent / Simulate show "later phase."</div>
+      </div>
+    </div>
+
+    <!-- T5 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">5 · Card → Add to PM Project <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open any saved node's InfoCard.</li>
+          <li>Click <b>Add to Project</b> (violet button).</li>
+          <li>In the modal, choose a project (e.g. "Canvas v2 Launch") → click <b>Add Task</b>.</li>
+          <li>Navigate to <b>Projects → Superspace → open that project → Tasks tab</b>.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> a new task "<i>[Node title] — follow up</i>" appears in the <b>To Do</b> column
+          of the selected project's kanban.</div>
+      </div>
+    </div>
+
+    <!-- T6 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">6 · Card → Convert to Project <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open any saved node's InfoCard.</li>
+          <li>Click <b>Convert to Project</b> (indigo button) → confirm in the modal.</li>
+          <li>Navigate to <b>Projects → Superspace</b>.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> a new project card appears in Superspace with the node's title as project name
+          and its description pre-filled. You are set as owner.</div>
+      </div>
+    </div>
+
+    <!-- ─── GROUP: SUPERSPACE ────────────────────────────────────────────────── -->
+    <div class="group-label">Project Management — Superspace</div>
+
+    <!-- T7 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">7 · Create project &amp; assign members</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left rail → <b>Projects</b> (opens <b>Superspace</b> with seeded projects + stats).</li>
+          <li>Click <b>New Project</b> → name it, pick a <b>type</b>, <b>assign members</b>, optionally link a goal →
+            Create.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the new project card appears with member avatars and goal chip (if linked).
+          Stats row updates.</div>
+      </div>
+    </div>
+
+    <!-- T8 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">8 · Live-computed project health <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Superspace</b>. Note the health % on the "Seed Round Prep" project card.</li>
+          <li>Open that project → <b>Tasks</b> tab → drag one task to <b>Done</b>.</li>
+          <li>Press <b>← Back</b> to return to Superspace.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the health % on the project card has <b>increased</b>. If any task was overdue
+          (past due date), the health should be <b>lower</b> than pure task-completion %. "Seed Round Prep" starts low
+          because it has a high-severity risk.</div>
+      </div>
+    </div>
+
+    <!-- T9 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">9 · Suggestive alert panel <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Superspace</b>. Look for the collapsible <b>"⚡ N actions needed"</b> panel below the stat tiles.
+          </li>
+          <li>Click the panel header to expand/collapse it.</li>
+          <li>Read the alerts: they should reference overdue tasks, at-risk project health, open decisions, and/or
+            over-allocated members.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> at least one high-severity (red dot) alert for "Seed Round Prep" (high risk,
+          tight runway). At least one medium alert for the open "SAFE vs priced round" decision. Alerts are sorted high
+          → medium → low.</div>
+      </div>
+    </div>
+
+    <!-- T10 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">10 · Decision queue (cross-project) <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Superspace</b>. Look for the yellow <b>"N Decision(s) Awaiting Approval"</b> panel.</li>
+          <li>Click the <b>Review</b> link next to a decision.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the app navigates straight into that project's <b>Decisions</b> sub-tab where
+          you can approve or reject it inline. Return to Superspace — once all decisions are approved/rejected, the
+          yellow panel disappears.</div>
+      </div>
+    </div>
+
+    <!-- T11 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">11 · Resource load panel <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Superspace</b>. Click <b>Resource load ▾</b> (below the alert panel).</li>
+          <li>Look at each member's badge number and colour.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> each member shows their open task count. Members with overdue tasks show a red
+          badge; members with &gt;4 tasks show yellow; others show green. "Alex Rivera" has multiple open tasks and
+          should be at yellow or red.</div>
+      </div>
+    </div>
+
+    <!-- ─── GROUP: PROJECT SPACE ─────────────────────────────────────────────── -->
+    <div class="group-label">Project / Product Space (depth)</div>
+
+    <!-- T12 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">12 · Project Space — tasks, milestones, decisions, risks, files, chat</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Canvas v2 Launch</b>. Check the sub-tab bar: <b>Tasks · Milestones · Decisions · Risks · Files ·
+              Chat</b>.</li>
+          <li><b>Tasks:</b> add a task (name + assignee) → it lands in <b>To Do</b>. Drag it to <b>Done</b>.</li>
+          <li><b>Milestones:</b> click <b>+ Milestone</b> → add title + date → tick the checkbox to complete it.</li>
+          <li><b>Decisions:</b> click <b>+ Decision</b> → fill title + rationale → approve/reject an existing open one.
+          </li>
+          <li><b>Risks:</b> add a high-severity risk → toggle it to Mitigated. Verify the health score on Superspace
+            updates.</li>
+          <li><b>Files:</b> add a doc link.</li>
+          <li><b>Chat:</b> type a message → click <b>Ask AI</b>.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> every sub-tab works independently, persists to localStorage, and survives a page
+          reload. The AI chat reply references real project data (tasks, risks, decisions).</div>
+      </div>
+    </div>
+
+    <!-- T13 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">13 · Goal link &amp; task-completion rollup to goal progress</span>
+        <span class="tag t-partial">Partial</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Canvas v2 Launch</b> → note the <b>goal chip</b> in the header ("Launch Canvas v2").</li>
+          <li>Drag a task to <b>Done</b>.</li>
+          <li>Go to <b>Projects → Goals &amp; Metrics</b>.</li>
+          <li>Find the "Launch Canvas v2" goal — check its progress bar %.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the goal progress bar reflects the average task-completion % across all projects
+          linked to that goal. Completing the task raised the %.</div>
+        <div class="warn"><b>Known partial:</b> metric tile values are static; variance/alignment-score not yet built.
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── GROUP: MEMBER SPACE ──────────────────────────────────────────────── -->
+    <div class="group-label">Member Space — My Work</div>
+
+    <!-- T14 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">14 · Personal metrics tile row <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Projects → <b>My Work</b> tab.</li>
+          <li>Look at the four stat tiles at the top: <b>Done this week · Due this week · Overdue · On-time rate</b>.
+          </li>
+          <li>In <b>All Tasks</b> view, drag a task to <b>Done</b> → switch back to <b>Today Plan</b>.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> "Done this week" increments by 1. "Overdue" count is correct (tasks past their
+          due date). On-time rate is a live percentage.</div>
+      </div>
+    </div>
+
+    <!-- T15 — NEW this session -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">15 · Today Plan — sorted by deadline + goal context <span
+            class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Projects → <b>My Work</b> → confirm you're on the <b>Today Plan</b> tab (default).</li>
+          <li>Verify tasks are sorted: tasks with the <b>soonest due date first</b>; tasks without a due date appear
+            last.</li>
+          <li>Look for the <b>goal chip</b> (🎯 icon) under each task — it should name the linked goal (e.g. "Launch
+            Canvas v2").</li>
+          <li>Tick the circle button on a task to mark it done in place.</li>
+          <li>Switch to <b>All Tasks</b> tab → verify the full kanban across all your projects is still there.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> overdue tasks show a red "Overdue ·" prefix. In-progress tasks with the same due
+          date bubble above todo tasks. Checking a task marks it done immediately (no reload needed).</div>
+      </div>
+    </div>
+
+    <!-- T16 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">16 · My Work all-tasks kanban — status change syncs back to project</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>My Work → <b>All Tasks</b> tab.</li>
+          <li>Drag a task from <b>To Do</b> → <b>Done</b>.</li>
+          <li>Navigate to the owning project in Superspace and open it.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the same task's status is <b>Done</b> in the project kanban (single source of
+          truth).</div>
+      </div>
+    </div>
+
+    <!-- ─── GROUP: GOALS & METRICS ───────────────────────────────────────────── -->
+    <div class="group-label">Goals &amp; Metrics Superalignment</div>
+
+    <!-- T17 -->
+    <div class="card">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">17 · Create goal, link to project, see hierarchy</span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Projects → <b>Goals &amp; Metrics</b> tab.</li>
+          <li>Click <b>+ New Goal</b> → set a title, pick a horizon (e.g. Quarterly), optionally link a metric → Create.
+          </li>
+          <li>Open a project → change the <b>Goal</b> dropdown to match your new goal's title.</li>
+          <li>Return to <b>Goals &amp; Metrics</b> → expand that goal row.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the goal shows "1 project" linked and its progress % reflects the linked
+          project's task completion.</div>
+      </div>
+    </div>
+
+    <!-- ─── GROUP: NEW EXECUTION FEATURES ───────────────────────────────────── -->
+    <div class="group-label">New Execution Features (June 2026)</div>
+
+    <!-- T18 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">18 · Source Cards integration <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open <b>Saved Nodes</b> canvas. Select any saved node card.</li>
+          <li>Click <b>Add to Project</b> (select a project) or <b>Convert to Project</b>.</li>
+          <li>Go to Projects Space → open the project → click <b>Sources</b> tab.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the converted/linked card appears in the Sources tab list. You can link additional cards from the dropdown or click the Trash button to unlink them.</div>
+      </div>
+    </div>
+
+    <!-- T19 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">19 · Milestone &amp; Task Dependencies <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Open a project → click <b>Milestones</b> tab → set a milestone dependency using the dropdown.</li>
+          <li>Click a task card on the board → in the Drawer's <b>Blocked By</b> field, pick another task as a blocker.</li>
+          <li>Return to the project Board or My Work Today Plan.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> blocked milestones show a red lock warning. Blocked tasks show a visual 🔒 Blocked badge. Completing the blocking task automatically resolves the lock.</div>
+      </div>
+    </div>
+
+    <!-- T20 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">20 · Task Copilot &amp; Agent Execution logs <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Click any task card to open the slide-out detail Drawer.</li>
+          <li>Open the <b>Copilot Chat</b> tab and ask a question (e.g. "What is the plan?").</li>
+          <li>Open the <b>Execution</b> tab and click <b>Run Agent Execution</b>.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the chat replies contextually. Clicking Run Agent initiates dynamic step-by-step terminal logs, outputs a success check, and synthesizes a scratchpad draft.</div>
+      </div>
+    </div>
+
+    <!-- ─── GROUP: NEW PANELS SESSION 2 ────────────────────────────────────── -->
+    <div class="group-label">New Intelligence Panels — Session 2 (19 Jun 2026)</div>
+
+    <!-- T21 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">21 · Signals Intelligence Panel <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left nav → <b>Signals</b> (⚡ lightning bolt icon). Panel loads with 15 seeded signals.</li>
+          <li>Verify the <b>stat chips</b> in the header show "high-relevance" count and "new" count.</li>
+          <li>Click each <b>category filter</b> (Market · Competitor · Technology · Regulatory · Customer) — list narrows to that category.</li>
+          <li>Type a word in the <b>search bar</b> (e.g. "churn") — matching signals remain, others hide.</li>
+          <li>Click a signal row to <b>expand</b> it — body text, tags, and action buttons appear.</li>
+          <li>Click <b>Save to Canvas</b> on an expanded signal.</li>
+          <li>Navigate to <b>Canvas → Nodes</b> view — find the saved signal card.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> the signal card appears in Saved Nodes with its title as the root label and its category colour. The "Save to Canvas" button on that signal now shows <b>"Saved to Canvas"</b> and stays disabled. The "✓ Node card created" confirm appears inline.</div>
+      </div>
+    </div>
+
+    <!-- T22 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">22 · Universe Pulse — Sphere tab <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left nav → <b>Sphere</b> (orbit/ring icon). The <b>Universe Pulse</b> panel loads.</li>
+          <li>Verify the <b>8 stat tiles</b> (Open Tasks, Active Projects, Goals, Open Decisions, Tasks Done, Overdue, Notes, Files) show live numbers matching your actual data.</li>
+          <li>Click <b>Open Tasks</b> tile — should navigate to the Tasks tab.</li>
+          <li>Click <b>Active Projects</b> tile — should navigate to Projects tab.</li>
+          <li>Scroll down to <b>Key Metrics</b> — verify metric names + values from Goals &amp; Metrics are mirrored here.</li>
+          <li>Check <b>Active Alerts</b> section — verify at least one alert matches the data (e.g. overdue task in Seed Round Prep).</li>
+          <li>Use <b>Quick Navigate</b> buttons at the bottom to jump to Signals, Roadmap, Competitors.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> all tile counts are live (derived from the same stores, not hardcoded). Clicking any tile or nav button changes the active left-nav tab. Alerts correctly identify project issues. Metrics progress bars reflect current values.</div>
+      </div>
+    </div>
+
+    <!-- T23 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">23 · AI Roadmap tab <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left nav → <b>Roadmap</b> (map icon). Panel loads showing a sorted list of goals and projects.</li>
+          <li>Verify that seeded items show (<b>"Canvas v2 Launch"</b> and <b>"Seed Round Prep"</b> projects, plus any goals you created).</li>
+          <li>Check that project rows have <b>progress bars</b> (% of tasks done) on the right.</li>
+          <li>Check that status chips show the correct colour: on-track = purple, at-risk/delayed = red, done = green.</li>
+          <li>Click <b>Manage Goals →</b> button (top-right) — should navigate to the Goals tab.</li>
+          <li>Add a new project or goal in their respective tabs, then return to Roadmap.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> newly created projects and goals appear immediately in the roadmap list, sorted by due/creation order. Progress bars update live as tasks are completed. The list is empty only if no goals or projects exist.</div>
+      </div>
+    </div>
+
+    <!-- T24 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">24 · Fundraising Tracker tab <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left nav → <b>Fundraising</b> ($ icon). Panel loads with metric snapshot and checklist.</li>
+          <li>Verify the metric tiles at the top show <b>Runway</b> and/or <b>MRR</b> values pulled live from Goals &amp; Metrics (if those metrics exist).</li>
+          <li>If no runway/MRR metric exists, verify the graceful fallback message: <i>"Add Runway and MRR metrics…"</i></li>
+          <li>Scroll to the <b>Fundraising Checklist</b> — verify all 8 steps are present with step numbers and circular status indicators.</li>
+          <li>Confirm the checklist renders correctly (no layout breakage on narrow screens).</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> metric tiles reflect live store values with trend arrows and progress bars. The checklist renders 8 steps. No console errors. Metric progress bars fill proportionally to target.</div>
+      </div>
+    </div>
+
+    <!-- T25 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">25 · Interview Hub tab <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left nav → <b>Interviews</b> (mic icon). Panel loads with 6 interview templates.</li>
+          <li>Verify all 6 templates appear: <b>Discovery Call · Activation · Churn · Power User · Investor Discovery · Hiring (Engineer)</b>.</li>
+          <li>Each card should show the template title, a description, and a <b>+ Note</b> button.</li>
+          <li>Click <b>Open Notes →</b> (top-right) — should navigate to the Notes tab.</li>
+          <li>Click <b>+ Note</b> on any template — should also navigate to the Notes tab.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> all 6 template cards render without overlap. Both the header button and the inline <b>+ Note</b> button successfully switch the active tab to Notes. No console errors on load.</div>
+      </div>
+    </div>
+
+    <!-- T26 -->
+    <div class="card new">
+      <div class="ch" onclick="t(this)">
+        <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0f" stroke-width="3.5">
+            <path d="M5 13l4 4L19 7" />
+          </svg></span>
+        <span class="ttl">26 · Competitor Intelligence tab <span class="badge b-new">New</span></span>
+        <span class="tag t-done">Done</span>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Left nav → <b>Competitors</b> (swords icon). Panel loads with 5 competitor cards.</li>
+          <li>Verify competitors present: <b>Notion · Linear · Monday.com · Craft · Height (shutdown)</b>.</li>
+          <li>Each card should show: name, category, <b>threat level chip</b> (high/medium/low in correct colour), Strengths, and Our Edge columns.</li>
+          <li>Confirm threat colour coding: Notion and Height (opportunity) = red chip; Linear = yellow; Monday, Craft = green.</li>
+          <li>Verify the threat-level legend renders at the top with coloured chips for high / medium / low.</li>
+          <li>Confirm the grid layout renders correctly — two columns (Strengths / Our Edge) inside each card.</li>
+        </ol>
+        <div class="exp"><b>Expect:</b> all 5 cards load with correct threat level colours. Two-column Strengths/Edge layout renders inside each card. Legend chips at the top are visible. No layout overflow or text truncation issues.</div>
+      </div>
+    </div>
+
+    <footer>
+      Going forward: every new feature ships with its test added here and its status updated in
+      <b>execution-status.html</b>.<br>
+      <span style="color:rgba(193,174,255,0.5);font-size:11px">
+        Session 1: T5 (Card→PM task), T6 (Card→Project), T8 (live health), T9 (alerts), T10 (decision queue), T11 (resource load), T14 (personal metrics), T15 (Today Plan + goal context), T18 (source cards), T19 (blockers), T20 (agent execution drawer).<br>
+        Session 2 (19 Jun): T21 (Signals Intelligence), T22 (Universe Pulse/Sphere), T23 (AI Roadmap), T24 (Fundraising Tracker), T25 (Interview Hub), T26 (Competitor Intelligence).
+      </span>
+    </footer>
+  </div>
+
+  <script>
+    const TOTAL = 26;
+
+    function t(el) {
+      el.classList.toggle('on');
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const done = document.querySelectorAll('.ch.on').length;
+      const pct = Math.round((done / TOTAL) * 100);
+      document.getElementById('prog-label').textContent = `${done} / ${TOTAL} verified`;
+      document.getElementById('prog-fill').style.width = pct + '%';
+    }
+
+    updateProgress();
+  </script>
+</body>
+
+</html>

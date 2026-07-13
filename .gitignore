@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Environment & secrets — never commit
+.env
+.env.*
+*.env
+*.local
+!.env.example
+!*.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sw?
+
+# AI tool / local configs — not for commit
+.claude/
+.cursorrules
+mcp.json
+opencode.json
+.windsurfrules
+
+# CodeGraph local index (machine-local)
+.codegraph/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Misc
+deploy.zip
+.vercel/

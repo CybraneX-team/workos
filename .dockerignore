@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/*.zip
+**/.DS_Store
+.git
+**/.gitignore
+**/README.md
+**/test
+apps/backend/deploy.sh
+apps/backend/deploy-azure.sh
+apps/backend/.deployment
+**/coverage*
+**/*.log
+apps/frontend

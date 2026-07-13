@@ -1,0 +1,158 @@
+/* ============================================
+   STARTUP DIGITAL TWIN — Three.js Universe Labels
+   Extracted CSS2D label styles for the 3D scene.
+   ============================================ */
+
+.label-3d {
+  color: #f0f0ff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1), opacity 0.65s ease;
+  user-select: none;
+  opacity: 0;
+}
+
+.label-3d:hover {
+  transform: scale(1.1);
+  text-shadow: 0 0 10px rgba(124, 58, 237, 0.4), 0 0 30px rgba(0, 0, 0, 0.4);
+}
+
+.label-3d.industry {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.label-3d.company {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.label-3d.department {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: rgba(240, 240, 255, 0.6);
+}
+
+.canvas-label {
+  color: #f0f0ff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.65rem;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1), opacity 0.65s ease;
+  user-select: none;
+}
+
+.canvas-label:hover {
+  transform: scale(1.08);
+}
+
+.canvas-label-title {
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.canvas-label-type {
+  font-size: 0.45rem;
+  letter-spacing: 0.4px;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+/* ── Side panel animations ── */
+@keyframes panel-slide-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes panel-item-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.panel-slide-in {
+  animation: panel-slide-in 0.22s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.panel-item-in {
+  animation: panel-item-in 0.2s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* ── Create Company Button (CSS2D above sun) ── */
+.label-3d-create-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  user-select: none;
+  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), opacity 0.5s ease;
+  animation: create-btn-float 3s ease-in-out infinite;
+}
+
+.label-3d-create-btn:hover {
+  transform: scale(1.12);
+}
+
+.create-btn-inner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid currentColor;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 20px currentColor, inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.create-btn-icon {
+  font-size: 10px;
+}
+
+.create-btn-text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.create-btn-arrow {
+  font-size: 8px;
+  opacity: 0.6;
+  animation: create-btn-bounce 1.5s ease-in-out infinite;
+}
+
+@keyframes create-btn-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes create-btn-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(3px); opacity: 1; }
+}
+
+/* ── Floating form modal connector line ── */
+.create-modal-connector {
+  position: fixed;
+  pointer-events: none;
+  z-index: 998;
+}
+
+.create-modal-connector line {
+  stroke-dasharray: 6 4;
+  animation: dash-flow 1s linear infinite;
+}
+
+@keyframes dash-flow {
+  to { stroke-dashoffset: -10; }
+}

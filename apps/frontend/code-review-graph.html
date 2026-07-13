@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FounderOS — Code Review Graph</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d14;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: #e2e8f0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ── */
+  #topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 48px;
+    background: rgba(13,13,20,0.95);
+    border-bottom: 1px solid #1e1e2e;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+
+  #topbar h1 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #a78bfa;
+    letter-spacing: 0.05em;
+  }
+
+  #topbar .sep { color: #2d2d3e; }
+
+  .filter-btn {
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    color: #6b7280;
+  }
+  .filter-btn:hover { color: #e2e8f0; border-color: #2d2d3e; }
+  .filter-btn.active { color: #fff; border-color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+
+  #search-wrap {
+    margin-left: auto;
+    position: relative;
+  }
+  #search {
+    background: #1a1a2e;
+    border: 1px solid #2d2d3e;
+    border-radius: 8px;
+    padding: 5px 12px;
+    color: #e2e8f0;
+    font-size: 11px;
+    font-family: inherit;
+    width: 200px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #search:focus { border-color: #a78bfa66; }
+  #search::placeholder { color: #4b5563; }
+
+  /* ── Legend ── */
+  #legend {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(13,13,20,0.92);
+    border: 1px solid #1e1e2e;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 10px;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+  #legend h4 { color: #6b7280; margin-bottom: 8px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .leg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .leg-label { color: #9ca3af; }
+
+  /* ── Info panel ── */
+  #panel {
+    position: fixed;
+    top: 64px;
+    right: 16px;
+    width: 280px;
+    background: rgba(13,13,20,0.95);
+    border: 1px solid #1e1e2e;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 11px;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    display: none;
+  }
+  #panel.visible { display: block; }
+  #panel-title { font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; word-break: break-all; }
+  #panel-group { font-size: 10px; margin-bottom: 12px; padding: 2px 8px; border-radius: 4px; display: inline-block; }
+  #panel-close {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: none; border: none;
+    color: #4b5563; cursor: pointer;
+    font-size: 16px; line-height: 1;
+  }
+  #panel-close:hover { color: #9ca3af; }
+  .panel-section { margin-bottom: 10px; }
+  .panel-section h5 { color: #6b7280; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
+  .dep-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 0;
+    color: #9ca3af;
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .dep-item:hover { color: #e2e8f0; }
+  .dep-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Stats bar ── */
+  #stats {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(13,13,20,0.92);
+    border: 1px solid #1e1e2e;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 10px;
+    color: #4b5563;
+    z-index: 100;
+    display: flex;
+    gap: 16px;
+  }
+  #stats span { color: #9ca3af; }
+  #stats strong { color: #e2e8f0; }
+
+  svg { cursor: grab; }
+  svg:active { cursor: grabbing; }
+
+  .node circle { transition: r 0.2s; }
+  .node text { pointer-events: none; user-select: none; }
+  .link { stroke-opacity: 0.35; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>⬡ FounderOS — Code Review Graph</h1>
+  <span class="sep">|</span>
+  <button class="filter-btn active" data-filter="all" style="--c:#a78bfa">All</button>
+  <button class="filter-btn" data-filter="pages" style="--c:#38bdf8">Pages</button>
+  <button class="filter-btn" data-filter="components" style="--c:#34d399">Components</button>
+  <button class="filter-btn" data-filter="lib" style="--c:#f59e0b">Lib</button>
+  <button class="filter-btn" data-filter="data" style="--c:#f472b6">Data</button>
+  <button class="filter-btn" data-filter="db" style="--c:#a78bfa">DB</button>
+  <button class="filter-btn" data-filter="types" style="--c:#94a3b8">Types</button>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search file…" />
+  </div>
+</div>
+
+<div id="panel">
+  <button id="panel-close">×</button>
+  <div id="panel-title">—</div>
+  <div id="panel-group">—</div>
+  <div class="panel-section">
+    <h5>Imports (depends on)</h5>
+    <div id="panel-imports"></div>
+  </div>
+  <div class="panel-section">
+    <h5>Imported by (dependents)</h5>
+    <div id="panel-used-by"></div>
+  </div>
+</div>
+
+<div id="legend">
+  <h4>Node Groups</h4>
+  <div class="leg-row"><div class="leg-dot" style="background:#38bdf8"></div><div class="leg-label">pages/</div></div>
+  <div class="leg-row"><div class="leg-dot" style="background:#34d399"></div><div class="leg-label">components/</div></div>
+  <div class="leg-row"><div class="leg-dot" style="background:#f59e0b"></div><div class="leg-label">lib/</div></div>
+  <div class="leg-row"><div class="leg-dot" style="background:#f59e0b" style="opacity:0.6"></div><div class="leg-label">lib/db/</div></div>
+  <div class="leg-row"><div class="leg-dot" style="background:#f472b6"></div><div class="leg-label">data/</div></div>
+  <div class="leg-row"><div class="leg-dot" style="background:#a78bfa"></div><div class="leg-label">db/ (legacy)</div></div>
+  <div class="leg-row"><div class="leg-dot" style="background:#94a3b8"></div><div class="leg-label">types / root</div></div>
+  <div style="margin-top:10px; border-top:1px solid #1e1e2e; padding-top:8px;">
+    <h4>Edge Weight</h4>
+    <div class="leg-label" style="color:#6b7280">Thicker = more dependents</div>
+  </div>
+  <div style="margin-top:8px;">
+    <div class="leg-label" style="color:#6b7280">Scroll to zoom · Drag to pan<br>Click node for details</div>
+  </div>
+</div>
+
+<div id="stats">
+  <div><strong id="s-nodes">—</strong> <span>files</span></div>
+  <div><strong id="s-edges">—</strong> <span>imports</span></div>
+  <div><strong id="s-hubs">—</strong> <span>top hub</span></div>
+</div>
+
+<svg id="graph"></svg>
+
+<script>
+// ─────────────────────────────────────────────────
+//  Graph data — nodes and edges
+// ─────────────────────────────────────────────────
+
+const rawNodes = [
+  // Root
+  { id: "App",           group: "root",       label: "App.tsx" },
+  { id: "main",          group: "root",       label: "main.tsx" },
+  // Pages
+  { id: "Analytics",     group: "pages",      label: "Analytics" },
+  { id: "AuthPage",      group: "pages",      label: "AuthPage" },
+  { id: "Benchmarks",    group: "pages",      label: "Benchmarks" },
+  { id: "DataIngestion", group: "pages",      label: "DataIngestion" },
+  { id: "Decisions",     group: "pages",      label: "Decisions" },
+  { id: "Environment",   group: "pages",      label: "Environment" },
+  { id: "Goals",         group: "pages",      label: "Goals" },
+  { id: "JoinWorkspace", group: "pages",      label: "JoinWorkspace" },
+  { id: "LandingPage",   group: "pages",      label: "LandingPage" },
+  { id: "Metrics",       group: "pages",      label: "Metrics" },
+  { id: "Onboarding",    group: "pages",      label: "Onboarding" },
+  { id: "Overview",      group: "pages",      label: "Overview" },
+  { id: "PlatformOverview",group:"pages",     label: "PlatformOverview" },
+  { id: "RBAC",          group: "pages",      label: "RBAC" },
+  { id: "SettingsPage",  group: "pages",      label: "SettingsPage" },
+  { id: "Simulation",    group: "pages",      label: "Simulation" },
+  { id: "StartupNetwork",group: "pages",      label: "StartupNetwork" },
+  { id: "Strategy",      group: "pages",      label: "Strategy" },
+  { id: "System",        group: "pages",      label: "System" },
+  { id: "Twin",          group: "pages",      label: "Twin" },
+  { id: "VCConnect",     group: "pages",      label: "VCConnect" },
+  // Components
+  { id: "AuthGuard",     group: "components", label: "AuthGuard" },
+  { id: "Graph3D",       group: "components", label: "Graph3D" },
+  { id: "MetricCard",    group: "components", label: "MetricCard" },
+  { id: "PageHeader",    group: "components", label: "PageHeader" },
+  { id: "Sidebar",       group: "components", label: "Sidebar" },
+  { id: "TopBar",        group: "components", label: "TopBar" },
+  // Lib
+  { id: "lib/auth",      group: "lib",        label: "lib/auth" },
+  { id: "lib/supabase",  group: "lib",        label: "lib/supabase" },
+  // Lib/db
+  { id: "lib/db/rbac",   group: "lib/db",     label: "lib/db/rbac" },
+  { id: "lib/db/companies",group:"lib/db",    label: "lib/db/companies" },
+  { id: "lib/db/onboarding",group:"lib/db",   label: "lib/db/onboarding" },
+  { id: "lib/db/team",   group: "lib/db",     label: "lib/db/team" },
+  // Data
+  { id: "mockData",      group: "data",       label: "mockData" },
+  { id: "twinGraph",     group: "data",       label: "twinGraph" },
+  // DB (legacy)
+  { id: "db/schema",     group: "db",         label: "db/schema" },
+  { id: "db/companies",  group: "db",         label: "db/companies" },
+  { id: "db/industries", group: "db",         label: "db/industries" },
+  { id: "db/signals",    group: "db",         label: "db/signals" },
+  { id: "db/index",      group: "db",         label: "db/index" },
+  // Types
+  { id: "types",         group: "types",      label: "types" },
+];
+
+const rawEdges = [
+  // main
+  ["main","App"],
+  // App
+  ["App","lib/auth"],["App","AuthGuard"],["App","TopBar"],
+  ["App","Analytics"],["App","AuthPage"],["App","Benchmarks"],
+  ["App","DataIngestion"],["App","JoinWorkspace"],["App","LandingPage"],
+  ["App","Onboarding"],["App","Overview"],["App","RBAC"],
+  ["App","SettingsPage"],["App","StartupNetwork"],["App","Strategy"],
+  ["App","Twin"],["App","VCConnect"],
+  // AuthGuard
+  ["AuthGuard","lib/auth"],
+  // TopBar
+  ["TopBar","lib/auth"],
+  // Graph3D
+  ["Graph3D","twinGraph"],["Graph3D","db/index"],["Graph3D","types"],
+  // MetricCard
+  ["MetricCard","types"],
+  // twinGraph
+  ["twinGraph","db/index"],["twinGraph","db/industries"],["twinGraph","db/signals"],
+  ["twinGraph","lib/db/companies"],["twinGraph","types"],
+  // db/index
+  ["db/index","db/companies"],["db/index","db/industries"],
+  ["db/index","db/schema"],["db/index","db/signals"],
+  // db leaves
+  ["db/companies","db/schema"],
+  ["db/industries","db/schema"],
+  ["db/signals","db/schema"],
+  // lib/auth
+  ["lib/auth","lib/db/rbac"],["lib/auth","lib/supabase"],
+  // lib/db/rbac
+  ["lib/db/rbac","lib/supabase"],
+  // lib/db/companies
+  ["lib/db/companies","db/industries"],["lib/db/companies","lib/supabase"],
+  // lib/db/onboarding
+  ["lib/db/onboarding","lib/supabase"],
+  // lib/db/team
+  ["lib/db/team","lib/supabase"],
+  // pages → PageHeader
+  ["Analytics","PageHeader"],["Benchmarks","PageHeader"],
+  ["DataIngestion","PageHeader"],["Metrics","PageHeader"],
+  ["Onboarding","PageHeader"],["Overview","PageHeader"],
+  ["PlatformOverview","PageHeader"],["RBAC","PageHeader"],
+  ["SettingsPage","PageHeader"],["Simulation","PageHeader"],
+  ["StartupNetwork","PageHeader"],["Strategy","PageHeader"],
+  ["System","PageHeader"],["VCConnect","PageHeader"],
+  ["Decisions","PageHeader"],["Environment","PageHeader"],["Goals","PageHeader"],
+  // pages → mockData
+  ["Analytics","mockData"],["Benchmarks","mockData"],["DataIngestion","mockData"],
+  ["Decisions","mockData"],["Environment","mockData"],["Goals","mockData"],
+  ["Metrics","mockData"],["Simulation","mockData"],["StartupNetwork","mockData"],
+  ["System","mockData"],["VCConnect","mockData"],["LandingPage","mockData"],["Overview","mockData"],
+  // pages → types
+  ["Analytics","types"],["Decisions","types"],["Goals","types"],
+  ["Metrics","types"],["Simulation","types"],["StartupNetwork","types"],["Strategy","types"],
+  ["VCConnect","types"],
+  // pages → lib/auth
+  ["AuthPage","lib/auth"],["JoinWorkspace","lib/auth"],
+  ["LandingPage","lib/auth"],["Onboarding","lib/auth"],
+  ["Overview","lib/auth"],["RBAC","lib/auth"],["Twin","lib/auth"],
+  // pages → lib/db/*
+  ["JoinWorkspace","lib/db/team"],["JoinWorkspace","lib/supabase"],
+  ["LandingPage","lib/db/companies"],["LandingPage","db/industries"],
+  ["Onboarding","lib/db/companies"],["Onboarding","lib/db/team"],
+  ["Onboarding","db/industries"],["Onboarding","lib/supabase"],
+  ["Overview","lib/db/companies"],["Overview","db/industries"],["Overview","MetricCard"],
+  ["RBAC","lib/db/team"],["RBAC","lib/supabase"],
+  // Twin
+  ["Twin","Graph3D"],["Twin","twinGraph"],
+  // mockData → types
+  ["mockData","types"],
+];
+
+// ─────────────────────────────────────────────────
+//  Colors per group
+// ─────────────────────────────────────────────────
+const GROUP_COLOR = {
+  root:        "#a78bfa",
+  pages:       "#38bdf8",
+  components:  "#34d399",
+  lib:         "#f59e0b",
+  "lib/db":    "#fb923c",
+  data:        "#f472b6",
+  db:          "#818cf8",
+  types:       "#94a3b8",
+};
+
+function nodeColor(g) { return GROUP_COLOR[g] ?? "#6b7280"; }
+
+// ─────────────────────────────────────────────────
+//  Build graph
+// ─────────────────────────────────────────────────
+const nodes = rawNodes.map(d => ({ ...d }));
+const links = rawEdges.map(([s, t]) => ({ source: s, target: t }));
+
+// Compute in-degree (how many things import this)
+const inDegree = {};
+nodes.forEach(n => inDegree[n.id] = 0);
+links.forEach(l => { inDegree[l.target] = (inDegree[l.target] ?? 0) + 1; });
+
+const outDegree = {};
+nodes.forEach(n => outDegree[n.id] = 0);
+links.forEach(l => { outDegree[l.source] = (outDegree[l.source] ?? 0) + 1; });
+
+// Top hub
+const topHub = nodes.reduce((a, b) => inDegree[a.id] > inDegree[b.id] ? a : b);
+
+// Stats
+document.getElementById("s-nodes").textContent = nodes.length;
+document.getElementById("s-edges").textContent = links.length;
+document.getElementById("s-hubs").textContent = topHub.label + " (" + inDegree[topHub.id] + ")";
+
+// ─────────────────────────────────────────────────
+//  D3 force simulation
+// ─────────────────────────────────────────────────
+const svg = d3.select("#graph")
+  .attr("width",  window.innerWidth)
+  .attr("height", window.innerHeight);
+
+const defs = svg.append("defs");
+
+// Arrow markers per group
+Object.entries(GROUP_COLOR).forEach(([g, c]) => {
+  defs.append("marker")
+    .attr("id", `arrow-${g}`)
+    .attr("viewBox", "0 -4 8 8")
+    .attr("refX", 16)
+    .attr("refY", 0)
+    .attr("markerWidth", 4)
+    .attr("markerHeight", 4)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-4L8,0L0,4")
+    .attr("fill", c)
+    .attr("opacity", 0.6);
+});
+
+const g = svg.append("g");
+
+const zoom = d3.zoom()
+  .scaleExtent([0.1, 4])
+  .on("zoom", e => g.attr("transform", e.transform));
+svg.call(zoom);
+
+const simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id(d => d.id).distance(d => {
+    // shorter distance for lib → lib/db connections, longer for page → page
+    const sg = d.source.group, tg = d.target.group;
+    if (sg === tg) return 80;
+    if (tg === "lib" || tg === "lib/db") return 90;
+    if (tg === "types" || tg === "data") return 100;
+    return 130;
+  }).strength(0.4))
+  .force("charge", d3.forceManyBody().strength(d => {
+    const deg = inDegree[d.id] + outDegree[d.id];
+    return -200 - deg * 20;
+  }))
+  .force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2 + 24))
+  .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 18))
+  .force("x", d3.forceX(window.innerWidth / 2).strength(0.04))
+  .force("y", d3.forceY(window.innerHeight / 2 + 24).strength(0.04));
+
+function nodeRadius(d) {
+  const deg = inDegree[d.id] + outDegree[d.id];
+  return Math.max(6, Math.min(22, 6 + deg * 1.4));
+}
+
+// Draw links
+const link = g.selectAll(".link")
+  .data(links)
+  .enter().append("line")
+  .attr("class", "link")
+  .attr("stroke", d => nodeColor(typeof d.source === "object" ? d.source.group : "types"))
+  .attr("stroke-width", d => {
+    const t = typeof d.target === "object" ? d.target.id : d.target;
+    return Math.max(0.6, Math.min(3, 0.6 + inDegree[t] * 0.2));
+  })
+  .attr("marker-end", d => {
+    const g = typeof d.source === "object" ? d.source.group : "types";
+    return `url(#arrow-${g})`;
+  });
+
+// Draw nodes
+const node = g.selectAll(".node")
+  .data(nodes)
+  .enter().append("g")
+  .attr("class", "node")
+  .attr("cursor", "pointer")
+  .call(d3.drag()
+    .on("start", dragstart)
+    .on("drag",  dragged)
+    .on("end",   dragend))
+  .on("click", (event, d) => { event.stopPropagation(); showPanel(d); });
+
+// Glow effect
+node.append("circle")
+  .attr("r", d => nodeRadius(d) + 5)
+  .attr("fill", d => nodeColor(d.group))
+  .attr("opacity", 0.08);
+
+// Main circle
+node.append("circle")
+  .attr("r", d => nodeRadius(d))
+  .attr("fill", d => nodeColor(d.group))
+  .attr("fill-opacity", 0.18)
+  .attr("stroke", d => nodeColor(d.group))
+  .attr("stroke-width", 1.5)
+  .attr("stroke-opacity", 0.7);
+
+// Label
+node.append("text")
+  .text(d => d.label)
+  .attr("dy", d => nodeRadius(d) + 11)
+  .attr("text-anchor", "middle")
+  .attr("font-size", "9px")
+  .attr("fill", d => nodeColor(d.group))
+  .attr("opacity", 0.75);
+
+// Tick
+simulation.on("tick", () => {
+  link
+    .attr("x1", d => d.source.x)
+    .attr("y1", d => d.source.y)
+    .attr("x2", d => d.target.x)
+    .attr("y2", d => d.target.y);
+
+  node.attr("transform", d => `translate(${d.x},${d.y})`);
+});
+
+// ─────────────────────────────────────────────────
+//  Drag handlers
+// ─────────────────────────────────────────────────
+function dragstart(event, d) {
+  if (!event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x; d.fy = d.y;
+}
+function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragend(event, d) {
+  if (!event.active) simulation.alphaTarget(0);
+  d.fx = null; d.fy = null;
+}
+
+// ─────────────────────────────────────────────────
+//  Info panel
+// ─────────────────────────────────────────────────
+function showPanel(d) {
+  const panel = document.getElementById("panel");
+  document.getElementById("panel-title").textContent = d.label;
+
+  const pg = document.getElementById("panel-group");
+  pg.textContent = d.group;
+  pg.style.background = nodeColor(d.group) + "22";
+  pg.style.color = nodeColor(d.group);
+  pg.style.border = `1px solid ${nodeColor(d.group)}44`;
+
+  // What this file imports
+  const imports = links
+    .filter(l => (typeof l.source === "object" ? l.source.id : l.source) === d.id)
+    .map(l => typeof l.target === "object" ? l.target : nodes.find(n => n.id === l.target));
+
+  // What imports this file
+  const usedBy = links
+    .filter(l => (typeof l.target === "object" ? l.target.id : l.target) === d.id)
+    .map(l => typeof l.source === "object" ? l.source : nodes.find(n => n.id === l.source));
+
+  function renderList(items, containerId) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = "";
+    if (items.length === 0) {
+      el.innerHTML = '<div style="color:#4b5563;font-size:10px">none</div>';
+      return;
+    }
+    items.forEach(n => {
+      if (!n) return;
+      const row = document.createElement("div");
+      row.className = "dep-item";
+      row.innerHTML = `<div class="dep-dot" style="background:${nodeColor(n.group)}"></div>${n.label}`;
+      row.onclick = () => {
+        showPanel(n);
+        highlightNode(n);
+      };
+      el.appendChild(row);
+    });
+  }
+
+  renderList(imports, "panel-imports");
+  renderList(usedBy, "panel-used-by");
+
+  panel.classList.add("visible");
+  highlightNode(d);
+}
+
+document.getElementById("panel-close").onclick = () => {
+  document.getElementById("panel").classList.remove("visible");
+  resetHighlight();
+};
+
+svg.on("click", () => {
+  document.getElementById("panel").classList.remove("visible");
+  resetHighlight();
+});
+
+// ─────────────────────────────────────────────────
+//  Highlight
+// ─────────────────────────────────────────────────
+function highlightNode(d) {
+  const connected = new Set([d.id]);
+  links.forEach(l => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    if (s === d.id) connected.add(t);
+    if (t === d.id) connected.add(s);
+  });
+
+  node.selectAll("circle:nth-child(2)")
+    .attr("opacity", n => connected.has(n.id) ? 1 : 0.08);
+  node.selectAll("text")
+    .attr("opacity", n => connected.has(n.id) ? 1 : 0.15);
+  link
+    .attr("opacity", l => {
+      const s = typeof l.source === "object" ? l.source.id : l.source;
+      const t = typeof l.target === "object" ? l.target.id : l.target;
+      return (s === d.id || t === d.id) ? 0.9 : 0.04;
+    });
+}
+
+function resetHighlight() {
+  node.selectAll("circle:nth-child(2)").attr("opacity", 1);
+  node.selectAll("text").attr("opacity", 0.75);
+  link.attr("opacity", 0.35);
+}
+
+// ─────────────────────────────────────────────────
+//  Filter buttons
+// ─────────────────────────────────────────────────
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const f = btn.dataset.filter;
+
+    node.attr("opacity", d => {
+      if (f === "all") return 1;
+      const match = {
+        pages: ["pages"], components: ["components"],
+        lib: ["lib","lib/db"], data: ["data"],
+        db: ["db"], types: ["types","root"]
+      };
+      return (match[f] ?? []).includes(d.group) ? 1 : 0.08;
+    });
+
+    link.attr("opacity", l => {
+      if (f === "all") return 0.35;
+      const sg = typeof l.source === "object" ? l.source.group : "";
+      const tg = typeof l.target === "object" ? l.target.group : "";
+      const match = {
+        pages: ["pages"], components: ["components"],
+        lib: ["lib","lib/db"], data: ["data"],
+        db: ["db"], types: ["types","root"]
+      };
+      const groups = match[f] ?? [];
+      return groups.includes(sg) || groups.includes(tg) ? 0.5 : 0.03;
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────
+//  Search
+// ─────────────────────────────────────────────────
+document.getElementById("search").addEventListener("input", function() {
+  const q = this.value.toLowerCase().trim();
+  if (!q) { resetHighlight(); return; }
+  const matched = nodes.find(n => n.label.toLowerCase().includes(q) || n.id.toLowerCase().includes(q));
+  if (matched) showPanel(matched);
+});
+
+// ─────────────────────────────────────────────────
+//  Resize
+// ─────────────────────────────────────────────────
+window.addEventListener("resize", () => {
+  svg.attr("width", window.innerWidth).attr("height", window.innerHeight);
+  simulation.force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2 + 24));
+  simulation.alpha(0.1).restart();
+});
+</script>
+</body>
+</html>
