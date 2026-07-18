@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Activity, Zap, Shield, Bot, User, Clock, CheckCircle2, Loader2, CircleDot, TrendingUp, Target, ShieldAlert, Tag, Building2, SlidersHorizontal } from 'lucide-react';
 import { WORKSPACE_CANVAS_CARDS, WORKSPACE_CANVAS_CONNECTIONS } from '../lib/workspaceLayoutData';
 import {
@@ -12,6 +13,8 @@ import { INDUSTRIES } from '../db/industries';
 import { api } from '../lib/api';
 import { getCurrencyCodeForCountry, getCurrencySymbol } from '../lib/currency';
 import type { Metric } from '../types';
+import type { MetaAdsAttention } from '@cybranex/shared-types';
+import { fetchMetaAdsAttention } from '../lib/integrations/service';
 
 const statusConfig = {
   running:   { icon: Loader2,      color: 'text-sky-400',     animate: 'animate-spin' },
@@ -21,6 +24,7 @@ const statusConfig = {
 };
 
 export default function Overview() {
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const { company } = useCompany(profile?.company_id);
 
@@ -37,6 +41,7 @@ export default function Overview() {
 
   const [simSnapshot, setSimSnapshot] = useState<Record<string, number> | null>(null);
   const [chartData, setChartData] = useState(revenueHistory);
+  const [metaAttention, setMetaAttention] = useState<MetaAdsAttention | null>(null);
 
   useEffect(() => {
     if (!profile?.company_id) return;
@@ -46,6 +51,11 @@ export default function Overview() {
     api.get<{ month: string; mrr: number; burn: number }[]>(`/api/metrics-onboarding/${profile.company_id}/history`)
       .then((rows) => { if (rows?.length) setChartData(rows); })
       .catch(() => {});
+  }, [profile?.company_id]);
+
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    fetchMetaAdsAttention().then(setMetaAttention).catch(() => setMetaAttention(null));
   }, [profile?.company_id]);
 
   const companyFallbackMetrics = useMemo<Metric[]>(() => {
@@ -172,6 +182,33 @@ export default function Overview() {
       </div>
 
       {tab === 'overview' && <>
+      {metaAttention && (metaAttention.count > 0 || (metaAttention.decisionCount ?? 0) > 0 || (metaAttention.overdueCount ?? 0) > 0 || (metaAttention.authoringApprovalCount ?? 0) > 0 || (metaAttention.authoringFailureCount ?? 0) > 0) && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, padding:'14px 20px', borderBottom:`1px solid ${B}`, background:metaAttention.criticalCount > 0 ? 'rgba(244,63,94,0.07)' : 'rgba(245,158,11,0.07)' }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.13em', textTransform:'uppercase', color:metaAttention.criticalCount > 0 ? '#fda4af' : '#fcd34d' }}>
+              Meta Ads · {metaAttention.highestPriorityFinding?.severity ?? ((metaAttention.authoringFailureCount ?? 0) > 0 ? 'authoring failed' : (metaAttention.authoringApprovalCount ?? 0) > 0 ? 'approval required' : (metaAttention.overdueCount ?? 0) > 0 ? 'overdue' : 'decision')}
+            </div>
+            <div style={{ marginTop:4, fontSize:13, fontWeight:600, color:'#fff' }}>
+              {metaAttention.highestPriorityFinding?.title ?? ((metaAttention.authoringFailureCount ?? 0) > 0
+                ? `${metaAttention.authoringFailureCount} campaign operation${metaAttention.authoringFailureCount === 1 ? '' : 's'} need attention`
+                : (metaAttention.authoringApprovalCount ?? 0) > 0
+                  ? `${metaAttention.authoringApprovalCount} campaign${metaAttention.authoringApprovalCount === 1 ? '' : 's'} await approval`
+                  : `${metaAttention.overdueCount ?? 0} paid-acquisition experiment${metaAttention.overdueCount === 1 ? '' : 's'} overdue`)}
+            </div>
+            <div style={{ marginTop:3, fontSize:11, color:'rgba(255,255,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {metaAttention.highestPriorityFinding
+                ? Object.entries(metaAttention.highestPriorityFinding.evidence).slice(0, 3).map(([key, value]) => `${key}: ${String(value)}`).join(' · ')
+                : ((metaAttention.authoringApprovalCount ?? 0) > 0 || (metaAttention.authoringFailureCount ?? 0) > 0
+                  ? 'Review the immutable campaign snapshot and Meta job history'
+                  : 'Owner action is required in the Paid Acquisition decision inbox')}
+              {metaAttention.dataAgeHours != null ? ` · data age ${Math.floor(metaAttention.dataAgeHours)}h` : ''}
+            </div>
+          </div>
+          <button type="button" onClick={() => navigate(`/universal?focus=mkt_paid_acquisition&openHub=1&tab=${(metaAttention.authoringApprovalCount ?? 0) > 0 || (metaAttention.authoringFailureCount ?? 0) > 0 ? 'campaigns' : 'inbox'}`)} style={{ flexShrink:0, padding:'8px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+            Review in Paid Acquisition
+          </button>
+        </div>
+      )}
       {/* ── Metric Strip ──────────────────────────────────────── */}
       {displayMetrics.length > 0 && (
         <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(displayMetrics.length,6)},1fr)`, borderBottom:`1px solid ${B}` }}>

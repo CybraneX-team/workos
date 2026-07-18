@@ -19,6 +19,11 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - Why this boundary exists: `docs/decisions/001-erpnext-control-plane-boundary.md`
 - Local browser SSO setup and verification: `docs/runbooks/local-erpnext-sso.md`
 - Guarded development reset: `docs/runbooks/development-reset.md`
+- Playwright automation patterns and known failure modes: `docs/runbooks/playwright-automation.md`
+- Meta Ads operating loop and Decision Inbox: `docs/architecture/meta-ads-operating-loop.md`
+- Continuous local Meta experiment verification: `docs/runbooks/meta-ads-decision-inbox.md`
+- Meta Ads Campaign Studio writer boundary: `docs/architecture/meta-ads-campaign-studio.md`
+- Campaign authoring fake/live-sandbox verification: `docs/runbooks/meta-ads-campaign-studio.md`
 - Backend-specific invariants: `apps/backend/AGENTS.md`
 - Control-plane-specific invariants: `apps/erpnext-control-plane/AGENTS.md`
 

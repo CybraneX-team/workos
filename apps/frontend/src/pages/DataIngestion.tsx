@@ -68,12 +68,16 @@ export default function DataIngestion() {
   const canManageExcel = canWrite('data');
   const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<Tab>(requestedTab === 'integrations' ? 'integrations' : 'manual');
+  const requestedIntegration = searchParams.get('integration');
+  const requestedIntegrationDefinition = requestedIntegration
+    ? integrations.find((entry) => entry.id === requestedIntegration) ?? null
+    : null;
+  const [activeTab, setActiveTab] = useState<Tab>(requestedTab === 'integrations' || requestedIntegrationDefinition ? 'integrations' : 'manual');
 
   // ── Integration state ──────────────────────────────────────────────────────
   const [connections, setConnections]       = useState<Record<string, IntegrationConnection>>({});
   const [loadingConns, setLoadingConns]     = useState(false);
-  const [selectedInt, setSelectedInt]       = useState<Integration | null>(null);
+  const [selectedInt, setSelectedInt]       = useState<Integration | null>(requestedIntegrationDefinition);
 
   const loadConnections = useCallback(async () => {
     setLoadingConns(true);

@@ -367,8 +367,11 @@ export function createApiPolytopeStore({ storageKey, defaultDepartments, onboard
       if (get().loading) return;
       set({ loading: true, error: null });
       try {
-        await loadBdtCatalog().catch(() => { /* size-config split degrades gracefully */ });
-        const [response, activeNodes] = await Promise.all([
+        // The graph itself is the critical path. Catalog and activation checks
+        // are independent enrichments, so do not make a cold catalog request
+        // block department rendering or URL-owned workspace deep links.
+        const [, response, activeNodes] = await Promise.all([
+          loadBdtCatalog().catch(() => undefined),
           api.get<{ departments: UExternalNode[] }>('/api/departments'),
           // A capability-check failure must leave leaves usable. Only an explicit backend
           // response may lock a node; retry on the next department load.

@@ -7,6 +7,7 @@ import { requirePermission } from '../rbac.js';
 import { recomputeCanonicalRollups } from '../lib/canonicalMetrics.js';
 import { scoreMetric } from '@cybranex/metrics';
 import { configureMetaMetric, isMetaMetricKey, setMetaConversionAction } from '../lib/metaMetricEngine.js';
+import { buildMetaAdsBrief, getStoredMetaCanonicalContext } from '../domains/meta-ads/service.js';
 
 export const metricsRouter = Router();
 metricsRouter.use(authJwt);
@@ -893,7 +894,8 @@ const metaConfigSchema = z.object({
 metricsRouter.put('/:companyId/integrations/meta/conversion-event', requirePermission('twin', 'write'), async (req: any, res) => {
   if (!assertCompany(req, res, req.params.companyId) || !requireMetricAdmin(req, res)) return;
   try {
-    return res.json(await setMetaConversionAction(req.params.companyId, String(req.body?.actionType ?? '')));
+    await setMetaConversionAction(req.params.companyId, String(req.body?.actionType ?? ''));
+    return res.json(await buildMetaAdsBrief(req.params.companyId));
   } catch (error: any) {
     return res.status(400).json({ error: error?.message ?? 'meta_conversion_event_failed' });
   }
@@ -905,7 +907,8 @@ metricsRouter.put('/:companyId/integrations/meta/:metricKey', requirePermission(
   const parsed = metaConfigSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'invalid_meta_metric_config', details: parsed.error.flatten() });
   try {
-    return res.json(await configureMetaMetric(req.params.companyId, req.auth.userId, req.params.metricKey, parsed.data));
+    const stored = await getStoredMetaCanonicalContext(req.params.companyId);
+    return res.json(await configureMetaMetric(req.params.companyId, req.auth.userId, req.params.metricKey, parsed.data, stored));
   } catch (error: any) {
     return res.status(400).json({ error: error?.message ?? 'meta_metric_config_failed' });
   }

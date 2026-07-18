@@ -37,6 +37,7 @@ import { incubatorCohortsRouter } from './routes/incubatorCohorts.js';
 import { incubatorDashboardRouter } from './routes/incubatorDashboard.js';
 import { incubatorDiscoverRouter } from './routes/incubatorDiscover.js';
 import { initializeRbac } from './rbac.js';
+import { metaAdsOperatingRouter } from './domains/meta-ads/router.js';
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -52,6 +53,7 @@ app.get('/test', (_req, res) => {
 
 app.use('/api/ingestion', ingestionRouter);
 app.use('/api/metrics', metricsRouter);
+app.use('/api/integrations/meta', metaAdsOperatingRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/simulator', provisionRouter);
 app.use('/api/metrics-onboarding', metricsOnboardingRouter);

@@ -33,7 +33,13 @@ export default function AuthGuard({ children, requireOnboarding = false, require
   }
 
   if (!user) {
-    return <Navigate to="/auth" state={{ from: location.pathname }} replace />;
+    return (
+      <Navigate
+        to="/auth"
+        state={{ from: `${location.pathname}${location.search}${location.hash}` }}
+        replace
+      />
+    );
   }
 
   const activeRole = localStorage.getItem('active_role');

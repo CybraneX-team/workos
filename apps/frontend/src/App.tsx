@@ -386,7 +386,7 @@ function App() {
       <AuthProvider>
         <AppRoutes />
       </AuthProvider>
-      {import.meta.env.DEV && <Agentation />}
+      {import.meta.env.DEV && import.meta.env.VITE_AGENTATION_ENABLED !== 'false' && <Agentation />}
     </BrowserRouter>
   );
 }

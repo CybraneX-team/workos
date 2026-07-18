@@ -5,7 +5,7 @@ import type {
   DepartmentAction,
 } from './types.js';
 
-export const ACTIONS: RbacAction[] = ['read', 'write', 'delete'];
+export const ACTIONS: RbacAction[] = ['read', 'write', 'delete', 'approve', 'execute'];
 
 export const MODULES: RbacModule[] = [
   'twin',
@@ -16,7 +16,25 @@ export const MODULES: RbacModule[] = [
   'team',
   'ecosystem',
   'settings',
+  'paid_media',
 ];
+
+/** Actions that are meaningful for each module. Unsupported actions stay false. */
+export const MODULE_ACTIONS: Record<RbacModule, readonly RbacAction[]> = {
+  twin: ['read', 'write', 'delete'],
+  strategy: ['read', 'write', 'delete'],
+  analytics: ['read', 'write', 'delete'],
+  data: ['read', 'write', 'delete'],
+  benchmarks: ['read', 'write', 'delete'],
+  team: ['read', 'write', 'delete'],
+  ecosystem: ['read', 'write', 'delete'],
+  settings: ['read', 'write', 'delete'],
+  paid_media: ['read', 'write', 'approve', 'execute'],
+};
+
+export function moduleSupportsAction(module: RbacModule, action: RbacAction): boolean {
+  return MODULE_ACTIONS[module].includes(action);
+}
 
 /** System roles in canonical display / precedence order. */
 export const SYSTEM_ROLE_ORDER: SystemRole[] = [

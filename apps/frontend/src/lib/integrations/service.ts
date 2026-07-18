@@ -1,5 +1,22 @@
 import { api } from '../api';
 import type { IntegrationConnection, IntegrationMetrics, MetaAdAccountOption } from './types';
+import type {
+  MetaAdsAssignee,
+  MetaAdsAttention,
+  MetaAdsDecisionInbox,
+  MetaAdsExperiment,
+  MetaAdsOperatingBrief,
+  MetaAdsSyncRun,
+  MetaAdsAuthoringReadiness,
+  MetaAdsBrandKit,
+  MetaAdsCampaignDraft,
+  MetaAdsCampaignDraftContent,
+  MetaAdsCampaignJob,
+  MetaAdsCampaignPreflight,
+  MetaAdsCreativeAsset,
+  MetaAdsCreativeGenerationJob,
+  MetaAdsErpProductContext,
+} from '@cybranex/shared-types';
 
 // Returned by connectOAuth when Meta finds more than one ad account and the
 // caller must show a picker before the connection can be finalized.
@@ -62,7 +79,7 @@ export async function connectOAuth(integrationId: string): Promise<IntegrationCo
   return {
     integrationId: result.integrationId || integrationId,
     connectedAt: new Date().toISOString(),
-    lastSynced: new Date().toISOString(),
+    lastSynced: null,
     accountName: result.accountName || integrationId,
     sandboxMode: false,
   };
@@ -101,6 +118,158 @@ export async function fetchMetrics(integrationId: string): Promise<IntegrationMe
   return api.get<IntegrationMetrics>(`/api/integrations/${integrationId}/metrics`);
 }
 
+export function fetchMetaAdsBrief(): Promise<MetaAdsOperatingBrief> {
+  return api.get<MetaAdsOperatingBrief>('/api/integrations/meta/brief');
+}
+
+export function fetchMetaAdsAttention(): Promise<MetaAdsAttention> {
+  return api.get<MetaAdsAttention>('/api/integrations/meta/attention');
+}
+
+export function requestMetaAdsRefresh(): Promise<MetaAdsSyncRun> {
+  return api.post<MetaAdsSyncRun>('/api/integrations/meta/refresh', {});
+}
+
+export function fetchMetaAdsSyncRun(runId: string): Promise<MetaAdsSyncRun> {
+  return api.get<MetaAdsSyncRun>(`/api/integrations/meta/sync-runs/${encodeURIComponent(runId)}`);
+}
+
+export function fetchMetaAdsDecisionInbox(): Promise<MetaAdsDecisionInbox> {
+  return api.get<MetaAdsDecisionInbox>('/api/integrations/meta/inbox');
+}
+
+export function fetchMetaAdsExperiments(view: 'active' | 'history', cursor?: string) {
+  const params = new URLSearchParams({ view });
+  if (cursor) params.set('cursor', cursor);
+  return api.get<{ items: MetaAdsExperiment[]; nextCursor: string | null }>(`/api/integrations/meta/experiments?${params}`);
+}
+
+export function fetchMetaAdsExperiment(experimentId: string): Promise<MetaAdsExperiment> {
+  return api.get<MetaAdsExperiment>(`/api/integrations/meta/experiments/${encodeURIComponent(experimentId)}`);
+}
+
+export function fetchMetaAdsAssignees(): Promise<MetaAdsAssignee[]> {
+  return api.get<MetaAdsAssignee[]>('/api/integrations/meta/assignees');
+}
+
+export function startMetaAdsExperiment(findingId: string, input: { ownerMemberId: string; dueDate: string; idempotencyKey: string }) {
+  return api.post<MetaAdsExperiment>(`/api/integrations/meta/findings/${encodeURIComponent(findingId)}/experiments`, input);
+}
+
+export function dismissMetaAdsFinding(findingId: string, input: { reason: string; note?: string; idempotencyKey: string }) {
+  return api.post<{ id: string; decidedAt: string }>(`/api/integrations/meta/findings/${encodeURIComponent(findingId)}/dismiss`, input);
+}
+
+export function updateMetaAdsExperiment(experimentId: string, input: { ownerMemberId?: string; dueDate?: string; idempotencyKey: string }) {
+  return api.patch<MetaAdsExperiment>(`/api/integrations/meta/experiments/${encodeURIComponent(experimentId)}`, input);
+}
+
+export function applyMetaAdsExperiment(experimentId: string, input: {
+  implementationNote: string;
+  confirmedRecommendedChange: boolean;
+  keptBudgetConstant: boolean;
+  idempotencyKey: string;
+}) {
+  return api.post<MetaAdsExperiment>(`/api/integrations/meta/experiments/${encodeURIComponent(experimentId)}/apply`, input);
+}
+
+export function cancelMetaAdsExperiment(experimentId: string, input: { reason: string; note?: string; idempotencyKey: string }) {
+  return api.post<MetaAdsExperiment>(`/api/integrations/meta/experiments/${encodeURIComponent(experimentId)}/cancel`, input);
+}
+
+export function fetchMetaAdsAuthoringReadiness(): Promise<MetaAdsAuthoringReadiness> {
+  return api.get('/api/integrations/meta/authoring/readiness');
+}
+
+export function fetchMetaAdsBrandKit(): Promise<MetaAdsBrandKit> {
+  return api.get('/api/integrations/meta/brand-kit');
+}
+
+export function saveMetaAdsBrandKit(input: Omit<MetaAdsBrandKit, 'updatedAt'>): Promise<MetaAdsBrandKit> {
+  return api.put('/api/integrations/meta/brand-kit', input);
+}
+
+export function fetchMetaAdsCreativeAssets(): Promise<MetaAdsCreativeAsset[]> {
+  return api.get('/api/integrations/meta/creative-assets');
+}
+
+export function uploadMetaAdsCreative(file: File): Promise<MetaAdsCreativeAsset> {
+  const body = new FormData();
+  body.set('file', file);
+  return api.post('/api/integrations/meta/creative-assets', body);
+}
+
+export function deleteMetaAdsCreative(assetId: string): Promise<void> {
+  return api.delete(`/api/integrations/meta/creative-assets/${encodeURIComponent(assetId)}`);
+}
+
+export function fetchMetaAdsProductContext(itemCode: string): Promise<MetaAdsErpProductContext> {
+  return api.get(`/api/integrations/meta/product-context?itemCode=${encodeURIComponent(itemCode)}`);
+}
+
+export function fetchMetaAdsCampaignDrafts(): Promise<MetaAdsCampaignDraft[]> {
+  return api.get('/api/integrations/meta/campaign-drafts');
+}
+
+export function createMetaAdsCampaignDraft(name?: string): Promise<MetaAdsCampaignDraft> {
+  return api.post('/api/integrations/meta/campaign-drafts', { name });
+}
+
+export function fetchMetaAdsCampaignDraft(draftId: string): Promise<MetaAdsCampaignDraft> {
+  return api.get(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}`);
+}
+
+export function updateMetaAdsCampaignDraft(
+  draftId: string,
+  expectedVersion: number,
+  patch: Partial<MetaAdsCampaignDraftContent>,
+): Promise<MetaAdsCampaignDraft> {
+  return api.patch(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}`, { expectedVersion, patch });
+}
+
+export function generateMetaAdsCreative(
+  draftId: string,
+  input: { expectedVersion: number; replaceConceptId?: string; idempotencyKey: string },
+): Promise<MetaAdsCreativeGenerationJob> {
+  return api.post(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/generate`, input);
+}
+
+export function preflightMetaAdsCampaign(draftId: string): Promise<MetaAdsCampaignPreflight> {
+  return api.post(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/preflight`, {});
+}
+
+export function submitMetaAdsCampaign(draftId: string, expectedVersion: number): Promise<MetaAdsCampaignDraft> {
+  return api.post(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/submit`, { expectedVersion });
+}
+
+export function approveMetaAdsCampaignPublish(draftId: string, input: { note?: string; idempotencyKey: string }) {
+  return api.post<{ draft: MetaAdsCampaignDraft; job: MetaAdsCampaignJob }>(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/approve-publish`, input);
+}
+
+export function approveMetaAdsCampaignLaunch(draftId: string, input: { note?: string; idempotencyKey: string }) {
+  return api.post<{ draft: MetaAdsCampaignDraft; job: MetaAdsCampaignJob }>(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/approve-launch`, input);
+}
+
+export function pauseMetaAdsPublishedCampaign(draftId: string, idempotencyKey: string) {
+  return api.post<{ draft: MetaAdsCampaignDraft; job: MetaAdsCampaignJob | null }>(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/pause`, { idempotencyKey });
+}
+
+export function cloneMetaAdsCampaign(draftId: string): Promise<MetaAdsCampaignDraft> {
+  return api.post(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/clone`, {});
+}
+
+export function cancelMetaAdsCampaign(draftId: string, input: { reason: string; note?: string; idempotencyKey: string }): Promise<MetaAdsCampaignDraft> {
+  return api.post(`/api/integrations/meta/campaign-drafts/${encodeURIComponent(draftId)}/cancel`, input);
+}
+
+export function fetchMetaAdsCreativeJob(jobId: string): Promise<MetaAdsCreativeGenerationJob> {
+  return api.get(`/api/integrations/meta/creative-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function fetchMetaAdsCampaignJob(jobId: string): Promise<MetaAdsCampaignJob> {
+  return api.get(`/api/integrations/meta/campaign-jobs/${encodeURIComponent(jobId)}`);
+}
+
 export interface MetaCanonicalMetricRow {
   id: string;
   name: string;
@@ -134,9 +303,9 @@ export function syncMetaMetricsOnce(): Promise<MetaMetricSyncResult> {
   return metaSyncForPageLoad;
 }
 
-export function setMetaConversionEvent(companyId: string, actionType: string): Promise<MetaMetricSyncResult> {
+export function setMetaConversionEvent(companyId: string, actionType: string): Promise<MetaAdsOperatingBrief> {
   metaSyncForPageLoad = null;
-  return api.put<MetaMetricSyncResult>(`/api/metrics/${companyId}/integrations/meta/conversion-event`, { actionType });
+  return api.put<MetaAdsOperatingBrief>(`/api/metrics/${companyId}/integrations/meta/conversion-event`, { actionType });
 }
 
 export function configureMetaMetric(companyId: string, metricKey: string, input: {

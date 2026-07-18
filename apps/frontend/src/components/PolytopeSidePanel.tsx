@@ -36,6 +36,7 @@ export interface PolytopeSidePanelProps {
   canCreateDepartment?: boolean;
   /** When true, project leaves are treated as workspace leaves (BDT route). */
   bdtWorkspaceLeaves?: boolean;
+  onOpenPaidAcquisition?: (path: string[]) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -150,6 +151,7 @@ export function PolytopeSidePanel({
   canEdit = true,
   canCreateDepartment = canEdit,
   bdtWorkspaceLeaves = false,
+  onOpenPaidAcquisition,
 }: PolytopeSidePanelProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'departments' | 'information'>('departments');
@@ -218,6 +220,12 @@ export function PolytopeSidePanel({
     }) ?? null
     : null;
   const effectiveDept = selectedDept ?? fallbackDept;
+  const selectedInternalNode = effectiveDept ? findNodeAtPath(effectiveDept.internalNodes, selectedInternalPath) : null;
+  const canOpenPaidAcquisition = Boolean(
+    selectedInternalNode
+    && (selectedInternalNode.stableSourceKey === 'mkt_paid_acquisition' || selectedInternalNode.sourceKey === 'mkt_paid_acquisition')
+    && (effectiveDept?.sourceKey === 'dept_marketing' || effectiveDept?.label === 'Marketing'),
+  );
 
   const activeNode = effectiveDept && selectedInternalPath.length > 0
     ? findNodeAtPath(effectiveDept.internalNodes, selectedInternalPath)
@@ -440,6 +448,19 @@ export function PolytopeSidePanel({
             </p>
           )}
         </div>
+
+        {activeTab === 'departments' && canOpenPaidAcquisition && (
+          <div className="px-2 pb-2">
+            <button
+              type="button"
+              onClick={() => onOpenPaidAcquisition?.(selectedInternalPath)}
+              className="w-full rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-left text-[11px] font-semibold text-violet-100 transition-colors hover:bg-violet-400/20"
+            >
+              Open Paid Acquisition
+              <ChevronRight className="ml-1 inline h-3 w-3" />
+            </button>
+          </div>
+        )}
 
         {/* ── Scrollable list ── */}
         <div

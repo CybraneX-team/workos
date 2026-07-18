@@ -36,3 +36,11 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes` for code review.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
+
+## Playwright and E2E automation
+
+Before adding or materially changing Playwright automation, read
+`../../docs/runbooks/playwright-automation.md`. It documents this repository's
+test safety gates, disposable fixture lifecycle, isolated server setup,
+deterministic state strategy, 3D navigation races, worker interference, and
+recordable-tour workflow.

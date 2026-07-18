@@ -10,7 +10,7 @@ import {
 } from '../adapters/googleAnalytics.js';
 import {
   getMetaOAuthUrl, exchangeMetaCode,
-  listMetaAdAccounts, getMetaAdAccount, fetchMetaAdsMetrics, type MetaAdAccount,
+  listMetaAdAccounts, getMetaAdAccount, type MetaAdAccount,
 } from '../adapters/metaAds.js';
 import { validateRazorpayKeys, fetchRazorpayMetrics } from '../adapters/razorpay.js';
 import {
@@ -23,7 +23,9 @@ import {
 } from '../adapters/quickbooks.js';
 import { validateJiraCredentials, fetchJiraMetrics } from '../adapters/jira.js';
 import { validateSlackToken, fetchSlackMetrics } from '../adapters/slack.js';
-import { disconnectMetaMetricSources, reconnectMetaMetricSources, syncMetaCanonicalMetrics } from '../lib/metaMetricEngine.js';
+import { disconnectMetaMetricSources, reconnectMetaMetricSources } from '../lib/metaMetricEngine.js';
+import { buildMetaAdsBrief, enqueueInitialMetaAdsBackfill, enqueueMetaAdsSync } from '../domains/meta-ads/service.js';
+import { reconcileDetachedMetaAdsExperiments } from '../domains/meta-ads/decisionInbox.js';
 
 export const integrationsRouter = express.Router();
 
@@ -471,7 +473,7 @@ integrationsRouter.get('/connections', AUTH, async (req, res) => {
   const connections = (data ?? []).map((row : any) => ({
     integrationId: row.integration_id,
     connectedAt: row.connected_at,
-    lastSynced: row.last_synced_at ?? row.connected_at,
+    lastSynced: row.last_synced_at ?? null,
     accountName: row.account_name ?? row.integration_id,
     sandboxMode: row.sandbox_mode,
   }));
@@ -605,30 +607,47 @@ integrationsRouter.get('/meta/auth-url', AUTH, REQUIRE_WRITE, async (req, res) =
 
 // ─── Meta Ads: shared helpers ──────────────────────────────────────────────────
 
-async function upsertMetaConnection(companyId: string, accessToken: string, account: MetaAdAccount, opts?: { sandbox?: boolean }) {
+async function upsertMetaConnection(
+  companyId: string,
+  accessToken: string,
+  account: MetaAdAccount,
+  opts?: { sandbox?: boolean; tokenExpiresAt?: string | null },
+) {
   const accountName = `Meta Ads · ${account.name}${opts?.sandbox ? ' (sandbox)' : ''}`;
   const { data: previous } = await supabaseAdmin.from('integration_connections')
-    .select('metadata').eq('company_id', companyId).eq('integration_id', 'int-meta').maybeSingle();
+    .select('metadata,last_synced_at,connected_at').eq('company_id', companyId).eq('integration_id', 'int-meta').maybeSingle();
   const previousMetadata = (previous?.metadata ?? {}) as Record<string, unknown>;
+  const sameAccount = previousMetadata.ad_account_id === account.id;
+  const retainedMetadata = sameAccount ? previousMetadata : {};
   const { error } = await supabaseAdmin.from('integration_connections').upsert({
     company_id: companyId,
     integration_id: 'int-meta',
     account_name: accountName,
-    sandbox_mode: false,
+    sandbox_mode: Boolean(opts?.sandbox),
     access_token_enc: encrypt(accessToken),
-    last_synced_at: new Date().toISOString(),
-    metadata: { ...previousMetadata, ad_account_id: account.id, currency: account.currency },
+    token_expires_at: opts?.tokenExpiresAt ?? null,
+    last_synced_at: sameAccount ? previous?.last_synced_at ?? null : null,
+    metadata: { ...retainedMetadata, ad_account_id: account.id, currency: account.currency, timezone: account.timezone ?? retainedMetadata.timezone ?? 'UTC' },
   }, { onConflict: 'company_id,integration_id' });
 
   if (error) throw new Error(error.message);
+  if (previous && !sameAccount) {
+    await supabaseAdmin.from('metric_sources')
+      .update({ status: 'needs_configuration' })
+      .eq('company_id', companyId)
+      .eq('integration_id', 'int-meta')
+      .in('source_key', ['cost_per_conversion_30d', 'selected_conversions_30d']);
+  }
   await reconnectMetaMetricSources(companyId, account.id, account.currency);
+  await reconcileDetachedMetaAdsExperiments(companyId, account.id);
+  await enqueueInitialMetaAdsBackfill(companyId);
 
   return {
     integrationId: 'int-meta',
     accountName,
-    sandboxMode: false,
-    connectedAt: new Date().toISOString(),
-    lastSynced: new Date().toISOString(),
+    sandboxMode: Boolean(opts?.sandbox),
+    connectedAt: previous?.connected_at ?? new Date().toISOString(),
+    lastSynced: sameAccount ? previous?.last_synced_at ?? null : null,
   };
 }
 
@@ -636,11 +655,11 @@ async function upsertMetaConnection(companyId: string, accessToken: string, acco
 // back to the authenticated SPA without ever exposing it to browser JS.
 const META_TICKET_TTL_MS = 10 * 60 * 1000;
 
-function sealMetaTicket(companyId: string, accessToken: string): string {
-  return encrypt(JSON.stringify({ companyId, accessToken, exp: Date.now() + META_TICKET_TTL_MS }));
+function sealMetaTicket(companyId: string, accessToken: string, tokenExpiresAt: string | null): string {
+  return encrypt(JSON.stringify({ companyId, accessToken, tokenExpiresAt, exp: Date.now() + META_TICKET_TTL_MS }));
 }
 
-function openMetaTicket(ticket: string): { companyId: string; accessToken: string; exp: number } | null {
+function openMetaTicket(ticket: string): { companyId: string; accessToken: string; tokenExpiresAt: string | null; exp: number } | null {
   try {
     const parsed = JSON.parse(decrypt(ticket));
     if (typeof parsed.exp !== 'number' || parsed.exp < Date.now()) return null;
@@ -652,10 +671,20 @@ function openMetaTicket(ticket: string): { companyId: string; accessToken: strin
 
 // ─── Meta Ads: OAuth callback ─────────────────────────────────────────────────
 
+function reportMetaConnectionError(context: string, error: unknown) {
+  console.error('[meta-ads] connection failed', {
+    context,
+    message: error instanceof Error ? error.message : String(error),
+  });
+}
+
 integrationsRouter.get('/meta/callback', async (req, res) => {
   const { code, state, error: oauthError } = req.query as Record<string, string>;
 
-  if (oauthError) return res.send(oauthCallbackHtml('error', oauthError));
+  if (oauthError) {
+    reportMetaConnectionError('oauth_denied', oauthError);
+    return res.send(oauthCallbackHtml('error', 'Meta authorization was cancelled or denied. Please try again.'));
+  }
 
   const stateData = state ? verifyState(state) : null;
   if (!stateData) return res.send(oauthCallbackHtml('error', 'Invalid state'));
@@ -663,17 +692,22 @@ integrationsRouter.get('/meta/callback', async (req, res) => {
   const { companyId } = stateData;
 
   let accessToken: string;
+  let tokenExpiresAt: string | null;
   try {
-    accessToken = await exchangeMetaCode(code);
+    const token = await exchangeMetaCode(code);
+    accessToken = token.accessToken;
+    tokenExpiresAt = token.expiresAt;
   } catch (e) {
-    return res.send(oauthCallbackHtml('error', String(e)));
+    reportMetaConnectionError('token_exchange', e);
+    return res.send(oauthCallbackHtml('error', 'Meta authorization could not be completed. Please try again.'));
   }
 
   let accounts: MetaAdAccount[];
   try {
     accounts = await listMetaAdAccounts(accessToken);
   } catch (e) {
-    return res.send(oauthCallbackHtml('error', String(e)));
+    reportMetaConnectionError('account_discovery', e);
+    return res.send(oauthCallbackHtml('error', 'Meta ad accounts could not be loaded. Check permissions and try again.'));
   }
 
   if (accounts.length === 0) {
@@ -682,16 +716,17 @@ integrationsRouter.get('/meta/callback', async (req, res) => {
 
   if (accounts.length === 1) {
     try {
-      const connection = await upsertMetaConnection(companyId, accessToken, accounts[0]);
+      const connection = await upsertMetaConnection(companyId, accessToken, accounts[0], { tokenExpiresAt });
       return res.send(oauthCallbackHtml('success', '', 'int-meta', connection.accountName));
     } catch (e) {
-      return res.send(oauthCallbackHtml('error', String(e)));
+      reportMetaConnectionError('save_connection', e);
+      return res.send(oauthCallbackHtml('error', 'The Meta Ads connection could not be saved. Please try again.'));
     }
   }
 
   // Multiple ad accounts: hand off to the SPA's own account picker rather than
   // choosing one here — the popup has no authenticated app session to render it in.
-  const ticket = sealMetaTicket(companyId, accessToken);
+  const ticket = sealMetaTicket(companyId, accessToken, tokenExpiresAt);
   return res.send(metaAccountRelayHtml(accounts, ticket));
 });
 
@@ -712,16 +747,18 @@ integrationsRouter.post('/meta/finalize', AUTH, REQUIRE_WRITE, async (req, res) 
   try {
     accounts = await listMetaAdAccounts(opened.accessToken);
   } catch (e) {
-    return res.status(502).json({ error: `Failed to verify ad account: ${String(e)}` });
+    reportMetaConnectionError('finalize_account_verification', e);
+    return res.status(502).json({ error: 'Meta ad accounts could not be verified. Check permissions and try again.' });
   }
   const account = accounts.find((a) => a.id === adAccountId);
   if (!account) return res.status(400).json({ error: 'That ad account is no longer accessible with this Facebook login.' });
 
   try {
-    const connection = await upsertMetaConnection(companyId, opened.accessToken, account);
+    const connection = await upsertMetaConnection(companyId, opened.accessToken, account, { tokenExpiresAt: opened.tokenExpiresAt });
     return res.json(connection);
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    reportMetaConnectionError('finalize_save_connection', e);
+    return res.status(500).json({ error: 'The Meta Ads connection could not be saved. Please try again.' });
   }
 });
 
@@ -734,6 +771,7 @@ integrationsRouter.post('/meta/finalize', AUTH, REQUIRE_WRITE, async (req, res) 
 function isMetaSandboxAllowed(userId: string): boolean {
   if (process.env.NODE_ENV === 'production') return false;
   if (!process.env.META_SANDBOX_ACCESS_TOKEN || !process.env.META_SANDBOX_AD_ACCOUNT_ID) return false;
+  if (process.env.META_SANDBOX_ALLOW_ANY_DEV_USER === 'true') return true;
   const allowed = (process.env.META_SANDBOX_ALLOWED_USER_IDS ?? '')
     .split(',').map((s) => s.trim()).filter(Boolean);
   return allowed.includes(userId);
@@ -758,7 +796,8 @@ integrationsRouter.post('/meta/connect-sandbox', AUTH, REQUIRE_WRITE, async (req
     const connection = await upsertMetaConnection(companyId, accessToken, account, { sandbox: true });
     return res.json(connection);
   } catch (e) {
-    return res.status(502).json({ error: `Failed to connect sandbox account: ${String(e)}` });
+    reportMetaConnectionError('sandbox_connection', e);
+    return res.status(502).json({ error: 'The Meta sandbox account could not be connected. Check the backend sandbox configuration.' });
   }
 });
 
@@ -1035,11 +1074,48 @@ integrationsRouter.post('/meta/sync', AUTH, REQUIRE_READ, requirePermission('twi
   const companyId = req.auth!.companyId;
   if (!companyId) return res.status(403).json({ error: 'no_company' });
   try {
-    return res.json(await syncMetaCanonicalMetrics(companyId));
+    const run = await enqueueMetaAdsSync(companyId, 'manual', req.auth!.userId);
+    const brief = await buildMetaAdsBrief(companyId);
+    return res.json({
+      fresh: false,
+      deduplicated: run.status !== 'pending',
+      syncedAt: brief.connection.lastSuccessfulSyncAt,
+      accountId: brief.connection.accountId ?? '',
+      preview: {
+        spend30d: brief.summary.spend,
+        impressions30d: brief.summary.impressions,
+        clicks30d: brief.summary.clicks,
+        ctr: brief.summary.ctr,
+        cpc: brief.summary.cpc,
+        roas: brief.summary.purchaseRoas,
+        conversions30d: brief.summary.selectedConversions,
+        cpa: brief.summary.cpa,
+        currency: brief.summary.currency ?? '',
+        selectedConversionAction: brief.selectedConversionAction,
+        conversionActions: brief.availableConversionActions,
+        activeCampaigns: brief.campaigns.filter((campaign) => campaign.status === 'ACTIVE').length,
+        topCampaigns: brief.campaigns.slice(0, 5).map((campaign) => ({ name: campaign.campaignName, spend: campaign.spend, roas: campaign.purchaseRoas, conversions: campaign.selectedConversions })),
+      },
+      metrics: brief.goalContext.map((metric) => ({
+        id: metric.metricId,
+        name: metric.label,
+        current_value: metric.currentValue,
+        target_value: metric.targetValue,
+        normalized_score: metric.healthScore,
+        unit: metric.unit,
+        source_key: metric.metricKey,
+        source_status: 'active',
+        last_synced_at: brief.connection.lastSuccessfulSyncAt,
+        last_error: brief.connection.error,
+      })),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = message === 'meta_not_connected' ? 404 : 502;
-    return res.status(status).json({ error: message });
+    if (status === 502) reportMetaConnectionError('legacy_sync_enqueue', error);
+    return res.status(status).json({
+      error: status === 404 ? 'meta_not_connected' : 'Meta Ads refresh could not be queued. Please try again.',
+    });
   }
 });
 
@@ -1090,10 +1166,22 @@ integrationsRouter.get('/:integrationId/metrics', AUTH, REQUIRE_WRITE, async (re
       metrics = { type: 'google-analytics', data: await fetchGAMetrics(accessToken, refreshToken, propertyId) };
 
     } else if (integrationId === 'int-meta') {
-      const accessToken = decrypt(conn.access_token_enc);
-      const adAccountId = (conn.metadata as Record<string, string>)?.ad_account_id ?? '';
-      if (!adAccountId) return res.status(400).json({ error: 'No Meta ad account ID stored. Reconnect.' });
-      metrics = { type: 'meta-ads', data: await fetchMetaAdsMetrics(accessToken, adAccountId) };
+      const brief = await buildMetaAdsBrief(companyId);
+      metrics = { type: 'meta-ads', data: {
+        spend30d: brief.summary.spend,
+        impressions30d: brief.summary.impressions,
+        clicks30d: brief.summary.clicks,
+        ctr: brief.summary.ctr,
+        cpc: brief.summary.cpc,
+        roas: brief.summary.purchaseRoas,
+        conversions30d: brief.summary.selectedConversions,
+        cpa: brief.summary.cpa,
+        currency: brief.summary.currency ?? '',
+        selectedConversionAction: brief.selectedConversionAction,
+        conversionActions: brief.availableConversionActions,
+        activeCampaigns: brief.campaigns.filter((campaign) => campaign.status === 'ACTIVE').length,
+        topCampaigns: brief.campaigns.slice(0, 5).map((campaign) => ({ name: campaign.campaignName, spend: campaign.spend, roas: campaign.purchaseRoas, conversions: campaign.selectedConversions })),
+      } };
 
     } else if (integrationId === 'int-razorpay') {
       const keyId     = decrypt(conn.access_token_enc);
@@ -1179,13 +1267,19 @@ integrationsRouter.get('/:integrationId/metrics', AUTH, REQUIRE_WRITE, async (re
     if (integrationId !== 'int-meta') saveSnapshot(companyId, integrationId, metricsData).catch(() => {});
 
     // Update last_synced_at
-    await supabaseAdmin.from('integration_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('company_id', companyId)
-      .eq('integration_id', integrationId);
+    if (integrationId !== 'int-meta') {
+      await supabaseAdmin.from('integration_connections')
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq('company_id', companyId)
+        .eq('integration_id', integrationId);
+    }
 
     return res.json(metrics);
   } catch (e) {
+    if (integrationId === 'int-meta') {
+      reportMetaConnectionError('legacy_metrics_read', e);
+      return res.status(502).json({ error: 'Meta Ads metrics are temporarily unavailable. Please try again.' });
+    }
     return res.status(502).json({ error: `Failed to fetch metrics: ${String(e)}` });
   }
 });
@@ -1199,10 +1293,15 @@ integrationsRouter.delete('/:integrationId/disconnect', AUTH, REQUIRE_WRITE, asy
 
   if (integrationId === 'int-meta') await disconnectMetaMetricSources(companyId);
 
-  await supabaseAdmin.from('integration_connections')
+  const { error } = await supabaseAdmin.from('integration_connections')
     .delete()
     .eq('company_id', companyId)
     .eq('integration_id', integrationId);
+  if (error) return res.status(500).json({ error: 'disconnect_failed' });
+
+  if (integrationId === 'int-meta') {
+    await reconcileDetachedMetaAdsExperiments(companyId, null);
+  }
 
   return res.json({ ok: true });
 });

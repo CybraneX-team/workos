@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import type { RoleId } from '../supabase';
 import { api } from '../api';
@@ -82,25 +82,35 @@ export function useTeamMembers(companyId: string | null | undefined) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function fetchMembers() {
-    if (!companyId) { setLoading(false); return; }
+  const fetchMembers = useCallback(async () => {
+    if (!companyId) { setLoading(false); return true; }
 
     try {
       const { members: rows } = await api.get<{ members: TeamMember[] }>('/api/team/members');
       setMembers(rows ?? []);
+      return true;
     } catch (error) {
       console.error('[team] fetchMembers', error);
+      return false;
     } finally {
       setLoading(false);
     }
-  }
+  }, [companyId]);
 
   useEffect(() => {
-    void fetchMembers();
     if (!companyId) return;
-    const timer = window.setInterval(() => void fetchMembers(), 30000);
-    return () => window.clearInterval(timer);
-  }, [companyId]);
+    let active = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      const succeeded = await fetchMembers();
+      if (active) timer = window.setTimeout(poll, succeeded ? 30_000 : 1_500);
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [companyId, fetchMembers]);
 
   return { members, loading, refetch: fetchMembers };
 }

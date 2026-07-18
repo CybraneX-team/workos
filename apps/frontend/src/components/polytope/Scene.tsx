@@ -441,6 +441,10 @@ export function Scene({
   const prevPathPropsRef = useRef<string[]>([]);
   useEffect(() => {
     const nextPath = selectedInternalPathProps ?? [];
+    // A stable-key deep link supplies its department and internal path in the
+    // same parent render. The scene's selected department is synchronized one
+    // render later; validating before then would incorrectly erase the path.
+    if (nextPath.length > 0 && selectedId === null) return;
     if (nextPath.length === prevPathPropsRef.current.length &&
       nextPath.every((id, idx) => id === prevPathPropsRef.current[idx])) {
       return;
@@ -508,10 +512,13 @@ export function Scene({
     setBackInfo(null);
     cameraHistoryRef.current = [];
     if (selectedId === null) {
+      // A parent-supplied deep-link path arrives before the scene's department
+      // selection. Preserve it until flyToDepartment synchronizes selectedId.
+      if ((selectedInternalPathProps?.length ?? 0) > 0) return;
       setSelectedInternalPath([]);
       onPathChange([]);
     }
-  }, [selectedId, setBackInfo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedId, selectedInternalPathProps, setBackInfo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (selectedId === null && orbitRef.current) {

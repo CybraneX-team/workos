@@ -26,6 +26,7 @@ import {
   fetchDepartmentAccess,
   fetchRbacRoles,
   hasPermission,
+  moduleSupportsAction,
   isSystemRole,
   saveDepartmentMemberGrant,
   saveDepartmentRoleGrant,
@@ -33,6 +34,7 @@ import {
   type DepartmentAccess,
   type DepartmentAccessResponse,
   type ExpandedPermissions,
+  type RbacAction,
   type RoleDefinition,
 } from '../lib/db/rbac';
 
@@ -236,7 +238,7 @@ export default function RBAC() {
     setRoleError(null);
   }
 
-  function toggleDraftPermission(module: keyof ExpandedPermissions, action: 'read' | 'write' | 'delete') {
+  function toggleDraftPermission(module: keyof ExpandedPermissions, action: RbacAction) {
     if (!draft) return;
     const current = draft.permissions[module][action];
     if (!current && !can(module, action)) return;
@@ -654,6 +656,9 @@ export default function RBAC() {
                         <tr key={mod} className="border-b border-gray-800/40">
                           <td className="py-3 px-4 text-sm text-gray-300 capitalize">{mod}</td>
                           {ACTIONS.map(action => {
+                            if (!moduleSupportsAction(mod, action)) {
+                              return <td key={action} className="py-3 px-4 text-center text-gray-800">—</td>;
+                            }
                             const allowed = hasPermission(selectedRole?.permissions, mod, action);
                             return (
                               <td key={action} className="py-3 px-4 text-center">
@@ -714,6 +719,9 @@ export default function RBAC() {
                       <tr key={mod} className="border-b border-gray-800/40">
                         <td className="py-3 px-4 text-sm text-gray-300 capitalize">{mod}</td>
                         {ACTIONS.map(action => {
+                          if (!moduleSupportsAction(mod, action)) {
+                            return <td key={action} className="py-3 px-4 text-center text-gray-800">—</td>;
+                          }
                           const checked = draft.permissions[mod][action];
                           const disabled = !checked && !can(mod, action);
                           return (

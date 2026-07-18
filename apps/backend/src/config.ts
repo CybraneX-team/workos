@@ -10,6 +10,7 @@ const EnvSchema = z.object({
   WORKER_ID: z.string().default(`w-${process.pid}`),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+  GEMINI_IMAGE_MODEL: z.string().default('gemini-3.1-flash-image'),
   ERPNEXT_CONTROL_PLANE_URL: z.string().url().default('http://localhost:8090'),
   ERPNEXT_CONTROL_PLANE_TOKEN: z.string().min(16),
   ERPNEXT_TARGET_ENV: z.enum(['local', 'remote']).default('local'),
@@ -36,6 +37,13 @@ const EnvSchema = z.object({
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
   META_REDIRECT_URI: z.string().optional(),
+  META_GRAPH_API_VERSION: z.string().default('v25.0'),
+  META_AUTHORING_MODE: z.enum(['disabled', 'sandbox_only', 'allowlisted_real']).default('disabled'),
+  META_AUTHORING_ALLOWED_ACCOUNT_IDS: z.string().default(''),
+  META_AUTHORING_LAUNCH_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
+  META_MAX_LIFETIME_BUDGET_MINOR: z.coerce.number().int().positive().default(100_000),
+  META_AUTHORING_FAKE_META: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
+  META_AUTHORING_FAKE_GEMINI: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
   // Frontend URL — used for CORS and OAuth redirect back
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   // Secret shared with Unicorn Simulator backend to authenticate provision calls

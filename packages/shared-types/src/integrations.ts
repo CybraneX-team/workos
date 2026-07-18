@@ -51,6 +51,548 @@ export interface MetaAdAccount {
   name: string;
   currency: string;
   accountStatus: number; // 1 = ACTIVE
+  timezone?: string;
+}
+
+export type MetaAdsFindingSeverity = 'info' | 'warning' | 'critical';
+export type MetaAdsFindingScope = 'integration' | 'account' | 'campaign' | 'adset' | 'ad';
+export type MetaAdsConnectionState =
+  | 'disconnected'
+  | 'backfilling'
+  | 'refreshing'
+  | 'healthy'
+  | 'no_spend'
+  | 'needs_configuration'
+  | 'stale'
+  | 'failed'
+  | 'historical';
+export type MetaAdsSyncStatus = 'pending' | 'running' | 'complete' | 'failed';
+export type MetaAdsSyncReason = 'initial_backfill' | 'daily' | 'manual' | 'recovery';
+export type MetaAdsDiagnosticCoverage = 'not_started' | 'preparing' | 'current' | 'partial';
+export type MetaAdsExperimentMetric = 'ctr' | 'cpa' | 'purchase_roas';
+export type MetaAdsExperimentStatus = 'planned' | 'measuring' | 'completed' | 'cancelled';
+export type MetaAdsExperimentOutcome = 'improved' | 'worsened' | 'no_clear_change' | 'inconclusive';
+export type MetaAdsExperimentConfidence = 'medium' | 'high';
+
+export interface MetaAdsConnectionHealth {
+  connected: boolean;
+  state: MetaAdsConnectionState;
+  accountId: string | null;
+  accountName: string | null;
+  currency: string | null;
+  timezone: string | null;
+  dataThrough: string | null;
+  lastSuccessfulSyncAt: string | null;
+  lastAttemptedAt: string | null;
+  dataAgeHours: number | null;
+  error: string | null;
+  adsManagerUrl: string | null;
+}
+
+export interface MetaAdsSummaryValues {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  purchaseRoas: number;
+  selectedConversions: number;
+  cpa: number | null;
+}
+
+export interface MetaAdsSummary extends MetaAdsSummaryValues {
+  periodStart: string | null;
+  periodEnd: string | null;
+  currency: string | null;
+  previous: MetaAdsSummaryValues | null;
+  deltas: {
+    spendPct: number | null;
+    ctrPct: number | null;
+    purchaseRoasPct: number | null;
+    selectedConversionsPct: number | null;
+    cpaPct: number | null;
+  };
+}
+
+export interface MetaAdsSeriesPoint extends MetaAdsSummaryValues {
+  date: string;
+}
+
+export interface MetaAdsCampaignSummary extends MetaAdsSummaryValues {
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  spendShare: number;
+  purchaseRoasDeltaPct: number | null;
+  adsManagerUrl: string;
+}
+
+export interface MetaAdsGoalContext {
+  metricId: string;
+  metricKey: string;
+  label: string;
+  unit: string;
+  currentValue: number | null;
+  targetValue: number | null;
+  healthScore: number | null;
+  owner: { id: string; name: string } | null;
+  goals: Array<{ id: string; title: string }>;
+}
+
+export interface MetaAdsFinding {
+  id: string;
+  fingerprint: string;
+  severity: MetaAdsFindingSeverity;
+  scope: MetaAdsFindingScope;
+  kind: string;
+  title: string;
+  explanation: string;
+  affectedPeriod: { start: string | null; end: string | null };
+  evidence: Record<string, string | number | boolean | null>;
+  estimatedSpendExposure: number;
+  action: {
+    kind: 'open_goal' | 'configure_conversion' | 'reconnect_meta' | 'open_ads_manager' | 'review_paid_acquisition';
+    label: string;
+    href: string;
+  };
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  episode?: number;
+  confidence?: MetaAdsExperimentConfidence | null;
+  diagnosis?: MetaAdsDiagnostic | null;
+  recommendation?: MetaAdsRecommendation | null;
+  workflowState?: 'open' | 'dismissed' | 'planned' | 'measuring' | 'completed' | null;
+}
+
+export interface MetaAdsDiagnostic {
+  kind: string;
+  summary: string;
+  likelyDriver: string;
+  confidence: MetaAdsExperimentConfidence;
+  affectedObject: {
+    scope: Extract<MetaAdsFindingScope, 'account' | 'campaign' | 'adset' | 'ad'>;
+    id: string;
+    name: string;
+    campaignId?: string | null;
+    campaignName?: string | null;
+    adsetId?: string | null;
+    adsetName?: string | null;
+    creativeId?: string | null;
+    creativeName?: string | null;
+    creativeFormat?: string | null;
+    thumbnailUrl?: string | null;
+  };
+  evidence: Record<string, string | number | boolean | null>;
+}
+
+export interface MetaAdsRecommendation {
+  kind: 'rotate_creative' | 'replace_conversion_outlier' | 'rebalance_campaign';
+  hypothesis: string;
+  change: string;
+  keepConstant: string[];
+  primaryMetric: MetaAdsExperimentMetric;
+  primaryDirection: 'higher' | 'lower';
+  guardrailMetric: string;
+  measurementScope: 'account' | 'campaign' | 'adset';
+  measurementScopeId: string;
+  measurementScopeName: string;
+  adsManagerUrl: string;
+}
+
+export interface MetaAdsDeliverySummary {
+  scope: 'adset' | 'ad';
+  id: string;
+  name: string;
+  status: string;
+  campaignId: string;
+  campaignName: string;
+  adsetId: string | null;
+  adsetName: string | null;
+  creativeId: string | null;
+  creativeName: string | null;
+  creativeFormat: string | null;
+  thumbnailUrl: string | null;
+  spend: number;
+  spendShare: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  reach: number;
+  frequency: number;
+  outboundClicks: number;
+  landingPageViews: number;
+  landingPageViewRate: number | null;
+  purchaseRoas: number;
+  selectedConversions: number;
+  cpa: number | null;
+  adsManagerUrl: string;
+}
+
+export interface MetaAdsAssignee {
+  memberId: string;
+  name: string;
+  role: string;
+  avatarUrl: string | null;
+  isCurrentUser: boolean;
+}
+
+export interface MetaAdsExperimentMetrics {
+  periodStart: string;
+  periodEnd: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  purchaseRoas: number;
+  purchaseCount: number;
+  selectedConversions: number;
+  cpa: number | null;
+}
+
+export interface MetaAdsExperimentEvent {
+  id: string;
+  type: 'started' | 'updated' | 'applied' | 'extended' | 'evaluated' | 'cancelled' | 'owner_removed';
+  actorName: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface MetaAdsExperiment {
+  id: string;
+  findingId: string;
+  findingEpisode: number;
+  accountId: string;
+  accountName: string | null;
+  formerAccount: boolean;
+  status: MetaAdsExperimentStatus;
+  outcome: MetaAdsExperimentOutcome | null;
+  title: string;
+  hypothesis: string;
+  recommendedChange: string;
+  scope: Extract<MetaAdsFindingScope, 'account' | 'campaign' | 'adset' | 'ad'>;
+  scopeId: string;
+  scopeName: string;
+  measurementScope: 'account' | 'campaign' | 'adset';
+  measurementScopeId: string;
+  measurementScopeName: string;
+  primaryMetric: MetaAdsExperimentMetric;
+  primaryDirection: 'higher' | 'lower';
+  guardrailMetric: string;
+  selectedConversionAction: string | null;
+  recommendation: MetaAdsRecommendation;
+  sourceEvidence: Record<string, unknown>;
+  owner: { memberId: string | null; name: string; missing: boolean };
+  dueDate: string;
+  overdue: boolean;
+  createdAt: string;
+  appliedAt: string | null;
+  appliedLocalDate: string | null;
+  implementationNote: string | null;
+  keptBudgetConstant: boolean | null;
+  baseline7: MetaAdsExperimentMetrics | null;
+  baseline14: MetaAdsExperimentMetrics | null;
+  evaluationStart: string | null;
+  evaluationDue7: string | null;
+  evaluationDue14: string | null;
+  measurementProgress: { completeDays: number; targetDays: 7 | 14 } | null;
+  evaluationDays: 7 | 14 | null;
+  resultMetrics: MetaAdsExperimentMetrics | null;
+  resultExplanation: string | null;
+  confidence: MetaAdsExperimentConfidence | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  adsManagerUrl: string;
+  events?: MetaAdsExperimentEvent[];
+}
+
+export interface MetaAdsDecisionInbox {
+  generatedAt: string;
+  accountId: string | null;
+  accountName: string | null;
+  timezone: string | null;
+  dataThrough: string | null;
+  coverage: MetaAdsDiagnosticCoverage;
+  coverageWarnings: string[];
+  counts: {
+    open: number;
+    planned: number;
+    measuring: number;
+    overdue: number;
+    completed: number;
+  };
+  findings: MetaAdsFinding[];
+  activeExperiments: MetaAdsExperiment[];
+  recentResults: MetaAdsExperiment[];
+  deliveryDrivers: MetaAdsDeliverySummary[];
+}
+
+export interface MetaAdsSyncRun {
+  id: string;
+  accountId: string;
+  reason: MetaAdsSyncReason;
+  status: MetaAdsSyncStatus;
+  requestedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  attempt: number;
+  maxAttempts: number;
+  error: string | null;
+  dataThrough: string | null;
+  diagnosticCoverage?: MetaAdsDiagnosticCoverage;
+  warnings?: string[];
+}
+
+export interface MetaAdsOperatingBrief {
+  connection: MetaAdsConnectionHealth;
+  summary: MetaAdsSummary;
+  series: MetaAdsSeriesPoint[];
+  campaigns: MetaAdsCampaignSummary[];
+  goalContext: MetaAdsGoalContext[];
+  findings: MetaAdsFinding[];
+  topFindings: MetaAdsFinding[];
+  selectedConversionAction: string | null;
+  availableConversionActions: Array<{ actionType: string; value: number }>;
+  latestSyncRun: MetaAdsSyncRun | null;
+}
+
+export interface MetaAdsAttention {
+  count: number;
+  warningCount: number;
+  criticalCount: number;
+  highestPriorityFinding: MetaAdsFinding | null;
+  dataAgeHours: number | null;
+  decisionCount?: number;
+  overdueCount?: number;
+  authoringApprovalCount?: number;
+  authoringFailureCount?: number;
+}
+
+export type MetaAdsAuthoringMode = 'disabled' | 'sandbox_only' | 'allowlisted_real';
+export type MetaAdsAuthoringStatus =
+  | 'draft'
+  | 'generating'
+  | 'submitted'
+  | 'publish_approved'
+  | 'publishing'
+  | 'published_paused'
+  | 'launch_approved'
+  | 'launching'
+  | 'scheduled'
+  | 'active'
+  | 'pending_meta_review'
+  | 'paused'
+  | 'failed'
+  | 'cancelled';
+export type MetaAdsCreativeAspectRatio = '1:1' | '4:5' | '9:16';
+export type MetaAdsCreativeAssetSource = 'upload' | 'gemini';
+export type MetaAdsCampaignJobKind = 'publish_paused' | 'launch' | 'pause';
+export type MetaAdsCampaignJobStatus = 'pending' | 'running' | 'complete' | 'failed';
+
+export interface MetaAdsPageIdentity {
+  pageId: string;
+  pageName: string;
+  instagramActorId: string | null;
+  instagramUsername: string | null;
+}
+
+export interface MetaAdsAuthoringReadiness {
+  mode: MetaAdsAuthoringMode;
+  connected: boolean;
+  permitted: boolean;
+  launchEnabled: boolean;
+  accountId: string | null;
+  accountName: string | null;
+  currency: string | null;
+  timezone: string | null;
+  sandbox: boolean;
+  tokenExpiresAt: string | null;
+  accountStatus: number | null;
+  pages: MetaAdsPageIdentity[];
+  maxLifetimeBudgetMinor: number;
+  blockers: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+}
+
+export interface MetaAdsBrandKit {
+  businessName: string;
+  brandVoice: string;
+  valueProposition: string;
+  targetAudience: string;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  logoAssetId: string | null;
+  requiredPhrases: string[];
+  prohibitedPhrases: string[];
+  updatedAt: string | null;
+}
+
+export interface MetaAdsCreativeAsset {
+  id: string;
+  source: MetaAdsCreativeAssetSource;
+  fileName: string;
+  mimeType: string;
+  byteSize: number;
+  width: number | null;
+  height: number | null;
+  aspectRatio: MetaAdsCreativeAspectRatio | null;
+  signedUrl: string;
+  prompt: string | null;
+  model: string | null;
+  createdAt: string;
+}
+
+export interface MetaAdsCreativeConcept {
+  id: string;
+  name: string;
+  rationale: string;
+  primaryText: string;
+  headline: string;
+  description: string;
+  callToAction: 'LEARN_MORE' | 'SHOP_NOW' | 'SIGN_UP' | 'CONTACT_US' | 'GET_QUOTE';
+  assetIds: Partial<Record<MetaAdsCreativeAspectRatio, string>>;
+}
+
+export interface MetaAdsCreativeGenerationJob {
+  id: string;
+  draftId: string;
+  status: MetaAdsCampaignJobStatus;
+  attempt: number;
+  maxAttempts: number;
+  error: string | null;
+  concepts: MetaAdsCreativeConcept[];
+  requestedAt: string;
+  completedAt: string | null;
+}
+
+export interface MetaAdsErpProductContext {
+  itemCode: string;
+  itemName: string;
+  disabled: boolean;
+  currency: string | null;
+  price: number | null;
+  stockQuantity: number | null;
+  source: 'erpnext';
+  confirmedAt: string;
+}
+
+export interface MetaAdsCampaignBrief {
+  goal: string;
+  offer: string;
+  proofPoints: string[];
+  targetCustomer: string;
+  landingPageUrl: string;
+  callToAction: MetaAdsCreativeConcept['callToAction'];
+  regulatedCategory: 'none' | 'credit' | 'employment' | 'housing' | 'politics' | 'alcohol' | 'gambling' | 'tobacco' | 'healthcare' | 'financial_products' | 'crypto' | 'adult' | 'weapons';
+}
+
+export interface MetaAdsCampaignAudience {
+  countries: string[];
+  ageMin: number;
+  ageMax: number;
+  languageIds: number[];
+}
+
+export interface MetaAdsDraftAd {
+  id: string;
+  conceptId: string | null;
+  assetId: string;
+  name: string;
+  primaryText: string;
+  headline: string;
+  description: string;
+  callToAction: MetaAdsCreativeConcept['callToAction'];
+}
+
+export interface MetaAdsCampaignDraftContent {
+  name: string;
+  brief: MetaAdsCampaignBrief;
+  identity: MetaAdsPageIdentity | null;
+  audience: MetaAdsCampaignAudience;
+  lifetimeBudgetMinor: number;
+  startTime: string;
+  endTime: string;
+  specialAdCategories: string[];
+  dsaBeneficiary: string;
+  dsaPayor: string;
+  productContext: MetaAdsErpProductContext | null;
+  concepts: MetaAdsCreativeConcept[];
+  ads: MetaAdsDraftAd[];
+}
+
+export interface MetaAdsPreflightIssue {
+  code: string;
+  severity: 'blocking' | 'warning';
+  field: string | null;
+  message: string;
+}
+
+export interface MetaAdsCampaignPreflight {
+  checkedAt: string;
+  ready: boolean;
+  snapshotHash: string;
+  issues: MetaAdsPreflightIssue[];
+}
+
+export interface MetaAdsCampaignApproval {
+  id: string;
+  kind: 'publish' | 'launch';
+  approvedBy: string | null;
+  approvedByName: string;
+  version: number;
+  snapshotHash: string;
+  note: string | null;
+  approvedAt: string;
+}
+
+export interface MetaAdsCampaignEvent {
+  id: string;
+  type: string;
+  actorName: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface MetaAdsCampaignJob {
+  id: string;
+  draftId: string;
+  kind: MetaAdsCampaignJobKind;
+  status: MetaAdsCampaignJobStatus;
+  attempt: number;
+  maxAttempts: number;
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+  steps: Array<{
+    key: string;
+    status: 'pending' | 'running' | 'complete' | 'failed';
+    metaObjectId: string | null;
+    error: string | null;
+  }>;
+}
+
+export interface MetaAdsCampaignDraft {
+  id: string;
+  accountId: string;
+  status: MetaAdsAuthoringStatus;
+  version: number;
+  content: MetaAdsCampaignDraftContent;
+  preflight: MetaAdsCampaignPreflight | null;
+  approvals: MetaAdsCampaignApproval[];
+  latestJob: MetaAdsCampaignJob | null;
+  metaObjects: {
+    campaignId: string | null;
+    adsetId: string | null;
+    creativeIds: string[];
+    adIds: string[];
+  };
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  events?: MetaAdsCampaignEvent[];
 }
 
 export interface RazorpayMetrics {
@@ -172,7 +714,7 @@ export interface SlackMetrics {
 export interface IntegrationConnection {
   integrationId: string;
   connectedAt: string;
-  lastSynced: string;
+  lastSynced: string | null;
   accountName: string;
   sandboxMode: boolean;
 }

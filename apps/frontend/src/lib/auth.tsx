@@ -39,7 +39,7 @@ interface AuthContextValue extends AuthState {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   // Permission helpers
-  can: (module: RbacModule, action: 'read' | 'write' | 'delete') => boolean;
+  can: (module: RbacModule, action: RbacAction) => boolean;
   canRead: (module: RbacModule) => boolean;
   canWrite: (module: RbacModule) => boolean;
   canDelete: (module: RbacModule) => boolean;

@@ -1,6 +1,6 @@
 # WorkOS backend guide
 
-Last verified: 2026-07-13.
+Last verified: 2026-07-14.
 
 This application is the WorkOS-side owner of the ERPNext integration. Read `../../docs/architecture/erpnext-control-plane.md` before changing ERP boundaries.
 
@@ -28,10 +28,20 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 - `src/routes/oidc.ts`: OIDC grant flow and idempotent clients keyed by company/environment/provider.
 - `src/lib/erpnextRoleMapping.ts`: WorkOS-to-Frappe role computation.
 - `src/domains/workos-erp/`: WorkOS projections and public ERP routes.
+- `src/domains/meta-ads/`: read-only Meta history, resumable deep reports,
+  findings, Decision Inbox evaluation, and separately gated Campaign Studio
+  drafts/approvals/jobs/browser APIs.
+- `src/adapters/metaAdsAuthoring.ts`: the only Meta object writer. Read-side
+  synchronization must never import it.
 - `src/adapters/erpnext.ts`: projection-facing reads implemented through batch queries.
 - `db/migrations/035_erpnext_control_plane_outbox.sql`: OIDC ownership and outbox schema.
 - `test/erpnextArchitecture.test.ts`: executable ownership boundary.
 - `scripts/reset-development-data.ts`: destructive, guarded shared-project reset.
+- `scripts/seed-meta-ads-fixture.ts`: dry-run-first deterministic operating-loop fixtures.
+- `scripts/advance-meta-ads-experiment-fixture.ts`: fixture-only continuation of
+  one browser-applied experiment through deterministic evaluation.
+- `test/metaAdsAuthoring.db.test.ts`: disposable fake-Meta/Gemini lifecycle using
+  real durable database and private Storage state.
 
 ## Implementation rules
 
@@ -41,6 +51,9 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 - Never put a plaintext OIDC client secret in the outbox. The dispatcher may decrypt it only immediately before the protected SSO call.
 - Preserve existing browser endpoint paths and response shapes when moving internals.
 - Keep BDT reads, business projections, prompts, recommendations, and role policy here.
+- Keep Campaign Studio fail-closed: Website Traffic only, paused publication,
+  separate launch approval, exact account allowlist for real mode, and emergency
+  pause as the only post-launch edit.
 
 ## Verification
 
@@ -48,6 +61,9 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 pnpm --filter backend typecheck
 pnpm --filter backend test:erpnext-architecture
 pnpm --filter backend test:metrics
+pnpm --filter backend test:meta-ads
+pnpm --filter backend test:meta-ads-db
+pnpm --filter backend test:meta-ads-authoring-db
 ```
 
 Also run contract and control-plane tests when changing the internal API.

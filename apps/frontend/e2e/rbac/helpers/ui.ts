@@ -8,7 +8,7 @@ export async function signInViaUi(
   await page.goto('/auth');
   await page.getByPlaceholder('Email address').fill(user.email);
   await page.getByPlaceholder('Password').fill(user.password);
-  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await page.locator('form').getByRole('button', { name: /^sign in$/i }).click();
   await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 20_000 });
   await expect(appNav(page)).toBeVisible();
 }

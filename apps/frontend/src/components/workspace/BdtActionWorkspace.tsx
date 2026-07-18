@@ -29,8 +29,8 @@ import {
 import { MetaMetricPanel } from './panels/MetaMetricPanel';
 import { SpendReachPanel } from './panels/SpendReachPanel';
 import { CampaignsPanel } from './panels/CampaignsPanel';
+import { MetaAdsOperatingHub } from './panels/MetaAdsOperatingHub';
 import { GlassCard, SectionTitle } from './panels/PanelShell';
-import { syncMetaMetricsOnce } from '../../lib/integrations/service';
 import {
   EmptyMetricsState,
   MetricCard,
@@ -45,6 +45,7 @@ export interface BdtActionWorkspaceProps {
   onClose: () => void;
   onDepartmentClick: (deptId: string) => void;
   isOpen?: boolean;
+  containerMode?: 'meta-paid-acquisition';
   canEdit?: boolean;
   onAddMember?: (deptId: string, nodeId: string) => void;
   onDeleteMember?: (dept: UExternalNode, node: UInternalNode, memberIndex: number) => void;
@@ -620,6 +621,7 @@ export function BdtActionWorkspace({
   onClose,
   onDepartmentClick,
   isOpen = true,
+  containerMode,
   canEdit = false,
   onAddMember,
   onDeleteMember,
@@ -638,6 +640,7 @@ export function BdtActionWorkspace({
   const { profile, role } = useAuth();
   const companyId = profile?.company_id ?? null;
   const canEditMetrics = isMetricAdmin(role);
+  const isMetaContainerMode = containerMode === 'meta-paid-acquisition';
   const isPersistedBdtNode = UUID_RE.test(node.id);
   const { metrics: nodeMetrics, rollups, createMetric, createDraft, updateMetricValue } = useCanonicalMetrics(
     isPersistedBdtNode ? companyId : null,
@@ -749,10 +752,6 @@ export function BdtActionWorkspace({
     (department.sourceKey === 'dept_marketing' || department.id === 'dept_marketing' || department.label === 'Marketing')
     && isPersistedBdtNode
   );
-
-  useEffect(() => {
-    if (isOpen && isMarketingContext) void syncMetaMetricsOnce().catch(() => {});
-  }, [isOpen, isMarketingContext]);
 
   const panelIconByType: Record<string, typeof Activity> = {
     signal: Radio,
@@ -980,7 +979,7 @@ export function BdtActionWorkspace({
       <div className="relative z-10 flex-1 flex overflow-hidden">
         
         {/* Left Sidebar (Action Info & Context) */}
-        <div className="w-80 shrink-0 flex flex-col border-r rounded-bl-2xl" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(10,10,14,0.4)', backdropFilter: 'blur(16px)' }}>
+        {!isMetaContainerMode && <div className="w-80 shrink-0 flex flex-col border-r rounded-bl-2xl" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(10,10,14,0.4)', backdropFilter: 'blur(16px)' }}>
           <div className="p-6 flex-1 overflow-y-auto scrollbar-hide">
             <h1 className="text-3xl font-bold tracking-tight text-white mb-2 leading-tight" style={{ textShadow: `0 0 30px ${primaryColor}40` }}>
               {node.label}
@@ -1009,11 +1008,12 @@ export function BdtActionWorkspace({
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Right Content Area (Dynamic Panels) */}
         <div className="flex-1 overflow-y-auto p-6 lg:p-10 scrollbar-hide relative">
-          <div className="max-w-5xl mx-auto flex flex-col gap-5">
+          <div className={`${isMetaContainerMode ? 'max-w-7xl' : 'max-w-5xl'} mx-auto flex flex-col gap-5`}>
+            {isMetaContainerMode && <MetaAdsOperatingHub />}
             {isTeamNode && (
               <GlassCard>
                 <div className="flex items-start justify-between gap-4 mb-4">
@@ -1078,7 +1078,7 @@ export function BdtActionWorkspace({
               </GlassCard>
             )}
 
-            {!isTeamNode && (
+            {!isTeamNode && !isMetaContainerMode && (
               <GlassCard>
                 <SectionTitle icon={PanelIcon}>
                   {isProjectNode ? 'PROJECT DETAILS' : `${node.type.toUpperCase()} WORKSPACE`}
@@ -1087,7 +1087,7 @@ export function BdtActionWorkspace({
               </GlassCard>
             )}
 
-            {isOperationsContext && (
+            {!isMetaContainerMode && isOperationsContext && (
               <OperationsErpNextPanel
                 summary={operationsSummary}
                 loading={operationsLoading}
@@ -1096,7 +1096,7 @@ export function BdtActionWorkspace({
               />
             )}
 
-            {isSalesContext && (
+            {!isMetaContainerMode && isSalesContext && (
               <SalesErpNextPanel
                 summary={salesSummary}
                 loading={salesLoading}
@@ -1105,7 +1105,7 @@ export function BdtActionWorkspace({
               />
             )}
 
-            {isProductsContext && (
+            {!isMetaContainerMode && isProductsContext && (
               <ProductsErpNextPanel
                 summary={productsSummary}
                 loading={productsLoading}
@@ -1114,7 +1114,7 @@ export function BdtActionWorkspace({
               />
             )}
 
-            {isMarketingContext && isMetaMetricNode(node) && companyId && (
+            {!isMetaContainerMode && isMarketingContext && isMetaMetricNode(node) && companyId && (
               <MetaMetricPanel
                 companyId={companyId}
                 nodeLabel={node.label}
@@ -1124,15 +1124,15 @@ export function BdtActionWorkspace({
               />
             )}
 
-            {isMarketingContext && isMetaSpendReachNode(node) && companyId && (
+            {!isMetaContainerMode && isMarketingContext && isMetaSpendReachNode(node) && companyId && (
               <SpendReachPanel nodeLabel={node.label} nodeStableSourceKey={node.stableSourceKey} />
             )}
 
-            {isMarketingContext && isMetaCampaignsNode(node) && companyId && (
+            {!isMetaContainerMode && isMarketingContext && isMetaCampaignsNode(node) && companyId && (
               <CampaignsPanel nodeLabel={node.label} nodeStableSourceKey={node.stableSourceKey} />
             )}
 
-            {!isTeamNode && companyId && isPersistedBdtNode && !isAnyMetaPanelNode(node) && (
+            {!isMetaContainerMode && !isTeamNode && companyId && isPersistedBdtNode && !isAnyMetaPanelNode(node) && (
               <GlassCard>
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <SectionTitle icon={BarChart3}>LIVE METRICS</SectionTitle>

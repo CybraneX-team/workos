@@ -22,6 +22,7 @@ export {
   PROTECTED_SYSTEM_ROLES,
   emptyPermissions,
   hasPermission,
+  moduleSupportsAction,
   clonePermissions,
   isSystemRole,
   isProtectedRole,

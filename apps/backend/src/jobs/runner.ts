@@ -3,6 +3,16 @@ import { pool } from '../db.js';
 import { log } from '../lib/logger.js';
 import { handlers } from './handlers.js';
 import { processOneReferenceCompanyJob } from './referenceCompanyTwin.js';
+import {
+  processOneMetaAdsJob,
+  processOneMetaAdsRecalculationJob,
+  refreshMetaAdsHealthFindings,
+  scheduleDailyMetaAdsSyncs,
+} from '../domains/meta-ads/service.js';
+import {
+  processOneMetaAdsCampaignJob,
+  processOneMetaAdsCreativeJob,
+} from '../domains/meta-ads/authoring.js';
 
 const LOCK_MINUTES = 5;
 const POLL_MS = 2000;
@@ -76,6 +86,8 @@ async function finishJobErr(job: Record<string, any>, err: Error) {
 
 export function startWorker() {
   let running = true;
+  let nextMetaScheduleCheck = 0;
+  let nextMetaHealthCheck = 0;
   process.on('SIGINT', () => {
     running = false;
   });
@@ -87,6 +99,22 @@ export function startWorker() {
   (async () => {
     while (running) {
       try {
+        if (Date.now() >= nextMetaScheduleCheck) {
+          await scheduleDailyMetaAdsSyncs();
+          nextMetaScheduleCheck = Date.now() + 60_000;
+        }
+        if (Date.now() >= nextMetaHealthCheck) {
+          await refreshMetaAdsHealthFindings();
+          nextMetaHealthCheck = Date.now() + 60 * 60_000;
+        }
+        const processedMetaRecalculation = await processOneMetaAdsRecalculationJob();
+        if (processedMetaRecalculation) continue;
+        const processedMetaCreativeJob = await processOneMetaAdsCreativeJob();
+        if (processedMetaCreativeJob) continue;
+        const processedMetaCampaignJob = await processOneMetaAdsCampaignJob();
+        if (processedMetaCampaignJob) continue;
+        const processedMetaJob = await processOneMetaAdsJob();
+        if (processedMetaJob) continue;
         const job = await pickOneJob();
         if (!job) {
           const processedReferenceJob = await processOneReferenceCompanyJob();

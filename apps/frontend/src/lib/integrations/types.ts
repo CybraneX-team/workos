@@ -12,6 +12,9 @@ export type {
   JiraMetrics,
   SlackMetrics,
   IntegrationMetrics,
+  MetaAdsAttention,
+  MetaAdsOperatingBrief,
+  MetaAdsSyncRun,
 } from '@cybranex/shared-types';
 
 // Kept as a locally-named alias — existing call sites (IntegrationModal.tsx, service.ts)

@@ -9,11 +9,13 @@ import {
 } from 'recharts';
 import type { Integration } from '../types';
 import type { IntegrationConnection, IntegrationMetrics, MetaAdAccountOption } from '../lib/integrations/types';
+import type { MetaAdsOperatingBrief } from '@cybranex/shared-types';
 import {
   LIVE_SUPPORTED, connectStripe, connectOAuth, connectRazorpay, connectHubSpot,
   connectJira, connectSlack,
   disconnectIntegration, fetchMetrics, finalizeMetaAdAccount,
   checkMetaSandboxAvailable, connectMetaSandbox,
+  fetchMetaAdsBrief, requestMetaAdsRefresh, fetchMetaAdsSyncRun,
 } from '../lib/integrations/service';
 
 interface Props {
@@ -38,7 +40,8 @@ function fmtNum(n: number) {
 function fmtTime(s: number) {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
-function timeAgo(iso: string) {
+function timeAgo(iso: string | null) {
+  if (!iso) return 'not yet';
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
   if (d < 1)  return 'just now';
   if (d < 60) return `${d}m ago`;
@@ -654,6 +657,7 @@ function SlackPanel({ data }: { data: Extract<IntegrationMetrics, { type: 'slack
 export default function IntegrationModal({ integration, connection: initialConn, onClose, onConnectionChange }: Props) {
   const [conn, setConn]           = useState<IntegrationConnection | null>(initialConn);
   const [metrics, setMetrics]     = useState<IntegrationMetrics | null>(null);
+  const [metaBrief, setMetaBrief] = useState<MetaAdsOperatingBrief | null>(null);
   const [loading, setLoading]     = useState(false);
   const [syncing, setSyncing]     = useState(false);
   const [loadingMetrics, setLM]   = useState(false);
@@ -674,8 +678,15 @@ export default function IntegrationModal({ integration, connection: initialConn,
     if (!conn) return;
     setLM(true);
     setError(null);
-    fetchMetrics(integration.id)
-      .then(setMetrics)
+    const request = integration.id === 'int-meta'
+      ? fetchMetaAdsBrief().then((brief) => {
+          setMetaBrief(brief);
+          setConn((current) => current && current.lastSynced !== brief.connection.lastSuccessfulSyncAt
+            ? { ...current, lastSynced: brief.connection.lastSuccessfulSyncAt }
+            : current);
+        })
+      : fetchMetrics(integration.id).then(setMetrics);
+    request
       .catch((e) => setError(String(e).replace('Error: ', '')))
       .finally(() => setLM(false));
   }, [conn, integration.id]);
@@ -786,9 +797,24 @@ export default function IntegrationModal({ integration, connection: initialConn,
     setSyncing(true);
     setError(null);
     try {
-      const m = await fetchMetrics(integration.id);
-      setMetrics(m);
-      setConn({ ...conn, lastSynced: new Date().toISOString() });
+      if (integration.id === 'int-meta') {
+        let run = await requestMetaAdsRefresh();
+        let polls = 0;
+        while ((run.status === 'pending' || run.status === 'running') && polls < 80) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          run = await fetchMetaAdsSyncRun(run.id);
+          polls += 1;
+        }
+        const brief = await fetchMetaAdsBrief();
+        setMetaBrief(brief);
+        setConn({ ...conn, lastSynced: brief.connection.lastSuccessfulSyncAt });
+        if (run.status === 'failed') setError(run.error ?? 'Meta Ads refresh failed.');
+        else if (run.status === 'pending' || run.status === 'running') setError('Refresh is still running in the background.');
+      } else {
+        const m = await fetchMetrics(integration.id);
+        setMetrics(m);
+        setConn({ ...conn, lastSynced: new Date().toISOString() });
+      }
     } catch (e) {
       setError(String(e).replace('Error: ', ''));
     } finally {
@@ -802,6 +828,7 @@ export default function IntegrationModal({ integration, connection: initialConn,
     } catch { /* best effort */ }
     setConn(null);
     setMetrics(null);
+    setMetaBrief(null);
     onConnectionChange();
   }
 
@@ -1075,6 +1102,29 @@ export default function IntegrationModal({ integration, connection: initialConn,
             <div className="flex flex-col items-center py-12 gap-3">
               <RefreshCw className="w-6 h-6 text-sky-400 animate-spin" />
               <p className="text-sm text-gray-400">Loading metrics…</p>
+            </div>
+          ) : integration.id === 'int-meta' && metaBrief ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+                <div>
+                  <p className="text-xs font-semibold capitalize text-white">{metaBrief.connection.state.replace(/_/g, ' ')}</p>
+                  <p className="mt-1 text-[11px] text-gray-500">Data through {metaBrief.connection.dataThrough || 'pending'} · {metaBrief.connection.timezone || 'timezone pending'}</p>
+                </div>
+                {metaBrief.connection.adsManagerUrl && <a href={metaBrief.connection.adsManagerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-semibold text-sky-300">Open Ads Manager <ExternalLink className="h-3 w-3" /></a>}
+              </div>
+              {(metaBrief.connection.state === 'backfilling' || metaBrief.connection.state === 'refreshing' || metaBrief.connection.state === 'stale' || metaBrief.connection.state === 'failed') && (
+                <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 text-xs text-amber-200">
+                  {metaBrief.connection.state === 'backfilling' ? 'The initial 90-day history is being prepared.' : metaBrief.connection.state === 'refreshing' ? 'A durable refresh is running in the background.' : metaBrief.connection.error || 'Showing preserved data while refresh needs attention.'}
+                </div>
+              )}
+              <MetaPanel data={{
+                spend30d: metaBrief.summary.spend, impressions30d: metaBrief.summary.impressions, clicks30d: metaBrief.summary.clicks,
+                ctr: metaBrief.summary.ctr, cpc: metaBrief.summary.cpc, roas: metaBrief.summary.purchaseRoas,
+                conversions30d: metaBrief.summary.selectedConversions, cpa: metaBrief.summary.cpa, currency: metaBrief.summary.currency || '',
+                selectedConversionAction: metaBrief.selectedConversionAction, conversionActions: metaBrief.availableConversionActions,
+                activeCampaigns: metaBrief.campaigns.filter((campaign) => campaign.status === 'ACTIVE').length,
+                topCampaigns: metaBrief.campaigns.slice(0, 5).map((campaign) => ({ name: campaign.campaignName, spend: campaign.spend, roas: campaign.purchaseRoas, conversions: campaign.selectedConversions })),
+              }} />
             </div>
           ) : metrics ? (
             <MetricsBody metrics={metrics} />

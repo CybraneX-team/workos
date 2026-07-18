@@ -26,8 +26,8 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'npm run dev',
-      cwd: '../startup_digital_twin_backend',
+      command: 'pnpm exec tsx src/server.ts',
+      cwd: '../backend',
       url: `${backendURL}/healthz`,
       reuseExistingServer: true,
       timeout: 120_000,
@@ -35,16 +35,23 @@ export default defineConfig({
         ...process.env,
         PORT: String(backendPort),
         RUN_WORKER: process.env.RUN_WORKER ?? 'false',
+        ...(process.env.META_ADS_AUTHORING_E2E === '1' ? {
+          META_AUTHORING_MODE: 'sandbox_only',
+          META_AUTHORING_FAKE_META: 'true',
+          META_AUTHORING_FAKE_GEMINI: 'true',
+          META_AUTHORING_LAUNCH_ENABLED: 'true',
+        } : {}),
       },
     },
     {
-      command: `npm run dev -- --host ${frontendHost} --port ${frontendPort}`,
+      command: `pnpm exec vite --force --host ${frontendHost} --port ${frontendPort}`,
       url: baseURL,
       reuseExistingServer: true,
       timeout: 120_000,
       env: {
         ...process.env,
         VITE_BACKEND_URL: backendURL,
+        VITE_AGENTATION_ENABLED: 'false',
       },
     },
   ],

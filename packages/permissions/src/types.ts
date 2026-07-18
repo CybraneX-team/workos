@@ -4,7 +4,7 @@
  * apps/frontend/src/lib/db/rbac.ts and the e2e helper.
  */
 
-export type RbacAction = 'read' | 'write' | 'delete';
+export type RbacAction = 'read' | 'write' | 'delete' | 'approve' | 'execute';
 
 export type RbacModule =
   | 'twin'
@@ -14,7 +14,8 @@ export type RbacModule =
   | 'benchmarks'
   | 'team'
   | 'ecosystem'
-  | 'settings';
+  | 'settings'
+  | 'paid_media';
 
 export type SystemRole =
   | 'super_admin'

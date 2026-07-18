@@ -42,7 +42,7 @@ function parseEnvFile(filePath: string): Record<string, string> {
 
 function loadLocalEnvFiles() {
   const frontendRoot = process.cwd();
-  const backendRoot = path.resolve(frontendRoot, '..', 'startup_digital_twin_backend');
+  const backendRoot = path.resolve(frontendRoot, '..', 'backend');
 
   const localValues = {
     ...parseEnvFile(path.join(frontendRoot, '.env.local')),

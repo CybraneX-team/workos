@@ -1,5 +1,5 @@
 import type { RbacAction, RbacModule, SystemRole, ExpandedPermissions } from './types.js';
-import { MODULES, ACTIONS } from './constants.js';
+import { MODULES, ACTIONS, moduleSupportsAction } from './constants.js';
 
 type PartialMatrix = Partial<Record<RbacModule, Partial<Record<RbacAction, boolean>>>>;
 
@@ -8,13 +8,13 @@ function expand(partial: PartialMatrix): ExpandedPermissions {
     MODULES.map((module) => [
       module,
       Object.fromEntries(
-        ACTIONS.map((action) => [action, partial[module]?.[action] ?? false]),
+        ACTIONS.map((action) => [action, moduleSupportsAction(module, action) ? partial[module]?.[action] ?? false : false]),
       ),
     ]),
   ) as ExpandedPermissions;
 }
 
-const allModules = (set: { read: boolean; write: boolean; delete: boolean }): PartialMatrix =>
+const allModules = (set: Partial<Record<RbacAction, boolean>>): PartialMatrix =>
   Object.fromEntries(MODULES.map((module) => [module, set])) as PartialMatrix;
 
 /**
@@ -28,7 +28,7 @@ const allModules = (set: { read: boolean; write: boolean; delete: boolean }): Pa
  * Keep this and the DB seed in lockstep — the drift test enforces it.
  */
 export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = {
-  super_admin: expand(allModules({ read: true, write: true, delete: true })),
+  super_admin: expand(allModules({ read: true, write: true, delete: true, approve: true, execute: true })),
   founder: expand({
     twin:       { read: true, write: true },
     strategy:   { read: true, write: true, delete: true },
@@ -38,6 +38,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = 
     team:       { read: true, write: true, delete: true },
     ecosystem:  { read: true, write: true },
     settings:   { read: true, write: true },
+    paid_media: { read: true, write: true, approve: true, execute: true },
   }),
   co_founder: expand({
     twin:       { read: true, write: true },
@@ -48,6 +49,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = 
     team:       { read: true, write: true },
     ecosystem:  { read: true, write: true },
     settings:   { read: true },
+    paid_media: { read: true, write: true, approve: true, execute: true },
   }),
   admin: expand({
     twin:       { read: true, write: true },
@@ -58,6 +60,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = 
     team:       { read: true, write: true },
     ecosystem:  { read: true },
     settings:   { read: true },
+    paid_media: { read: true, write: true, approve: true, execute: true },
   }),
   analyst: expand({
     twin:       { read: true },
@@ -67,6 +70,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = 
     benchmarks: { read: true },
     team:       { read: true },
     ecosystem:  { read: true },
+    paid_media: { read: true, write: true },
   }),
   engineer: expand({
     twin:       { read: true },
@@ -75,6 +79,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = 
     data:       { read: true, write: true },
     benchmarks: { read: true },
     team:       { read: true },
+    paid_media: { read: true },
   }),
   viewer: expand({
     twin:       { read: true },
@@ -84,12 +89,14 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, ExpandedPermissions> = 
     benchmarks: { read: true },
     team:       { read: true },
     ecosystem:  { read: true },
+    paid_media: { read: true },
   }),
   investor: expand({
     twin:       { read: true },
     analytics:  { read: true },
     benchmarks: { read: true },
     team:       { read: true },
+    paid_media: { read: true },
   }),
 };
 

@@ -42,7 +42,17 @@ bdtNodeActivationRouter.get('/active-nodes', authJwt, async (req, res) => {
   const companyId = req.auth?.companyId;
   if (!companyId) return res.status(403).json({ error: 'no_company' });
 
-  const erpConnected = Boolean(await resolveErpNextCreds(companyId));
+  let erpConnected = false;
+  try {
+    erpConnected = Boolean(await resolveErpNextCreds(companyId));
+  } catch (error) {
+    // ERPNext availability must not take down the BDT. The endpoint can still
+    // report Meta-backed nodes while the control-plane is offline.
+    console.warn('[bdt-node-activation] ERPNext status unavailable', {
+      companyId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const active: ActiveKey[] = [];
   if (erpConnected) {

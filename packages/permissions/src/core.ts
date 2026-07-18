@@ -15,6 +15,7 @@ import {
   MODULES,
   MODULE_SET,
   ACTION_SET,
+  moduleSupportsAction,
   SYSTEM_ROLE_SET,
   PROTECTED_ROLE_SET,
   DEFAULT_MEMBER_ROLE,
@@ -72,10 +73,18 @@ export function expandPermissions(raw: unknown, roleId = 'unknown'): ExpandedPer
 
       if (moduleName === '*') {
         for (const module of MODULES) {
-          expanded[module][actionName as RbacAction] = value;
+          if (moduleSupportsAction(module, actionName as RbacAction)) {
+            expanded[module][actionName as RbacAction] = value;
+          }
         }
       } else {
-        expanded[moduleName as RbacModule][actionName as RbacAction] = value;
+        const module = moduleName as RbacModule;
+        const action = actionName as RbacAction;
+        if (!moduleSupportsAction(module, action)) {
+          if (value) throw new Error(`RBAC role ${roleId} grants unsupported permission ${moduleName}.${actionName}`);
+          continue;
+        }
+        expanded[module][action] = value;
       }
     }
   }
