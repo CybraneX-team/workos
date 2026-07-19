@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { env } from '../config.js';
 import { pool } from '../db.js';
 import { log } from '../lib/logger.js';
+import { geminiJson, geminiText } from '../lib/gemini.js';
 
 const LOCK_MINUTES = 10;
 const MAX_PAGE_TEXT = 60_000;
@@ -362,47 +363,6 @@ async function fetchPublicPage(url: string): Promise<{ finalUrl: string; text: s
 
 // ── OpenAI helpers ───────────────────────────────────────────────────────────
 
-function getOutputText(responseBody: any): string {
-  if (typeof responseBody.output_text === 'string') return responseBody.output_text;
-  const chunks: string[] = [];
-  for (const output of responseBody.output ?? []) {
-    for (const content of output.content ?? []) {
-      if (typeof content.text === 'string') chunks.push(content.text);
-      if (typeof content.output_text === 'string') chunks.push(content.output_text);
-    }
-  }
-  return chunks.join('').trim();
-}
-
-function parseStructuredOutput(responseBody: any): unknown {
-  for (const output of responseBody.output ?? []) {
-    for (const content of output.content ?? []) {
-      if (content && typeof content === 'object' && 'json' in content && content.json != null) {
-        return content.json;
-      }
-    }
-  }
-  const outputText = getOutputText(responseBody);
-  if (!outputText) throw new Error('openai_empty_output');
-  try {
-    return JSON.parse(outputText);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const positionMatch = message.match(/position (\d+)/i);
-    const position = positionMatch ? Number(positionMatch[1]) : null;
-    const looksTruncated =
-      /unterminated/i.test(message)
-      || /unexpected end/i.test(message)
-      || (position != null && position >= outputText.length - 32);
-    if (looksTruncated) {
-      throw new Error(
-        `openai_incomplete_json_response:${message}:output_length=${outputText.length}:max_output_tokens=${env.OPENAI_RESPONSES_MAX_OUTPUT_TOKENS}`,
-      );
-    }
-    throw new Error(`openai_invalid_json:${message}`);
-  }
-}
-
 async function callOpenAi(params: {
   instructions: string;
   prompt: string;
@@ -410,33 +370,15 @@ async function callOpenAi(params: {
   schemaName: string;
   maxTokens: number;
 }): Promise<unknown> {
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: env.OPENAI_RESPONSES_MODEL,
-      max_output_tokens: params.maxTokens,
-      instructions: params.instructions,
-      input: params.prompt,
-      text: {
-        format: {
-          type: 'json_schema',
-          name: params.schemaName,
-          strict: true,
-          schema: params.schema,
-        },
-      },
-    }),
-  });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const details = body?.error?.message ?? JSON.stringify(body)?.slice(0, 500) ?? response.statusText;
-    throw new Error(`openai_responses_failed:${details}`);
-  }
-  return parseStructuredOutput(body);
+  const composedPrompt = [
+    params.instructions,
+    '',
+    `Return ONLY a valid JSON object named "${params.schemaName}" conforming to this JSON Schema (no markdown, no commentary):`,
+    JSON.stringify(params.schema),
+    '',
+    params.prompt,
+  ].join('\n');
+  return geminiJson(composedPrompt, { maxOutputTokens: params.maxTokens });
 }
 
 // ── Step 1: web research ─────────────────────────────────────────────────────
@@ -470,29 +412,12 @@ async function gatherWebResearch(input: {
     'Write a structured research report covering each topic above with inline citations.',
   ].join('\n');
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: env.OPENAI_RESPONSES_MODEL,
-      max_output_tokens: env.OPENAI_RESPONSES_MAX_RESEARCH_TOKENS,
-      instructions,
-      input: prompt,
-      tools: [{ type: 'web_search' }],
-      tool_choice: 'required',
-    }),
+  const result = await geminiText(prompt, {
+    system: instructions,
+    webSearch: true,
+    maxOutputTokens: env.OPENAI_RESPONSES_MAX_RESEARCH_TOKENS,
   });
-
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const details = body?.error?.message ?? JSON.stringify(body)?.slice(0, 500) ?? response.statusText;
-    throw new Error(`openai_responses_research_failed:${details}`);
-  }
-  const result = getOutputText(body);
-  if (!result) throw new Error('openai_empty_research_output');
+  if (!result) throw new Error('gemini_empty_research_output');
   return result;
 }
 
@@ -543,7 +468,7 @@ async function callOpenAiForTwin(input: {
   industryLabel: string | null;
   subdomainLabel: string | null;
 }): Promise<GeneratedTwin> {
-  if (!env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured');
   const researchReport = await gatherWebResearch(input);
   log.info({ researchLength: researchReport.length }, 'research gathered');
   return generateStructuredTwin({ ...input, researchReport });
@@ -796,7 +721,7 @@ async function runClassifyJob(job: Record<string, any>): Promise<number> {
     [job.reference_company_id],
   );
 
-  if (!env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured');
   const dynamicSet = await generateDynamicRoots({
     companyName: rc.name ?? 'Reference company',
     canonicalUrl: rc.canonical_url,

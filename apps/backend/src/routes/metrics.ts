@@ -5,6 +5,7 @@ import { env } from '../config.js';
 import { authJwt } from '../middleware/authJwt.js';
 import { requirePermission } from '../rbac.js';
 import { recomputeCanonicalRollups } from '../lib/canonicalMetrics.js';
+import { geminiJson } from '../lib/gemini.js';
 import { scoreMetric } from '@cybranex/metrics';
 import { configureMetaMetric, isMetaMetricKey, setMetaConversionAction } from '../lib/metaMetricEngine.js';
 import { buildMetaAdsBrief, getStoredMetaCanonicalContext } from '../domains/meta-ads/service.js';
@@ -254,36 +255,6 @@ async function shapeMetric(client: any, metricId: string, companyId: string) {
   return { ...metric, links, sources, values };
 }
 
-function getOutputText(responseBody: any): string {
-  if (typeof responseBody?.output_text === 'string') return responseBody.output_text;
-  const chunks: string[] = [];
-  for (const output of responseBody?.output ?? []) {
-    for (const content of output?.content ?? []) {
-      if (typeof content?.text === 'string') chunks.push(content.text);
-      if (typeof content?.output_text === 'string') chunks.push(content.output_text);
-    }
-  }
-  return chunks.join('').trim();
-}
-
-function parseStructuredOutput(responseBody: any): unknown {
-  for (const output of responseBody?.output ?? []) {
-    for (const content of output?.content ?? []) {
-      if (content && typeof content === 'object' && 'json' in content && content.json != null) {
-        return content.json;
-      }
-    }
-  }
-  const outputText = getOutputText(responseBody);
-  if (!outputText) throw new Error('openai_empty_output');
-  try {
-    return JSON.parse(outputText);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`openai_invalid_json:${message}`);
-  }
-}
-
 async function callOpenAi(params: {
   instructions: string;
   prompt: string;
@@ -291,34 +262,16 @@ async function callOpenAi(params: {
   schemaName: string;
   maxTokens: number;
 }): Promise<unknown> {
-  if (!env.OPENAI_API_KEY) throw new Error('metric_copilot_unavailable');
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: env.OPENAI_RESPONSES_MODEL,
-      max_output_tokens: params.maxTokens,
-      instructions: params.instructions,
-      input: params.prompt,
-      text: {
-        format: {
-          type: 'json_schema',
-          name: params.schemaName,
-          strict: true,
-          schema: params.schema,
-        },
-      },
-    }),
-  });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const details = body?.error?.message ?? JSON.stringify(body)?.slice(0, 500) ?? response.statusText;
-    throw new Error(`openai_responses_failed:${details}`);
-  }
-  return parseStructuredOutput(body);
+  if (!env.GEMINI_API_KEY) throw new Error('metric_copilot_unavailable');
+  const composedPrompt = [
+    params.instructions,
+    '',
+    `Return ONLY a valid JSON object named "${params.schemaName}" conforming to this JSON Schema (no markdown, no commentary):`,
+    JSON.stringify(params.schema),
+    '',
+    params.prompt,
+  ].join('\n');
+  return geminiJson(composedPrompt, { maxOutputTokens: params.maxTokens });
 }
 
 const DRAFT_LLM_SCHEMA = {

@@ -3,6 +3,7 @@ import { authJwt } from '../middleware/authJwt.js';
 import { pool, supabaseAdmin } from '../db.js';
 import { env } from '../config.js';
 import { requirePermission } from '../rbac.js';
+import { geminiJson } from '../lib/gemini.js';
 
 export const metricsOnboardingRouter = Router();
 metricsOnboardingRouter.use(authJwt);
@@ -20,9 +21,8 @@ metricsOnboardingRouter.post('/generate-departments', async (req, res) => {
 
     const { name, industryName, description, businessModel, problemSolved, usp } = req.body;
 
-    const apiKey = env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'openai_api_key_not_configured' });
+    if (!env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'gemini_api_key_not_configured' });
     }
 
     const prompt = `Startup Name: ${name || 'N/A'}
@@ -32,47 +32,13 @@ metricsOnboardingRouter.post('/generate-departments', async (req, res) => {
         Problem Solved: ${problemSolved || 'N/A'}
         USP: ${usp || 'N/A'}`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a startup organizational structure assistant. Based on the startup\'s name, industry, description, business model, and problem statement, suggest 5 to 7 relevant, short department names that this startup should have (e.g., "Engineering", "Marketing", "Sales", "Customer Success", "Product Management", "Operations"). Return ONLY a valid JSON array of strings containing the department names. Do not include any markdown code blocks, backticks, or extra text. Example output: ["Engineering", "Marketing"]'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3
-      })
-    });
+    const system = 'You are a startup organizational structure assistant. Based on the startup\'s name, industry, description, business model, and problem statement, suggest 5 to 7 relevant, short department names that this startup should have (e.g., "Engineering", "Marketing", "Sales", "Customer Success", "Product Management", "Operations"). Return ONLY a valid JSON array of strings containing the department names. Do not include any markdown code blocks, backticks, or extra text. Example output: ["Engineering", "Marketing"]';
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[openai] api call failed', errorText);
-      throw new Error(`OpenAI API error: ${response.statusText}`);
-    }
-
-    const data: any = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim() ?? '';
-
-    let jsonStr = content;
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
-    }
-
-    const parsed = JSON.parse(jsonStr);
+    const parsed = await geminiJson(prompt, { system, temperature: 0.3 });
     if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
       return res.json({ departments: parsed });
     } else {
-      throw new Error('Invalid response structure from OpenAI completions');
+      throw new Error('Invalid response structure from Gemini');
     }
   } catch (err: any) {
     console.error('[metrics-onboarding] generate-departments failed', err);
