@@ -26,6 +26,7 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - Campaign authoring fake/live-sandbox verification: `docs/runbooks/meta-ads-campaign-studio.md`
 - Backend-specific invariants: `apps/backend/AGENTS.md`
 - Control-plane-specific invariants: `apps/erpnext-control-plane/AGENTS.md`
+- Cloud deployment (how each tier builds/deploys, config source of truth, rollback): `docs/runbooks/cloud-deploy.md`
 
 ## Repository map
 

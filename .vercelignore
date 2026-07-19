@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.vercel
+**/dist
+backups
+**/*.log
+playwright-report
+test-results
+.codegraph
+tmp
+**/.env
+**/.env.*
+CLOUD_old_workos.md
