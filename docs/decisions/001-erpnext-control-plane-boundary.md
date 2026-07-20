@@ -1,8 +1,8 @@
 # ADR 001: Separate ERPNext operational control from WorkOS
 
-Status: accepted and implemented for local development.
+Status: accepted; implemented for local development and deployed to Azure on 2026-07-20.
 
-Decision date: 2026-07-13.
+Decision date: 2026-07-13. Deployment amendment: 2026-07-20 (see "Deployment amendment" below).
 
 Last verified: 2026-07-13.
 
@@ -26,7 +26,7 @@ Create an independently runnable `apps/erpnext-control-plane` and keep WorkOS-sp
 Positive:
 
 - Frappe credentials and Docker access are removed from the WorkOS runtime.
-- The control-plane can run, build, and later deploy independently.
+- The control-plane runs, builds, and deploys independently (deployed to Azure 2026-07-20).
 - WorkOS business mutations remain available during ERPNext outages through durable, coalesced commands.
 - Ownership can be checked with an architecture test rather than relying only on convention.
 - Local browser SSO exercises the same WorkOS identity boundary used by ERPNext.
@@ -59,7 +59,21 @@ Rejected because these are WorkOS product-domain concerns. The control-plane app
 
 - `apps/backend/test/erpnextArchitecture.test.ts` forbids direct Frappe access in WorkOS and WorkOS-domain reads/imports in the control-plane.
 - A new shared package is allowed only after at least two applications consume it.
-- Production deployment/cutover requires a separate decision and implementation review.
+
+## Deployment amendment (2026-07-20)
+
+The control-plane was deployed to Azure Container Apps (`erpnext-control-plane`,
+internal ingress, `ERPNEXT_ENV=remote`), fronting the existing ERPNext VM shim. The
+boundary in this ADR is unchanged and still enforced by the architecture test. Two
+consequences worth recording, because they were pragmatic choices rather than the
+ideal end state:
+
+- **The `erpnext` schema shares the WorkOS Supabase Postgres instance.** The ADR's
+  isolation is preserved at the schema and code level, not the database level. A
+  dedicated database would be the stronger form and remains open.
+- **Deploys are manual** for the backend and control-plane (see
+  `../runbooks/cloud-deploy.md`); CI automation is blocked on an Azure role grant, not
+  on this decision.
 
 ## Authoritative files
 
@@ -73,4 +87,4 @@ Rejected because these are WorkOS product-domain concerns. The control-plane app
 
 ## Update or supersede this ADR when
 
-- identity/RBAC ownership changes, Frappe gains another direct application consumer, projections gain another application consumer, or production control-plane deployment is designed.
+- identity/RBAC ownership changes, Frappe gains another direct application consumer, projections gain another application consumer, or the control-plane moves to its own database or a different hosting model.

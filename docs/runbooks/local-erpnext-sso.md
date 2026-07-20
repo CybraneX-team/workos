@@ -2,7 +2,11 @@
 
 Last verified: 2026-07-13.
 
-Scope: local development only.
+Scope: local development only. A separate **deployed** control-plane
+(`ERPNEXT_ENV=remote`) runs in Azure against the ERPNext VM — this runbook does not
+cover it; see `cloud-deploy.md`. The two are deliberately isolated: a control-plane
+process serves exactly one `ERPNEXT_ENV` and rejects mismatched requests, so local
+work here cannot drive the remote tenants.
 
 This runbook verifies a real browser flow from a local WorkOS Supabase session into a company-specific ERPNext Desk session.
 

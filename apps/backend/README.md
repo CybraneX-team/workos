@@ -4,6 +4,16 @@ Express service for Excel ingestion, canonical metric APIs, WorkOS integrations,
 the read-only Meta Ads operating evidence/Decision Inbox, and isolated,
 approval-gated Campaign Studio authoring.
 
+## Deployment
+
+Runs as the Azure Container App `startup-twin-backend` (RG `startup-digital-twin-rg`).
+Deploys are currently **manual** — `az acr build` then `az containerapp update`; CI
+automation is blocked on an Azure role grant. Env vars live on the Container App and
+persist across image updates, so set them *before* deploying code that needs them.
+Note `db/migrations/*.sql` are **not** applied automatically and are not shipped in
+the image. Commands, env-var source of truth, and rollback:
+`../../docs/runbooks/cloud-deploy.md`.
+
 ## Meta Ads operating loop
 
 The backend stores 90 days of account/campaign and 60 days of ad-set/ad history,

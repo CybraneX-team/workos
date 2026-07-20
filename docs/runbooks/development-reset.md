@@ -12,7 +12,20 @@ Scope: destructive reset of the configured shared Supabase development project a
 - Local Frappe sites matching `erp-<slug>.localhost`.
 - Auth-owned public rows discovered from foreign keys; required references are truncated and nullable audit references are cleared.
 
-It does not delete production ERPNext VM sites. The script's site matcher only accepts local `.localhost` names. It restores the system role reference seed after deletion.
+It does not delete ERPNext VM sites. The script's site matcher only accepts local `.localhost` names. It restores the system role reference seed after deletion.
+
+> ⚠️ **Changed 2026-07-20 — this reset now affects the deployed control-plane.**
+> The Azure-deployed `erpnext-control-plane` (`ERPNEXT_ENV=remote`) uses the **same**
+> Supabase project's `erpnext` schema. Because this script truncates every table in
+> that schema, running it will delete the **remote** tenants, provision jobs, and
+> encrypted Frappe credentials as well as local ones — even though the ERPNext VM
+> sites themselves survive. The result is orphaned VM sites that WorkOS no longer
+> knows about, and per-company ERPNext access breaking until those tenants are
+> re-provisioned.
+>
+> Before running: confirm nobody depends on the deployed ERPNext integration, and
+> treat the `erpnext` schema rows as production-shaped data even in development.
+> See `cloud-deploy.md` for the deployed topology.
 
 ## Safety gates
 

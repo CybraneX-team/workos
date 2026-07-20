@@ -7,6 +7,16 @@ authentication and calls the authenticated WorkOS backend for business APIs.
 It is one application in the `cybranex-workos` pnpm monorepo, not a standalone
 repository.
 
+## Deployment
+
+Deployed to Vercel at **https://os.cybranex.com**. The repository is Git-connected,
+so **pushing to `main` builds and deploys automatically** — no CLI step. Vercel's
+Root Directory is `apps/frontend`; the build command must keep pnpm's `...`
+dependency selector (`pnpm --filter "frontend..." build`) or the `@cybranex/*`
+workspace packages are not built and `tsc` fails on a clean checkout. `VITE_*` values
+are baked at build time from the Vercel project env. Full details, gotchas, and
+rollback: `../../docs/runbooks/cloud-deploy.md`.
+
 ## Local development
 
 Run commands from the monorepo root:

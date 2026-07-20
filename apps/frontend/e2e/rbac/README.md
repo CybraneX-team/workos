@@ -22,7 +22,7 @@ Production-looking targets are blocked unless `RBAC_E2E_ALLOW_PROD=true` is also
 ## Requirements
 
 - Frontend env: `.env.local`
-- Backend env: `../startup_digital_twin_backend/.env`
+- Backend env: `../../backend/.env` (monorepo path; the old sibling `startup_digital_twin_backend` repo is no longer the backend source)
 - Supabase service-role key available to the backend env
 - Backend reachable at `E2E_BACKEND_URL` or `http://127.0.0.1:8080`
 - Frontend reachable at `E2E_BASE_URL` or `http://127.0.0.1:5173`

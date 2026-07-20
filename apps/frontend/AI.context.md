@@ -1,6 +1,12 @@
 Project Context: FounderOS — 3D Universe Integration
 What is this project?
-FounderOS is a SaaS platform for startup founders. It lives at /Users/saiyam0211/Documents/Work_Codes/Startup_Digital_Twin/ (GitHub: CybraneX-team/Startup_Digital_Twin). The stack is React 19 + TypeScript + Vite + Tailwind CSS + Supabase (auth + Postgres DB).
+FounderOS (now "WorkOS") is a SaaS platform for startup founders. The stack is React 19 + TypeScript + Vite + Tailwind CSS + Supabase (auth + Postgres DB).
+
+> ⚠️ **Stale origin note (corrected 2026-07-20).** This file predates the monorepo and
+> originally pointed at `CybraneX-team/Startup_Digital_Twin` on another developer's
+> machine path. The live code is now this monorepo — GitHub `CybraneX-team/workos`,
+> frontend at `apps/frontend/`. The old repo is retained only as a rollback artifact
+> and is no longer deployed from. Deployment: `../../docs/runbooks/cloud-deploy.md`.
 
 We are integrating a 3D universe visualization at the /3d route — a Three.js-powered view where:
 
@@ -108,8 +114,8 @@ UniverseCanvas.tsx (React)
         └── SubdomainSolarSystem.ts (planet orbits when zoomed into a galaxy)
   └── cleanup → ctrl.dispose() (GPU cleanup, observer disconnect, event removal)
 How to run
-cd /Users/saiyam0211/Documents/Work_Codes/Startup_Digital_Twin
-npm run dev          # Vite dev server at localhost:5173
-npm run build        # Production build (tsc + vite)
+# from the monorepo root
+pnpm --filter frontend dev     # Vite dev server at localhost:5173
+pnpm --filter "frontend..." build   # production build (deps + tsc + vite)
 The /3d route is auth-guarded — you'll be redirected to /auth if not logged in.
 
