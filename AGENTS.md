@@ -44,7 +44,7 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - The control-plane must not read WorkOS companies, memberships, profiles, RBAC, BDT, OIDC, or Supabase Auth data.
 - WorkOS must not hold Frappe credentials or call Frappe resource endpoints directly.
 - Do not create an `erpnext-client` or projection package while it has only one application consumer.
-- Production ERPNext deployment and traffic cutover are not implemented by this local architecture.
+- The control-plane is deployed to Azure as of 2026-07-20 (internal-ingress Container App, `ERPNEXT_ENV=remote`) and fronts the existing ERPNext VM shim. Its `erpnext` schema shares the Supabase Postgres with WorkOS `public`; isolation is by schema plus the code boundary above, not a separate database. See `docs/runbooks/cloud-deploy.md`.
 
 ## Useful verification commands
 
@@ -70,3 +70,8 @@ When architecture, ports, commands, ownership, migrations, or acceptance behavio
 - events that require the document to be updated.
 
 Never store secrets, access tokens, passwords, encrypted credential values, transient test users/company IDs/site names, or raw production/customer data in agent documentation. Prefer stable paths and reproducible queries over copied implementation dumps.
+
+## Repository status (read before committing)
+
+- **This repository is PUBLIC** (made public 2026-07-20 so Vercel's Hobby plan could Git-deploy it). Anything committed here — including anything added to git history — is world-readable. Never commit `.env` files, credentials, tokens, connection strings, or customer data. Configuration values belong in the Azure Container App env and the Vercel project env; see `docs/runbooks/cloud-deploy.md`.
+- **History was rewritten on 2026-07-20** (`git filter-repo`) to purge two committed secrets — a dead Azure App Service Kudu password in `apps/backend/deploy.sh` and a Supabase anon key in `apps/frontend/AI.context.md` — and `main` plus `agent/extract-erpnext-control-plane` were force-pushed. **Every commit hash before that date changed.** A clone made earlier will not fast-forward: re-clone, or `git fetch origin && git reset --hard origin/main`. The obsolete `deploy.sh` / `deploy-azure.sh` were removed entirely; use the runbook's deploy commands instead.

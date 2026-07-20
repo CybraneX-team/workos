@@ -1,6 +1,8 @@
 # ERPNext control-plane architecture
 
-Status: implemented for local development; production deployment/cutover is out of scope.
+Status: implemented for local development **and deployed to Azure** (2026-07-20).
+The cloud deployment is documented in `../runbooks/cloud-deploy.md`; this document
+describes the architecture and boundaries, which are unchanged by that deployment.
 
 Last verified: 2026-07-13.
 
@@ -104,7 +106,15 @@ Control-plane migration: `apps/erpnext-control-plane/db/migrations/001_control_p
 - A control-plane process serves exactly one `ERPNEXT_ENV` and rejects mismatched requests.
 - The WorkOS dispatcher claims only its configured `ERPNEXT_TARGET_ENV`.
 - Local provisioning uses Docker and sites named `erp-<slug>.localhost`.
-- Remote provisioning uses the configured remote provisioning shim. Production deployment and traffic cutover are not part of this implementation.
+- Remote provisioning uses the configured remote provisioning shim.
+- **Deployed (2026-07-20):** a `remote` control-plane runs as the Azure Container App
+  `erpnext-control-plane` (env `startup-twin-env`, RG `startup-digital-twin-rg`,
+  **internal ingress**, port 8090). It calls the existing ERPNext VM shim/Frappe — the
+  VM stack was not replaced. The backend reaches it over the environment-internal FQDN
+  with `ERPNEXT_TARGET_ENV=remote`. See `../runbooks/cloud-deploy.md`.
+- The control-plane's `erpnext` schema currently lives in the **same** Supabase Postgres
+  as the WorkOS `public` schema. Isolation is by schema and by the code-level boundary
+  (enforced by `apps/backend/test/erpnextArchitecture.test.ts`), not by a separate database.
 
 ## Verification
 
@@ -121,5 +131,6 @@ For end-to-end verification, follow `../runbooks/local-erpnext-sso.md`.
 ## Update this document when
 
 - component ownership, ports, internal endpoints, contracts, migrations, command kinds, environment behavior, SSO URLs, site naming, or secret storage changes;
-- production deployment/cutover is introduced;
+- the cloud deployment topology, ingress mode, or hosting environment changes (see `../runbooks/cloud-deploy.md`);
+- the control-plane moves to its own database rather than a schema in the shared Postgres;
 - a second consumer justifies extracting another shared ERP package.

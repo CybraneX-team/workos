@@ -1,5 +1,15 @@
 # Supabase Migrations
 
+> **This database also hosts the ERPNext control-plane's `erpnext` schema** (added
+> 2026-07-20, applied via `pnpm --filter erpnext-control-plane db:migrate`). The files
+> here manage the WorkOS `public` schema only — do not add `erpnext.*` objects here, and
+> do not assume `public` is the only schema present. See
+> `../../../docs/runbooks/cloud-deploy.md`.
+>
+> ⚠️ The `supabase_migrations` ledger is **stale/unreliable** — it lists only a subset of
+> what is actually applied (migrations have been applied by hand). Verify state by
+> checking whether tables/columns exist, not by reading the ledger.
+
 The active migration set was squashed on 2026-06-28 before production release.
 
 Use all files in `migrations/` for a fresh environment, in filename order. The

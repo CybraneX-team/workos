@@ -1,8 +1,22 @@
 # ERPNext control-plane guide
 
-Last verified: 2026-07-13.
+Last verified: 2026-07-20.
 
 This Express service runs independently on port `8090`. Read `../../docs/architecture/erpnext-control-plane.md` and `../../docs/runbooks/local-erpnext-sso.md` before changing provisioning or SSO.
+
+## Deployed instance
+
+A `remote` instance runs in Azure as Container App `erpnext-control-plane`
+(env `startup-twin-env`, RG `startup-digital-twin-rg`, **internal ingress** — reachable
+only from the backend in the same environment, not the public internet). Deploy commands
+and env-var source of truth: `../../docs/runbooks/cloud-deploy.md`.
+
+Operational notes for that instance:
+
+- `INTERNAL_SERVICE_TOKEN` **must exactly equal** the backend's `ERPNEXT_CONTROL_PLANE_TOKEN`, or every `/internal/v1/*` call fails `401 unauthorized`.
+- `ERPNEXT_CREDENTIALS_KEY` must be exactly 64 hex chars and is **not** interchangeable with the backend's `ENCRYPTION_KEY`. Changing it makes every stored tenant credential undecryptable.
+- Its `erpnext` schema currently lives in the same Supabase Postgres as WorkOS `public`. Apply schema changes with `pnpm --filter erpnext-control-plane db:migrate` and `DATABASE_URL` set; nothing applies migrations automatically.
+- `ERPNEXT_ENV` must be `remote` there; the process rejects mismatched-environment requests by design.
 
 ## This app owns
 
