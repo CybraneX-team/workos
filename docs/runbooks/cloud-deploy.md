@@ -1,6 +1,6 @@
 # Cloud deployment runbook (monorepo)
 
-Last verified: 2026-07-19.
+Last verified: 2026-07-20.
 
 Live cloud now deploys from this monorepo (`CybraneX-team/workos`, branch `main`),
 not the old split repos. This runbook is the source of truth for how each tier is
@@ -41,27 +41,32 @@ Env vars persist across image updates. Change them separately and **before** dep
 dependent code: `az containerapp update ... --set-env-vars KEY=value` (merges, preserves
 the rest — never re-sync all from a local `.env`).
 
-## Deploy — frontend (manual, Hobby workaround)
+## Deploy — frontend (automatic, via Git)
 
-Vercel Hobby cannot git-deploy a private org repo, so builds run locally and the
-prebuilt output is uploaded from a **non-git** directory (otherwise the private-repo
-commit-author check blocks it). Root Directory is set to `apps/frontend`.
+`CybraneX-team/workos` is **public** and Git-connected to the Vercel project
+(Root Directory `apps/frontend`, production branch `main`). **Pushing to `main`
+builds and deploys automatically** — no CLI step, no local build.
 
 ```bash
-npx vercel pull --yes --environment=production   # pulls prod env + settings
-npx vercel build --prod                          # -> .vercel/output
-# copy .vercel/output + .vercel/project.json into a tmp dir that has NO .git and an
-# (empty) apps/frontend/ dir, then:
-( cd "$TMPDIR" && npx vercel deploy --prebuilt --prod --yes )
+git push origin HEAD:main   # that's the whole deploy
 ```
 
-Verify: live bundle hash changed, and it contains the Azure backend URL
-(`curl -s https://os.cybranex.com/assets/index-*.js | grep azurecontainerapps`).
+Verify: the deployment reaches `READY` and `os.cybranex.com` serves the new bundle
+hash. The edge-cached `index.html` can lag a minute (`x-vercel-cache: HIT`); hashed
+assets are served immediately, so `curl -o /dev/null -w '%{http_code}'` on the new
+`assets/index-*.js` is the fastest confirmation.
 
-⚠️ `VITE_*` are **build-time baked**. `VITE_BACKEND_URL` must be a normal (encrypted)
-Vercel env var, **not "sensitive"** — sensitive vars can't be pulled for local builds
-and bake empty, which makes the app call same-origin `/api/*` (returns HTML → JSON
-parse error).
+⚠️ The build command **must** keep pnpm's `...` dependency selector:
+`cd ../.. && pnpm --filter "frontend..." build`. Without `...`, the four
+`@cybranex/*` workspace packages are never built and `tsc` fails on any clean
+checkout with `TS2307: Cannot find module '@cybranex/shared-types'`. Local builds
+can hide this because stale `packages/*/dist` artifacts satisfy the imports.
+
+⚠️ `VITE_*` are build-time baked. Server-side Git builds inject **all** env vars
+(including ones marked `sensitive`), so the Git flow is safe. A *local*
+`vercel build` cannot decrypt `sensitive` vars and bakes them empty — which makes
+the app call same-origin `/api/*` and get HTML back (`Unexpected token '<'`).
+Another reason to prefer Git deploys over local ones.
 
 ## Deploy — ERPNext control-plane (manual)
 
@@ -95,10 +100,11 @@ No auto-apply anywhere. Apply against the pooled Supabase `DATABASE_URL`.
 - Backend/control-plane: `az containerapp update --image <previous tag>` or activate a prior revision (`az containerapp revision list/activate`). The last old-repo backend revision was `startup-twin-backend--0000031` — confirm current before relying on it.
 - Frontend: redeploy a prior Vercel deployment (promote from the dashboard), or the old public repo still builds at Root Directory `.`.
 
-## Not yet automated (intentional; needs external unblock)
+## Automation status
 
-- **Backend CI (GitHub Actions → Azure):** the workflow needs to move to repo-root `.github/workflows/` and requires an Azure deploy service principal + repo secrets. SP creation is blocked until the deploying account has Entra **Owner/User Access Administrator** on `startup-digital-twin-rg` (currently Contributor only).
-- **Frontend auto-deploy (Vercel Git):** blocked on Hobby for the private repo — needs **Vercel Pro** or making `workos` public (scrub committed secrets first, e.g. `apps/backend/deploy.sh`).
+- **Frontend → Vercel:** ✅ **automated.** `workos` was made public on 2026-07-20 and Git-connected; push to `main` deploys. (Vercel's Hobby plan refuses to connect a *private* org-owned repo — that restriction is what made the repo public a prerequisite.)
+- **Backend → Azure:** ⏳ **manual** (the two commands above). Automating it needs the workflow moved to repo-root `.github/workflows/` plus an Azure deploy service principal and repo secrets. SP creation is blocked until the deploying account has Entra **Owner** or **User Access Administrator** on `startup-digital-twin-rg` — it currently has Contributor, which can deploy resources but cannot create role assignments.
+- **Control-plane → Azure:** ⏳ manual, same blocker as the backend.
 
 ## Update this file when
 
