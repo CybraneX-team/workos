@@ -88,7 +88,7 @@ supabase/migrations/20260628210100_baseline_reference_seed.sql
 Seeds system/global reference data after the baseline schema
 Supabase Config
 URL:  https://wcovyctzfgpqifelefum.supabase.co
-ANON: ***REDACTED-SUPABASE-ANON-KEY***
+ANON: see VITE_SUPABASE_ANON_KEY in apps/frontend/.env.example / Vercel project env
 Database schema (relevant tables)
 industries — baseline-seeded reference table
 subdomains — baseline-seeded reference table
