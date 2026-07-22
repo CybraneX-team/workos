@@ -1,14 +1,23 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { getMetaAdAccount } from '../src/adapters/metaAds.js';
-import { getMetaAuthoringPrerequisites } from '../src/adapters/metaAdsAuthoring.js';
+import { META_GRAPH_BASE, getMetaAdAccount } from '../src/adapters/metaAds.js';
+import {
+  createMetaLeadCampaign,
+  createMetaLeadForm,
+  findMetaLeadFormByName,
+  getMetaAuthoringPrerequisites,
+  getMetaObjectState,
+  getMetaPageAccessToken,
+} from '../src/adapters/metaAdsAuthoring.js';
 import { pool } from '../src/db.js';
 import { encrypt } from '../src/lib/crypto.js';
 import { buildMetaAdsBrief, enqueueInitialMetaAdsBackfill, processOneMetaAdsJob } from '../src/domains/meta-ads/service.js';
 
 const liveDescribe = process.env.META_SANDBOX_LIVE_TESTS === '1' ? describe : describe.skip;
 const authoringLiveTest = process.env.META_SANDBOX_AUTHORING_LIVE_TESTS === '1' ? test : test.skip;
+// Separate opt-in from the read-only tiers: this one creates real objects on Meta.
+const mutatingLiveTest = process.env.META_SANDBOX_MUTATING_TESTS === '1' ? test : test.skip;
 
 liveDescribe('real Meta sandbox read-only acceptance', { concurrency: 1 }, () => {
   const token = process.env.META_SANDBOX_ACCESS_TOKEN ?? '';
@@ -88,5 +97,71 @@ liveDescribe('real Meta sandbox read-only acceptance', { concurrency: 1 }, () =>
     assert.ok(prerequisites.account.currency);
     assert.ok(prerequisites.account.timezone);
     assert.ok(prerequisites.pages.length > 0, 'The Meta sandbox token must have access to at least one test Page before paused publication can be tested.');
+  });
+
+  /**
+   * The only tier that writes to Meta. Everything above is read-only, and the publish path is
+   * otherwise exercised only against fakes — which do not validate payloads, and so let a
+   * v25-invalid campaign payload ship unnoticed once already.
+   *
+   * Creates a lead form and an OUTCOME_LEADS campaign from the exact payload builders that
+   * ship, then removes them. Objects are prefixed `[WorkOS:...]` so anything orphaned by a
+   * crash is identifiable. Campaigns delete; lead forms only archive (Graph refuses DELETE
+   * with error_subcode 33), so the sandbox Page accumulates archived forms by design.
+   */
+  mutatingLiveTest('creates and tears down a real lead form and OUTCOME_LEADS campaign', async () => {
+    const prerequisites = await getMetaAuthoringPrerequisites(token, accountId);
+    const page = prerequisites.pages[0];
+    assert.ok(page, 'a sandbox test Page is required');
+    const pageAccessToken = await getMetaPageAccessToken(token, page.pageId);
+
+    const formName = `[WorkOS:sandbox:${suffix}] lead form`;
+    let formId = '';
+    let campaignId = '';
+    try {
+      const form = await createMetaLeadForm({
+        pageAccessToken, pageId: page.pageId, name: formName,
+        questions: [
+          { type: 'FIRST_NAME', key: 'first_name', label: 'First name' },
+          { type: 'EMAIL', key: 'email', label: 'Email' },
+        ],
+        privacyPolicyUrl: 'https://example.com/privacy',
+        followUpUrl: 'https://example.com/thanks',
+        contextHeadline: 'Talk to us',
+        contextDescription: 'We reply within one business day.',
+      });
+      formId = form.id;
+      assert.ok(formId);
+
+      // Reuse is name-based, so the lookup must find what we just created.
+      const found = await findMetaLeadFormByName({ pageAccessToken, pageId: page.pageId, name: formName });
+      assert.equal(found?.id, formId);
+
+      const campaign = await createMetaLeadCampaign({
+        accessToken: token, adAccountId: accountId, name: `[WorkOS:sandbox:${suffix}] leads`,
+      });
+      campaignId = campaign.id;
+      assert.ok(campaignId);
+      const state = await getMetaObjectState(token, campaignId);
+      assert.equal(state.status, 'PAUSED', 'campaigns must never be created live');
+
+      // The ad set is deliberately not created here: Meta rejects lead-gen ad sets until the
+      // Page has accepted its Lead Generation Terms, which is manual and not always true of a
+      // sandbox Page. Preflight blocks that case with meta_leadgen_tos_required.
+      if (!page.leadgenTosAccepted) {
+        console.warn(`[sandbox] Page ${page.pageId} has not accepted Lead Generation Terms; ad-set creation not exercised.`);
+      }
+    } finally {
+      if (campaignId) {
+        await fetch(`${META_GRAPH_BASE}/${campaignId}?access_token=${encodeURIComponent(token)}`, { method: 'DELETE' })
+          .catch(() => undefined);
+      }
+      if (formId) {
+        await fetch(`${META_GRAPH_BASE}/${formId}`, {
+          method: 'POST',
+          body: new URLSearchParams({ status: 'ARCHIVED', access_token: pageAccessToken }),
+        }).catch(() => undefined);
+      }
+    }
   });
 });

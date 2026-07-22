@@ -237,6 +237,25 @@ Do not enable launch for the live sandbox smoke until paused-object inspection
 passes. Sandbox delivery/non-zero spend is not an acceptance requirement. Clean
 up the test objects manually in Ads Manager after verification.
 
+## 4a. Mutating sandbox tier
+
+The only tier that writes to Meta. Everything else is read-only, and the publish path is
+otherwise exercised only against fakes — which do not validate payloads, and so allowed a
+Graph v25-invalid campaign payload to ship unnoticed.
+
+```sh
+pnpm --filter backend test:meta-sandbox-mutating
+```
+
+Creates a lead form and an `OUTCOME_LEADS` campaign from the shipping payload builders,
+asserts the campaign is `PAUSED`, then tears both down. Campaigns delete; lead forms only
+archive (Graph refuses `DELETE` with `error_subcode 33`), so the sandbox Page accumulates
+archived `[WorkOS:...]` forms by design — that prefix is also how to find anything a crashed
+run orphaned.
+
+The ad set is deliberately not created: Meta rejects lead-gen ad sets until the Page accepts
+its Lead Generation Terms. The test warns and continues when `leadgen_tos_accepted` is false.
+
 ## 5. Real-account boundary
 
 Keep production-like environments at:

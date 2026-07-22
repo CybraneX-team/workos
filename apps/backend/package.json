@@ -25,7 +25,8 @@
     "test:meta-sandbox-authoring-live": "META_SANDBOX_LIVE_TESTS=1 META_SANDBOX_AUTHORING_LIVE_TESTS=1 node --import tsx --test test/metaAdsSandbox.live.test.ts",
     "test:erpnext-architecture": "node --import tsx --test test/erpnextArchitecture.test.ts",
     "test:sales-stories": "pnpm build && node test/salesStories.test.mjs",
-    "test:rbac-seed": "node --import tsx --test test/rbacSeed.test.ts"
+    "test:rbac-seed": "node --import tsx --test test/rbacSeed.test.ts",
+    "test:meta-sandbox-mutating": "META_SANDBOX_LIVE_TESTS=1 META_SANDBOX_AUTHORING_LIVE_TESTS=1 META_SANDBOX_MUTATING_TESTS=1 node --import tsx --test test/metaAdsSandbox.live.test.ts"
   },
   "dependencies": {
     "@cybranex/erpnext-contracts": "workspace:*",
