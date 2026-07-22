@@ -16,9 +16,28 @@ import {
   serviceError,
 } from '../src/index.js';
 
+const provisionRequest = {
+  environment: 'local', companySlug: 'acme-inc', idempotencyKey: 'provision:acme',
+  companyName: 'Acme Inc', country: 'India', currency: 'INR',
+  fyStartDate: '2026-04-01', fyEndDate: '2027-03-31', timezone: 'Asia/Kolkata',
+};
+
 test('provision contracts reject cross-shape and invalid slugs', () => {
-  assert.equal(ProvisionTenantRequestSchema.safeParse({ environment: 'local', companySlug: 'Acme Inc', idempotencyKey: '12345678' }).success, false);
-  assert.equal(ProvisionTenantRequestSchema.safeParse({ environment: 'local', companySlug: 'acme-inc', idempotencyKey: 'provision:acme' }).success, true);
+  assert.equal(ProvisionTenantRequestSchema.safeParse({ ...provisionRequest, companySlug: 'Acme Inc' }).success, false);
+  assert.equal(ProvisionTenantRequestSchema.safeParse(provisionRequest).success, true);
+});
+
+test('provision contract requires the ERPNext setup-wizard locale facts', () => {
+  // country is the field whose absence crashes erpnext's install_fixtures.
+  for (const field of ['companyName', 'country', 'currency', 'fyStartDate', 'fyEndDate']) {
+    const { [field]: _omitted, ...withoutField } = provisionRequest as Record<string, unknown>;
+    assert.equal(ProvisionTenantRequestSchema.safeParse(withoutField).success, false, `${field} must be required`);
+  }
+  // timezone is the one optional locale fact — Frappe tolerates an unset time_zone.
+  const { timezone: _tz, ...withoutTimezone } = provisionRequest;
+  assert.equal(ProvisionTenantRequestSchema.safeParse(withoutTimezone).success, true);
+  assert.equal(ProvisionTenantRequestSchema.safeParse({ ...provisionRequest, currency: 'inr' }).success, false);
+  assert.equal(ProvisionTenantRequestSchema.safeParse({ ...provisionRequest, fyStartDate: '01-04-2026' }).success, false);
 });
 
 test('environment, status, list, response, and normalized-error contracts validate', () => {

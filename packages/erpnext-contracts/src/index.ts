@@ -10,10 +10,23 @@ export const ServiceErrorSchema = z.object({
 });
 export type ServiceError = z.infer<typeof ServiceErrorSchema>;
 
+const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+// Company locale facts travel on the provision request rather than being looked
+// up by the control-plane: it must not read WorkOS companies (see AGENTS.md).
+// ERPNext's setup wizard needs every one of these — `country` in particular,
+// because erpnext's install_fixtures.get_preset_records() calls
+// `country.replace(...)` with no null guard and hard-fails the whole site.
 export const ProvisionTenantRequestSchema = z.object({
   environment: ErpNextEnvironmentSchema,
   companySlug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   idempotencyKey: z.string().min(8).max(200),
+  companyName: z.string().min(1).max(140),
+  country: z.string().min(1).max(100),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  fyStartDate: IsoDateSchema,
+  fyEndDate: IsoDateSchema,
+  timezone: z.string().min(1).max(80).optional(),
 });
 export type ProvisionTenantRequest = z.infer<typeof ProvisionTenantRequestSchema>;
 

@@ -112,6 +112,25 @@ Consequences worth recording:
 - **The remote provisioning shim is duplicated logic.** Its `bench new-site` call must be
   kept in sync with `localProvision()` by hand; see `infra/erpnext-remote-shim/README.md`.
 
+## Setup-completion amendment (2026-07-22)
+
+Provisioning now completes ERPNext's setup wizard before marking a tenant `ready`
+(`completeSetup()` in `apps/erpnext-control-plane/src/frappe/client.ts`). Two consequences
+for this ADR's boundary:
+
+- **Company locale facts cross the boundary as data, not as a read.** ERPNext's wizard needs
+  the company's name, country, currency and fiscal year. Rather than let the control-plane
+  query `public.companies` — which this ADR forbids — those fields were added to
+  `ProvisionTenantRequestSchema` and persisted on `erpnext.provision_jobs` (migration `002`),
+  because the worker claims the job long after the request arrives. WorkOS resolves them in
+  `companySetupFacts()` (`apps/backend/src/lib/erpnextOutbox.ts`). The boundary is unchanged;
+  `test/erpnextArchitecture.test.ts` still passes.
+- **Setup runs over Frappe's REST API, not `bench`.** `initialize_system_settings_and_user`
+  and `setup_complete` are both `@frappe.whitelist()`, so this stays inside the
+  control-plane's existing "owns Frappe HTTP access" role and needs no new capability on the
+  remote shim — one implementation covers local and remote, avoiding a third divergent copy
+  of provisioning logic.
+
 ## Authoritative files
 
 - `apps/backend/src/domains/workos-erp/erpnextSales.ts`

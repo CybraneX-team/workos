@@ -23,6 +23,33 @@ Deduplicating them properly (thin generic exec endpoint, or running the
 control-plane on the VM) is tracked as follow-up work; this copy is the
 stop-gap.
 
+### 🔴 They have already drifted (verified 2026-07-22, unfixed)
+
+This file is byte-identical to the VM (`index.js` md5 `c321fb65…`), so the following are
+real divergences from `localProvision()`, not a stale mirror:
+
+| | `localProvision()` | `/provision` here |
+|---|---|---|
+| Idempotency | guards with `bench list-sites` (`provisionWorker.ts:15`) | **none** — `siteExists()` exists at `index.js:30` but is wired only to `/ondemand-ask` (`index.js:55`) |
+| `--mariadb-user-host-login-scope=%` | passed (`provisionWorker.ts:19`) | **absent** |
+| ERPNext setup wizard | n/a — done by the control-plane for both paths | n/a |
+
+The idempotency gap is the one that bites. `provisionWorker.run()` retries up to
+`max_attempts`; if a remote provision fails *after* the site directory is created, every
+retry then fails with "site already exists" and the tenant ends at `status='failed'`. The
+identical failure self-heals locally.
+
+Fixing either of these means editing **both** files and copying this one up to the VM.
+
+### Do not add setup completion here
+
+ERPNext's setup wizard is run by the control-plane's `completeSetup()`
+(`apps/erpnext-control-plane/src/frappe/client.ts`), not by either `bench new-site` caller.
+Both of its entry points are `@frappe.whitelist()`, so it goes over the tenant's REST API
+and covers local and remote from a single implementation — deliberately avoiding a third
+thing to keep in sync by hand. Adding it here would reintroduce exactly the drift this
+file warns about.
+
 ## Deploying a change
 
 ```bash

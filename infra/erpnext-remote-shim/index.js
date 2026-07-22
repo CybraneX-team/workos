@@ -72,16 +72,24 @@ app.post('/provision', async (req, res) => {
   const siteName = `erp-${slug}.localhost`;
 
   try {
-    await execFileAsync('docker', [
-      'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
-      'bench', 'new-site', siteName,
-      '--mariadb-root-password', FRAPPE_DB_ROOT_PASSWORD,
-      '--admin-password', FRAPPE_SITE_ADMIN_PASSWORD,
-      // Keep this app list in sync with localProvision() in
-      // apps/erpnext-control-plane/src/provisionWorker.ts.
-      '--install-app', 'erpnext',
-      '--install-app', 'crm',
-    ], { cwd: FRAPPE_DOCKER_DIR, timeout: 300_000 });
+    // Skip creation if the site already exists, mirroring localProvision()'s
+    // `bench list-sites` guard. provisionWorker.run() retries the whole job, and
+    // ERPNext setup completion now runs *after* this call — so without this guard a
+    // transient setup failure left an orphaned site that made every retry fail with
+    // "site already exists", permanently failing the tenant. generate_keys below is
+    // safe to re-run: it reissues the Administrator API key pair.
+    if (!(await siteExists(siteName))) {
+      await execFileAsync('docker', [
+        'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
+        'bench', 'new-site', siteName,
+        '--mariadb-root-password', FRAPPE_DB_ROOT_PASSWORD,
+        '--admin-password', FRAPPE_SITE_ADMIN_PASSWORD,
+        // Keep this app list in sync with localProvision() in
+        // apps/erpnext-control-plane/src/provisionWorker.ts.
+        '--install-app', 'erpnext',
+        '--install-app', 'crm',
+      ], { cwd: FRAPPE_DOCKER_DIR, timeout: 300_000 });
+    }
 
     const { stdout } = await execFileAsync('docker', [
       'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,

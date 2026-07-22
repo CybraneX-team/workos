@@ -170,6 +170,43 @@ Then exercise the existing Operations, Supply Chain, Sales, Products, and Copilo
 | Outbox rows stuck `pending` with `TypeError: fetch failed` | The backend and/or control-plane process is dead. `curl` both `/healthz` endpoints — a running `pnpm dev:workos-erpnext` does **not** imply both are alive. See below. |
 | Newly provisioned site lacks `crm` | The stack is running the stock `frappe/erpnext` image instead of the custom `erpnext-crm` one. Check `docker compose -f ../infra/erpnext/pwd.yml exec -T backend ls apps`. |
 | `bench --site <site> install-app crm` fails `App crm not in apps.txt` | `sites/apps.txt` (in the shared `sites` volume) predates the image swap. Regenerate: `docker compose -f ../infra/erpnext/pwd.yml exec -T backend bash -c 'ls -1 apps > sites/apps.txt'`. Locally the `configurator` service usually fixes this itself on `up`; on the production VM it does not (see `cloud-deploy.md`). |
+| Fresh site opens `/app/setup-wizard` or `/desk/setup-wizard/0` | Provisioning should have completed setup. Check the tenant reached `status='ready'` (it is only set *after* setup) and look for `setup_args_missing` or a `setup_complete` failure in `erpnext.provision_jobs.last_error`. |
+| Provision job fails `setup_args_missing` | The job predates migration `002`, or the backend sent a pre-`companyName`/`country` payload. Redeploy the backend and re-enqueue; the worker refuses to provision a site it cannot configure. |
+| Setup wizard fails: `Failed to install presets` / `AttributeError: 'NoneType' object has no attribute 'replace'` | Setup ran with no country. `install_fixtures.get_preset_records()` calls `country.replace(...)` unguarded (`install_fixtures.py:152`), still unguarded upstream on `version-16`. `companies.country` is `NOT NULL DEFAULT 'India'`, so this means the value was lost in transit — check `erpnext.provision_jobs.country` for that job. |
+| Sales/Operations/Products dashboards unlock but render empty | The site has no `Company`. Check `bench --site <site> execute frappe.client.get_value --kwargs '{"doctype":"System Settings","fieldname":"setup_complete"}'`. |
+
+## ERPNext setup completion (fixed 2026-07-22)
+
+Provisioning used to stop after `bench new-site` + `generate_keys`, leaving every site with
+no `Company`, chart of accounts, fiscal year or default currency, and dumping the first
+user onto the setup wizard. The control-plane now runs the wizard itself in
+`completeSetup()` (`apps/erpnext-control-plane/src/frappe/client.ts`), between provisioning
+and branding, before `status='ready'`. This covers local and remote identically.
+
+Frappe CRM never depended on it — `CRM Lead`/`CRM Deal` have no `company` field, so
+pipeline projections worked even on unconfigured sites.
+
+**Call the frappe-level endpoint, not ERPNext's.** If you ever invoke setup by hand, use
+`frappe.desk.page.setup_wizard.setup_wizard.setup_complete`, not
+`erpnext.setup.setup_wizard.setup_wizard.setup_complete`. The frappe one runs
+`parse_args()`, which wraps the payload in a `frappe._dict`; ERPNext's `install_company()`
+uses *attribute* access (`args.fy_start_date`, `args.company_name`) and raises
+`AttributeError` on a plain dict. Calling ERPNext's directly via `bench execute` hits that.
+
+What the wizard reads (`version-16`, read 2026-07-22):
+
+- `stage_fixtures()` → `fixtures.install(args.get("country"))` — crashes on a null country.
+- `install_company()` — `fy_start_date`, `fy_end_date`, `company_name`, `company_abbr`,
+  `currency`, `country`, `chart_of_accounts`, `domain`.
+- `install_defaults()` — `currency`, `company_name`, then `set_global_defaults()` and
+  `create_bank_account(args)` (a no-op without `bank_account`).
+
+`initialize_system_settings_and_user` must be called first — see
+`../architecture/erpnext-control-plane.md`, "Completing ERPNext setup", for why a retry
+otherwise re-fails identically.
+
+A useful side effect: `update_system_settings()` sets `enable_scheduler: 1`, which Frappe
+CRM's Facebook lead syncing needs.
 
 ## Provisioning stalls with no retries
 

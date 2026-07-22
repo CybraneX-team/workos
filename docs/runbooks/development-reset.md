@@ -14,6 +14,12 @@ Scope: destructive reset of the configured shared Supabase development project a
 
 It does not delete ERPNext VM sites. The script's site matcher only accepts local `.localhost` names. It restores the system role reference seed after deletion.
 
+A stopped local Frappe stack no longer aborts the reset (changed 2026-07-22): `localSites()`
+returns `null`, the run reports `localFrappeSites: "unreachable (local stack not running)"`,
+warns, and skips local site deletion. This matters for remote-only setups
+(`ERPNEXT_ENV=remote`), where nothing runs locally. Any local sites then survive as
+orphans exactly like VM sites do — see step 4.
+
 > ⚠️ **Changed 2026-07-20 — this reset now affects the deployed control-plane.**
 > The Azure-deployed `erpnext-control-plane` (`ERPNEXT_ENV=remote`) uses the **same**
 > Supabase project's `erpnext` schema. Because this script truncates every table in
@@ -44,7 +50,8 @@ The Supabase project reference is derived from `SUPABASE_URL`; do not copy a rem
 
 - Backend environment has valid `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.
 - `pg_dump`, Docker, and Docker Compose are available.
-- The local Frappe stack is running so sites can be listed and backed up.
+- The local Frappe stack is running, if you have one, so sites can be listed and backed up. A stopped stack is tolerated — the reset proceeds and skips local site deletion.
+- `az` CLI access to `erpnext-vm`, for step 4.
 - The operator understands that Auth users and data visible to any application connected to the displayed shared project will be deleted.
 
 ## 1. Dry run
@@ -98,6 +105,34 @@ select count(*) from public.roles;
 ```
 
 The first five should be zero. `public.roles` should contain the restored system reference roles. Confirm `erpnext` schema tables are empty and `bench list-sites` no longer lists the deleted local tenant sites.
+
+## 4. Drop the ERPNext VM sites by hand
+
+The script never touches the VM, so truncating the `erpnext` schema leaves every remote
+tenant site orphaned — present on the VM, unknown to WorkOS. Drop them explicitly.
+
+`erpnext-vm` only runs 12:00–00:00 IST; `az vm start -g startup-digital-twin-rg -n erpnext-vm`
+first if outside that window.
+
+```bash
+az vm run-command invoke -g startup-digital-twin-rg -n erpnext-vm --command-id RunShellScript --scripts '
+cd /home/erpadmin/frappe_docker
+set -a; sudo cat /home/erpadmin/provision-shim/.env > /tmp/shim.env; . /tmp/shim.env; set +a
+for s in $(docker compose -f pwd.yml exec -T backend bench list-sites | grep "^erp-"); do
+  docker compose -f pwd.yml exec -T backend bench drop-site "$s" --force --no-backup \
+    --mariadb-root-password "$FRAPPE_DB_ROOT_PASSWORD"
+done
+rm -f /tmp/shim.env
+docker compose -f pwd.yml exec -T backend bench list-sites'
+```
+
+**Do not pass `admin` as the root password.** `pwd.yml` declares
+`MYSQL_ROOT_PASSWORD: admin`, but that only applies at first initialisation; the live
+password is `FRAPPE_DB_ROOT_PASSWORD` in the shim's `.env`. Using `admin` fails with
+`Access denied for user 'root'@...`.
+
+Dropped sites are archived under `/home/frappe/frappe-bench/archived/sites` in the `sites`
+volume, not erased — reclaim that space separately if it matters.
 
 ## Backup and restore note
 

@@ -5,6 +5,7 @@ import type { RoleId } from '../rbac.js';
 import { computeFrappeRoles } from './erpnextRoleMapping.js';
 import { configureTenantSso, getTenantStatus, listTenants, provisionTenant, reconcileTenantUsers } from './erpnextControlPlane.js';
 import { getOrCreateOidcClient } from '../routes/oidc.js';
+import { currencyForCountry, fiscalYearForCountry, timezoneForCountry } from '../routes/companies.js';
 import { log } from './logger.js';
 
 type CommandKind = 'provision_tenant' | 'configure_sso' | 'reconcile_users';
@@ -52,11 +53,36 @@ async function pick(): Promise<Command | null> {
   return rows[0] ?? null;
 }
 
+// ERPNext's setup wizard needs the company's locale before it can build a chart
+// of accounts. WorkOS owns these columns, so they are resolved here and travel on
+// the provision request — the control-plane must not read public.companies itself
+// (see AGENTS.md). Resolved at execute time rather than stored on the outbox row so
+// a company edited between enqueue and execute provisions with its current values.
+async function companySetupFacts(companyId: string) {
+  const { rows } = await pool.query<{ name: string; country: string; currency: string | null }>(
+    'select name, country, currency from public.companies where id=$1', [companyId]);
+  const company = rows[0];
+  if (!company) throw new Error('company_not_found');
+  const country = company.country?.trim() || 'India';
+  const fiscalYear = fiscalYearForCountry(country);
+  return {
+    companyName: company.name,
+    country,
+    currency: company.currency?.trim().toUpperCase() || currencyForCountry(country),
+    fyStartDate: fiscalYear.start,
+    fyEndDate: fiscalYear.end,
+    timezone: timezoneForCountry(country),
+  };
+}
+
 async function execute(command: Command) {
   const key = `${command.command_kind}:${provisionEnv}:${command.company_id}:${command.generation}`;
   if (command.command_kind === 'provision_tenant') {
     if (!command.company_slug) throw new Error('company_slug_missing');
-    await provisionTenant(command.company_id, { environment: provisionEnv, companySlug: command.company_slug, idempotencyKey: key });
+    await provisionTenant(command.company_id, {
+      environment: provisionEnv, companySlug: command.company_slug, idempotencyKey: key,
+      ...await companySetupFacts(command.company_id),
+    });
     return;
   }
   const status = await getTenantStatus(command.company_id);
