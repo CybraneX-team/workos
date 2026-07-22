@@ -101,8 +101,8 @@ export interface CustomerRollup {
   hasActivity: boolean;
 }
 
-export function sumNumber(rows: ErpNextGenericRecord[], key: string): number {
-  return rows.reduce((total, row) => total + numberValue(row[key]), 0);
+export function sumNumber(rows: ErpNextGenericRecord[], selector: string | ((row: ErpNextGenericRecord) => unknown)): number {
+  return rows.reduce((total, row) => total + numberValue(typeof selector === 'string' ? row[selector] : selector(row)), 0);
 }
 
 export function countBy(rows: ErpNextGenericRecord[], selector: string | ((row: ErpNextGenericRecord) => unknown), fallback = 'Missing'): Map<string, number> {
@@ -287,8 +287,28 @@ function isLostStatus(status: unknown): boolean {
   return typeof status === 'string' && /lost|reject/i.test(status);
 }
 
+// Frappe CRM field aliases. Pipeline nodes read CRM Deal/CRM Lead, while
+// accounts and revenue nodes still read the native ERPNext doctypes, so these
+// accessors accept either shape. Note CRM Deal has no separate stage field —
+// its `status` (Link to CRM Deal Status) *is* the pipeline stage.
+function dealAmount(row: ErpNextGenericRecord): unknown {
+  return row.opportunity_amount ?? row.deal_value;
+}
+
+function dealStage(row: ErpNextGenericRecord): unknown {
+  return row.sales_stage ?? row.status;
+}
+
+function dealClose(row: ErpNextGenericRecord): unknown {
+  return row.expected_closing ?? row.expected_closure_date;
+}
+
+function leadCompany(row: ErpNextGenericRecord): unknown {
+  return row.company_name ?? row.organization;
+}
+
 function isOverdue(row: ErpNextGenericRecord): boolean {
-  const expected = dateValue(row.expected_closing);
+  const expected = dateValue(dealClose(row));
   if (!expected) return false;
   return expected.getTime() < Date.now() && isOpenStatus(row.status ?? row.sales_stage);
 }
@@ -330,10 +350,10 @@ function valueSplitBreakdown(id: string, title: string, entries: Array<{ label: 
 function defaultEvidence(reads: ReadBundle): SalesEvidence[] {
   return reads.flatMap(({ definition, result }) => result.rows.slice(0, 5).map(record => ({
     id: `${definition.doctype}:${record.name}`,
-    label: String(record.customer_name ?? record.customer ?? record.lead_name ?? record.party_name ?? record.territory_name ?? record.name),
+    label: String(record.customer_name ?? record.customer ?? record.lead_name ?? record.party_name ?? record.territory_name ?? record.organization ?? record.name),
     sourceDoctype: definition.doctype,
     sourceId: record.name,
-    detail: formatDate(record.posting_date ?? record.transaction_date ?? record.expected_closing ?? record.modified ?? record.creation),
+    detail: formatDate(record.posting_date ?? record.transaction_date ?? dealClose(record) ?? record.modified ?? record.creation),
     status: typeof record.status === 'string' ? record.status : (typeof record.sales_stage === 'string' ? record.sales_stage : undefined),
   }))).slice(0, 24);
 }
@@ -557,10 +577,10 @@ function customerHistoryStory(mappingDef: SalesStoryMapping, reads: ReadBundle):
 }
 
 function leadsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const leads = rowsFor(reads, 'Lead');
+  const leads = rowsFor(reads, 'CRM Lead');
   const open = leads.filter(row => isOpenStatus(row.status)).length;
   const missingSource = leads.filter(row => isMissing(leadSource(row))).length;
-  const missingCompany = leads.filter(row => isMissing(row.company_name)).length;
+  const missingCompany = leads.filter(row => isMissing(leadCompany(row))).length;
   return {
     templateKey: 'generic',
     headline: `${leads.length} lead(s) tracked; ${open} open and ${missingSource} missing source.`,
@@ -583,11 +603,11 @@ function leadsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricSto
       label: String(record.lead_name ?? record.name),
       sourceDoctype: definition.doctype,
       sourceId: record.name,
-      detail: String(record.company_name ?? ''),
+      detail: String(leadCompany(record) ?? ''),
       status: typeof record.status === 'string' ? record.status : undefined,
       attributes: compactAttributes([
         !isMissing(leadSource(record)) && { label: 'Source', value: String(leadSource(record)) },
-        !isMissing(record.company_name) && { label: 'Company', value: String(record.company_name) },
+        !isMissing(leadCompany(record)) && { label: 'Company', value: String(leadCompany(record)) },
         !isMissing(record.modified) && { label: 'Updated', value: String(record.modified) },
       ]),
     })),
@@ -595,27 +615,27 @@ function leadsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricSto
 }
 
 function opportunityStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const opportunities = rowsFor(reads, 'Opportunity');
-  const value = sumNumber(opportunities, 'opportunity_amount');
+  const opportunities = rowsFor(reads, 'CRM Deal');
+  const value = sumNumber(opportunities, dealAmount);
   const open = opportunities.filter(row => isOpenStatus(row.status ?? row.sales_stage)).length;
-  const missingStage = opportunities.filter(row => isMissing(row.sales_stage)).length;
+  const missingStage = opportunities.filter(row => isMissing(dealStage(row))).length;
   const overdue = opportunities.filter(isOverdue).length;
   return {
     templateKey: 'generic',
     headline: `${opportunities.length} opportunit${opportunities.length === 1 ? 'y' : 'ies'} worth ${money(value)}; ${open} open and ${missingStage} missing stage.`,
     healthScore: score(opportunities.length, missingStage * 5 + overdue * 8 + problemRows(reads).length * 8, mappingDef.status === 'partial'),
     metricCards: [
-      metricCard('opportunities', 'Opportunities', opportunities.length, 'Opportunity records in WorkOS.'),
-      metricCard('pipeline_value', 'Pipeline value', money(value), 'Opportunity amount in the read window.'),
-      metricCard('missing_stage', 'Missing stage', missingStage, 'Opportunities without sales stage.', missingStage ? 'warning' : 'good'),
-      metricCard('overdue', 'Overdue closes', overdue, 'Open opportunities past expected close.', overdue ? 'warning' : 'good'),
+      metricCard('opportunities', 'Opportunities', opportunities.length, 'CRM Deal records in WorkOS.'),
+      metricCard('pipeline_value', 'Pipeline value', money(value), 'Deal value in the read window.'),
+      metricCard('missing_stage', 'Missing stage', missingStage, 'Deals with no stage set. CRM Deal status doubles as its stage, so this is normally zero.', missingStage ? 'warning' : 'good'),
+      metricCard('overdue', 'Overdue closes', overdue, 'Open deals past expected close.', overdue ? 'warning' : 'good'),
     ],
     breakdowns: [
-      breakdownFromCounts('stage', 'Stage mix', countBy(opportunities, 'sales_stage', 'No stage')),
+      breakdownFromCounts('stage', 'Stage mix', countBy(opportunities, dealStage, 'No stage')),
       breakdownFromCounts('status', 'Status mix', countBy(opportunities, 'status', 'No status'), label => isProblemStatus(label) ? 'warning' : undefined),
     ],
     insights: [
-      insight('pipeline', 'Pipeline shape', `${open} open opportunit${open === 1 ? 'y is' : 'ies are'} carrying ${money(sumNumber(opportunities.filter(row => isOpenStatus(row.status ?? row.sales_stage)), 'opportunity_amount'))} in value.`),
+      insight('pipeline', 'Pipeline shape', `${open} open opportunit${open === 1 ? 'y is' : 'ies are'} carrying ${money(sumNumber(opportunities.filter(row => isOpenStatus(row.status ?? row.sales_stage)), dealAmount))} in value.`),
       ...(overdue ? [insight('overdue', 'Close-date risk', `${overdue} open opportunit${overdue === 1 ? 'y is' : 'ies are'} past expected close.`, 'warning')] : []),
     ],
     evidence: opportunityEvidence(reads),
@@ -623,18 +643,18 @@ function opportunityStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Met
 }
 
 function dealStagesStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const opportunities = rowsFor(reads, 'Opportunity');
-  const missingStage = opportunities.filter(row => isMissing(row.sales_stage)).length;
-  const stageCounts = countBy(opportunities, 'sales_stage', 'No stage');
+  const opportunities = rowsFor(reads, 'CRM Deal');
+  const missingStage = opportunities.filter(row => isMissing(dealStage(row))).length;
+  const stageCounts = countBy(opportunities, dealStage, 'No stage');
   const topStage = [...stageCounts.entries()].sort((a, b) => b[1] - a[1])[0];
   return {
     templateKey: 'generic',
     headline: `${opportunities.length} deal(s) distributed across ${stageCounts.size} stage bucket(s); top bucket is ${topStage?.[0] ?? 'none'}.`,
     healthScore: score(opportunities.length, missingStage * 6 + problemRows(reads).length * 8, true),
     metricCards: [
-      metricCard('deals', 'Deals staged', opportunities.length, 'Opportunity records with stage context.'),
+      metricCard('deals', 'Deals staged', opportunities.length, 'CRM Deal records with stage context.'),
       metricCard('stage_buckets', 'Stage buckets', stageCounts.size, 'Distinct sales stages represented.'),
-      metricCard('missing_stage', 'Missing stage', missingStage, 'Deals without stage assignment.', missingStage ? 'warning' : 'good'),
+      metricCard('missing_stage', 'Missing stage', missingStage, 'Deals with no stage set. CRM Deal status doubles as its stage, so this is normally zero.', missingStage ? 'warning' : 'good'),
     ],
     breakdowns: [breakdownFromCounts('stage', 'Deal stage distribution', stageCounts)],
     insights: [insight('stage_focus', 'Stage concentration', topStage ? `${topStage[1]} deal(s) sit in "${topStage[0]}".` : 'No stage data is available yet.')],
@@ -643,11 +663,11 @@ function dealStagesStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metr
 }
 
 function pipelineCoverageStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const opportunities = rowsFor(reads, 'Opportunity');
+  const opportunities = rowsFor(reads, 'CRM Deal');
   const open = opportunities.filter(row => isOpenStatus(row.status ?? row.sales_stage));
-  const openValue = sumNumber(open, 'opportunity_amount');
+  const openValue = sumNumber(open, dealAmount);
   const overdue = open.filter(isOverdue).length;
-  const noClose = open.filter(row => isMissing(row.expected_closing)).length;
+  const noClose = open.filter(row => isMissing(dealClose(row))).length;
   return {
     templateKey: 'generic',
     headline: `${open.length} open opportunit${open.length === 1 ? 'y' : 'ies'} carry ${money(openValue)} in pipeline coverage; ${overdue} are overdue.`,
@@ -658,7 +678,7 @@ function pipelineCoverageStory(mappingDef: SalesStoryMapping, reads: ReadBundle)
       metricCard('overdue', 'Overdue closes', overdue, 'Open deals past expected close.', overdue ? 'warning' : 'good'),
       metricCard('missing_close', 'Missing close date', noClose, 'Open deals without expected closing.', noClose ? 'warning' : 'good'),
     ],
-    breakdowns: [breakdownFromCounts('expected_close', 'Expected close mix', countBy(open, row => formatDate(row.expected_closing) ?? 'No close date'))],
+    breakdowns: [breakdownFromCounts('expected_close', 'Expected close mix', countBy(open, row => formatDate(dealClose(row)) ?? 'No close date'))],
     insights: [insight('coverage', 'Coverage visibility', `${open.length - noClose} open deal(s) include expected close dates for pipeline timing.`)],
     evidence: opportunityEvidence(reads),
   };
@@ -767,7 +787,7 @@ function bookingsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metric
 }
 
 function winRateStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const opportunities = rowsFor(reads, 'Opportunity');
+  const opportunities = rowsFor(reads, 'CRM Deal');
   const won = opportunities.filter(row => isWonStatus(row.status ?? row.sales_stage)).length;
   const lost = opportunities.filter(row => isLostStatus(row.status ?? row.sales_stage)).length;
   const open = opportunities.filter(row => !isWonStatus(row.status ?? row.sales_stage) && !isLostStatus(row.status ?? row.sales_stage)).length;
@@ -788,8 +808,8 @@ function winRateStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricS
 }
 
 function conversionStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const leads = rowsFor(reads, 'Lead');
-  const opportunities = rowsFor(reads, 'Opportunity');
+  const leads = rowsFor(reads, 'CRM Lead');
+  const opportunities = rowsFor(reads, 'CRM Deal');
   const missingSource = leads.filter(row => isMissing(leadSource(row))).length;
   return {
     templateKey: 'generic',
@@ -797,7 +817,7 @@ function conversionStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metr
     healthScore: score(leads.length + opportunities.length, missingSource * 3, true),
     metricCards: [
       metricCard('leads', 'Leads', leads.length, 'Lead records in WorkOS.'),
-      metricCard('opportunities', 'Opportunities', opportunities.length, 'Opportunity records in WorkOS.'),
+      metricCard('opportunities', 'Opportunities', opportunities.length, 'CRM Deal records in WorkOS.'),
       metricCard('conversion', 'Approx conversion', percent(opportunities.length, leads.length), 'Opportunity count divided by lead count in this window.'),
       metricCard('missing_source', 'Missing source', missingSource, 'Leads without source attribution.', missingSource ? 'warning' : 'good'),
     ],
@@ -811,8 +831,8 @@ function conversionStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metr
 }
 
 function salesCycleStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const opportunities = rowsFor(reads, 'Opportunity');
-  const cycleDays = opportunities.map(row => daysBetween(row.creation ?? row.transaction_date, row.expected_closing)).filter((value): value is number => value !== null);
+  const opportunities = rowsFor(reads, 'CRM Deal');
+  const cycleDays = opportunities.map(row => daysBetween(row.creation ?? row.transaction_date, dealClose(row))).filter((value): value is number => value !== null);
   const avgCycle = cycleDays.length ? Math.round(cycleDays.reduce((sum, value) => sum + value, 0) / cycleDays.length) : 0;
   const overdue = opportunities.filter(isOverdue).length;
   return {
@@ -822,19 +842,19 @@ function salesCycleStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metr
     metricCards: [
       metricCard('dated', 'Dated opportunities', cycleDays.length, 'Opportunities with enough dates to estimate cycle.'),
       metricCard('avg_cycle', 'Avg cycle', avgCycle, 'Average days from creation/transaction to expected close.', 'neutral', 'days'),
-      metricCard('overdue', 'Overdue closes', overdue, 'Open opportunities past expected close.', overdue ? 'warning' : 'good'),
+      metricCard('overdue', 'Overdue closes', overdue, 'Open deals past expected close.', overdue ? 'warning' : 'good'),
     ],
-    breakdowns: [breakdownFromCounts('stage', 'Sales cycle by stage', countBy(opportunities, row => row.sales_stage ?? row.status ?? 'No stage'))],
+    breakdowns: [breakdownFromCounts('stage', 'Sales cycle by stage', countBy(opportunities, row => dealStage(row) ?? 'No stage'))],
     insights: [insight('cycle_basis', 'Cycle basis', 'Sales cycle is estimated from available creation/transaction and expected close dates.')],
     evidence: opportunityEvidence(reads),
   };
 }
 
 function pipelineHealthStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
-  const opportunities = rowsFor(reads, 'Opportunity');
+  const opportunities = rowsFor(reads, 'CRM Deal');
   const open = opportunities.filter(row => isOpenStatus(row.status ?? row.sales_stage));
-  const openValue = sumNumber(open, 'opportunity_amount');
-  const unvalued = open.filter(row => numberValue(row.opportunity_amount) <= 0).length;
+  const openValue = sumNumber(open, dealAmount);
+  const unvalued = open.filter(row => numberValue(dealAmount(row)) <= 0).length;
   const problem = problemRows(reads).length;
   return {
     templateKey: 'generic',
@@ -847,7 +867,7 @@ function pipelineHealthStory(mappingDef: SalesStoryMapping, reads: ReadBundle): 
       metricCard('attention', 'Attention statuses', problem, 'Lost, held, cancelled, or stopped opportunities.', problem ? 'warning' : 'good'),
     ],
     breakdowns: [
-      breakdownFromCounts('stage', 'Open pipeline by stage', countBy(open, 'sales_stage', 'No stage')),
+      breakdownFromCounts('stage', 'Open pipeline by stage', countBy(open, dealStage, 'No stage')),
       breakdownFromCounts('status', 'Pipeline status mix', countBy(opportunities, row => row.status ?? row.sales_stage ?? 'No status'), label => isProblemStatus(label) ? 'warning' : undefined),
     ],
     insights: [insight('health', 'Pipeline health', `${open.length - unvalued} open opportunit${open.length - unvalued === 1 ? 'y has' : 'ies have'} value assigned.`)],
@@ -858,15 +878,15 @@ function pipelineHealthStory(mappingDef: SalesStoryMapping, reads: ReadBundle): 
 function opportunityEvidence(reads: ReadBundle): SalesEvidence[] {
   return evidence(reads, (definition, record) => ({
     id: `${definition.doctype}:${record.name}`,
-    label: String(record.customer_name ?? record.name),
+    label: String(record.customer_name ?? record.organization ?? record.name),
     sourceDoctype: definition.doctype,
     sourceId: record.name,
-    detail: !isMissing(record.opportunity_amount) ? money(numberValue(record.opportunity_amount)) : formatDate(record.modified ?? record.creation),
+    detail: !isMissing(dealAmount(record)) ? money(numberValue(dealAmount(record))) : formatDate(record.modified ?? record.creation),
     status: typeof record.status === 'string' ? record.status : (typeof record.sales_stage === 'string' ? record.sales_stage : undefined),
     attributes: compactAttributes([
-      !isMissing(record.sales_stage) && { label: 'Stage', value: String(record.sales_stage) },
-      !isMissing(record.opportunity_amount) && { label: 'Amount', value: money(numberValue(record.opportunity_amount)) },
-      !isMissing(record.expected_closing) && { label: 'Close', value: String(record.expected_closing), tone: isOverdue(record) ? 'warning' : undefined },
+      !isMissing(dealStage(record)) && { label: 'Stage', value: String(dealStage(record)) },
+      !isMissing(dealAmount(record)) && { label: 'Amount', value: money(numberValue(dealAmount(record))) },
+      !isMissing(dealClose(record)) && { label: 'Close', value: String(dealClose(record)), tone: isOverdue(record) ? 'warning' : undefined },
       !isMissing(record.modified) && { label: 'Updated', value: String(record.modified) },
     ]),
   }));
@@ -936,8 +956,8 @@ function leadSource(row: ErpNextGenericRecord): string | number | null | undefin
 }
 
 function opportunityRecommendations(reads: ReadBundle): SalesRecommendation[] {
-  const opportunities = rowsFor(reads, 'Opportunity');
-  const missingStage = opportunities.filter(row => isMissing(row.sales_stage)).length;
+  const opportunities = rowsFor(reads, 'CRM Deal');
+  const missingStage = opportunities.filter(row => isMissing(dealStage(row))).length;
   const overdue = opportunities.filter(isOverdue).length;
   const recommendations: SalesRecommendation[] = [];
   if (missingStage) recommendations.push({ label: 'Assign sales stages', reason: `${missingStage} opportunit${missingStage === 1 ? 'y is' : 'ies are'} missing stage.`, severity: 'warning' });

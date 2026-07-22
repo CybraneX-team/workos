@@ -1,6 +1,6 @@
 # ERPNext control-plane guide
 
-Last verified: 2026-07-20.
+Last verified: 2026-07-21.
 
 This Express service runs independently on port `8090`. Read `../../docs/architecture/erpnext-control-plane.md` and `../../docs/runbooks/local-erpnext-sso.md` before changing provisioning or SSO.
 
@@ -54,6 +54,9 @@ These rules are checked by `apps/backend/test/erpnextArchitecture.test.ts`.
 - User reconciliation receives the complete desired set; previously managed users omitted from it are disabled.
 - SSO configuration returns retryable `tenant_not_ready` until credentials exist.
 - Local sites are named `erp-<slug>.localhost` and use `http://erp-<slug>.localhost:8081` for API and Desk URLs.
+- Sites are provisioned with **two** Frappe apps: `erpnext`, then `crm` (Frappe CRM). Both stacks must run the custom image built from `infra/erpnext-image/` — Frappe apps live in the image layer, so `crm` cannot be added to a running container. Provisioning a site with an image that lacks `crm` fails at `bench new-site --install-app crm`.
+- The remote provisioning shim (`/home/erpadmin/provision-shim/index.js` on `erpnext-vm`) mirrors `localProvision()`'s `bench new-site` call. Changing install-app behavior here requires editing that file on the VM too, or the two paths silently diverge. A mirror is version-controlled at `infra/erpnext-remote-shim/`, but **nothing deploys from it** — the VM is still the live source of truth, so update both by hand.
+- `localProvision()` runs `bench new-site` as a **host** process via `docker compose exec`, taking several minutes (longer under arm64 emulation) and logging nothing on success. It is not visible to `ps` inside the container; check the host with `ps aux | grep 'bench new-site'` before assuming a job is stuck.
 
 ## Verification
 

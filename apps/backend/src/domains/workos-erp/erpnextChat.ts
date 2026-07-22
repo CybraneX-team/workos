@@ -65,11 +65,11 @@ const TOOLS = [
       },
       {
         name: 'get_opportunities',
-        description: 'List CRM sales opportunities (deals), with amount and sales stage. Optional search matches the linked customer or lead.',
+        description: 'List CRM deals, with deal value, win probability, and pipeline status. Optional search matches the deal\'s organization.',
         parameters: {
           type: 'object',
           properties: {
-            search: { type: 'string', description: 'Search term to filter by the linked customer/lead (optional)' },
+            search: { type: 'string', description: 'Search term to filter by the deal\'s organization (optional)' },
           },
         },
       },

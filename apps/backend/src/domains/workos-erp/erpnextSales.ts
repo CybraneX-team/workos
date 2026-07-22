@@ -204,18 +204,18 @@ const MAPPINGS: MappingDefinition[] = [
   unsupported('sales_accounts_buyer_committees', 'buyer committees', 'Customers & Accounts', 'buyer committees', 'Buyer committee mapping (multi-stakeholder org charts) is not a WorkOS doctype.'),
 
   // Pipeline & Opportunities
-  mapping('sales_pipeline_leads', 'Leads', 'Pipeline & Opportunities', 'Leads', ['Lead'], [
-    { doctype: 'Lead', fields: ['lead_name', 'status', 'utm_source', 'company_name', ...BASE_FIELDS] },
+  mapping('sales_pipeline_leads', 'Leads', 'Pipeline & Opportunities', 'Leads', ['CRM Lead'], [
+    { doctype: 'CRM Lead', fields: ['lead_name', 'status', 'source', 'organization', 'converted', ...BASE_FIELDS] },
   ]),
-  mapping('sales_pipeline_opportunities', 'opportunities', 'Pipeline & Opportunities', 'opportunities', ['Opportunity'], [
-    { doctype: 'Opportunity', fields: ['customer_name', 'status', 'opportunity_amount', 'sales_stage', ...BASE_FIELDS] },
+  mapping('sales_pipeline_opportunities', 'opportunities', 'Pipeline & Opportunities', 'opportunities', ['CRM Deal'], [
+    { doctype: 'CRM Deal', fields: ['organization', 'status', 'deal_value', 'probability', ...BASE_FIELDS] },
   ]),
-  mapping('sales_pipeline_deal_stages', 'deal stages', 'Pipeline & Opportunities', 'deal stages', ['Opportunity'], [
-    { doctype: 'Opportunity', fields: ['sales_stage', 'status', 'opportunity_amount', ...BASE_FIELDS] },
-  ], 'partial', 'Deal-stage view reuses Opportunity.sales_stage; custom stage funnels beyond WorkOS defaults are not modeled.'),
-  mapping('sales_pipeline_pipeline_coverage', 'pipeline coverage', 'Pipeline & Opportunities', 'pipeline coverage', ['Opportunity'], [
-    { doctype: 'Opportunity', fields: ['opportunity_amount', 'sales_stage', 'status', 'expected_closing', ...BASE_FIELDS] },
-  ], 'partial', 'Pipeline coverage ratio is approximated from open Opportunity value; it does not account for external quota targets.'),
+  mapping('sales_pipeline_deal_stages', 'deal stages', 'Pipeline & Opportunities', 'deal stages', ['CRM Deal'], [
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'probability', ...BASE_FIELDS] },
+  ], 'partial', 'Deal-stage view reuses CRM Deal.status (Link to CRM Deal Status); custom stage funnels beyond the configured statuses are not modeled.'),
+  mapping('sales_pipeline_pipeline_coverage', 'pipeline coverage', 'Pipeline & Opportunities', 'pipeline coverage', ['CRM Deal'], [
+    { doctype: 'CRM Deal', fields: ['deal_value', 'expected_deal_value', 'status', 'probability', 'expected_closure_date', ...BASE_FIELDS] },
+  ], 'partial', 'Pipeline coverage ratio is approximated from open CRM Deal value; it does not account for external quota targets.'),
   unsupported('sales_pipeline_demos', 'demos', 'Pipeline & Opportunities', 'demos', 'Demo scheduling/tracking is not a native WorkOS CRM doctype.'),
   mapping('sales_pipeline_proposals', 'proposals', 'Pipeline & Opportunities', 'proposals', ['Quotation'], [
     { doctype: 'Quotation', fields: ['party_name', 'transaction_date', 'grand_total', ...SUBMITTABLE_STATUS_FIELDS], filters: BUYING_FILTER },
@@ -247,20 +247,20 @@ const MAPPINGS: MappingDefinition[] = [
   mapping('sales_performance_bookings', 'bookings', 'Sales Performance', 'bookings', ['Sales Order'], [
     { doctype: 'Sales Order', fields: ['customer', 'transaction_date', 'grand_total', ...SUBMITTABLE_STATUS_FIELDS], filters: BUYING_FILTER },
   ]),
-  mapping('sales_performance_win_rate', 'win rate', 'Sales Performance', 'win rate', ['Opportunity'], [
-    { doctype: 'Opportunity', fields: ['status', 'sales_stage', 'opportunity_amount', ...BASE_FIELDS] },
-  ], 'partial', 'Win rate is derived from Opportunity status counts (Won vs Lost) in the read window, not a lifetime aggregate.'),
-  mapping('sales_performance_conversion', 'conversion', 'Sales Performance', 'conversion', ['Lead', 'Opportunity'], [
-    { doctype: 'Lead', fields: ['lead_name', 'status', 'utm_source', ...BASE_FIELDS] },
-    { doctype: 'Opportunity', fields: ['status', 'sales_stage', 'opportunity_amount', ...BASE_FIELDS] },
-  ], 'partial', 'Lead-to-opportunity conversion is approximated by counting records in the read window, not a true cohort funnel.'),
-  mapping('sales_performance_sales_cycle', 'sales cycle', 'Sales Performance', 'sales cycle', ['Opportunity'], [
-    { doctype: 'Opportunity', fields: ['transaction_date', 'expected_closing', 'status', 'sales_stage', ...BASE_FIELDS] },
-  ], 'partial', 'Sales cycle length is approximated from Opportunity creation/closing dates in the read window.'),
+  mapping('sales_performance_win_rate', 'win rate', 'Sales Performance', 'win rate', ['CRM Deal'], [
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'lost_reason', ...BASE_FIELDS] },
+  ], 'partial', 'Win rate is derived from CRM Deal status counts (Won vs Lost) in the read window, not a lifetime aggregate.'),
+  mapping('sales_performance_conversion', 'conversion', 'Sales Performance', 'conversion', ['CRM Lead', 'CRM Deal'], [
+    { doctype: 'CRM Lead', fields: ['lead_name', 'status', 'source', 'converted', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', ...BASE_FIELDS] },
+  ], 'partial', 'Lead-to-deal conversion is approximated by counting records in the read window, not a true cohort funnel.'),
+  mapping('sales_performance_sales_cycle', 'sales cycle', 'Sales Performance', 'sales cycle', ['CRM Deal'], [
+    { doctype: 'CRM Deal', fields: ['expected_closure_date', 'closed_date', 'status', ...BASE_FIELDS] },
+  ], 'partial', 'Sales cycle length is approximated from CRM Deal creation/closing dates in the read window.'),
   unsupported('sales_performance_quota_attainment', 'quota attainment', 'Sales Performance', 'quota attainment', 'Quota targets are not stored in WorkOS; attainment cannot be computed without a target source.'),
-  mapping('sales_performance_pipeline_health', 'pipeline health', 'Sales Performance', 'pipeline health', ['Opportunity'], [
-    { doctype: 'Opportunity', fields: ['sales_stage', 'status', 'opportunity_amount', ...BASE_FIELDS] },
-  ], 'partial', 'Pipeline health rolls up open Opportunity counts/value by stage; it does not model velocity trends.'),
+  mapping('sales_performance_pipeline_health', 'pipeline health', 'Sales Performance', 'pipeline health', ['CRM Deal'], [
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'probability', ...BASE_FIELDS] },
+  ], 'partial', 'Pipeline health rolls up open CRM Deal counts/value by status; it does not model velocity trends.'),
 
   // Sales Resources — no ERPNext enablement-asset doctype exists
   unsupported('sales_resources_decks', 'Decks', 'Sales Resources', 'Decks', 'Sales enablement assets (decks, battlecards, templates) are not represented in WorkOS core; use a DAM/enablement tool integration.'),
@@ -287,16 +287,16 @@ const ACTION_DOCTYPES_BY_MAPPING: Record<string, Array<{ doctype: string; includ
     { doctype: 'Sales Invoice', includeNew: false, listLabel: 'Open Sales Invoices' },
   ],
   sales_pipeline_leads: [
-    { doctype: 'Lead', listLabel: 'Open Lead list', newLabel: 'Create Lead' },
+    { doctype: 'CRM Lead', listLabel: 'Open Lead list', newLabel: 'Create Lead' },
   ],
   sales_pipeline_opportunities: [
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
   sales_pipeline_deal_stages: [
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
   sales_pipeline_pipeline_coverage: [
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
   sales_pipeline_proposals: [
     { doctype: 'Quotation', listLabel: 'Open Quotation list', newLabel: 'Create Quotation' },
@@ -312,23 +312,31 @@ const ACTION_DOCTYPES_BY_MAPPING: Record<string, Array<{ doctype: string; includ
     { doctype: 'Sales Order', listLabel: 'Open Sales Order list', newLabel: 'Create Sales Order' },
   ],
   sales_performance_win_rate: [
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
   sales_performance_conversion: [
-    { doctype: 'Lead', listLabel: 'Open Lead list', newLabel: 'Create Lead' },
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Lead', listLabel: 'Open Lead list', newLabel: 'Create Lead' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
   sales_performance_sales_cycle: [
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
   sales_performance_pipeline_health: [
-    { doctype: 'Opportunity', listLabel: 'Open Opportunity list', newLabel: 'Create Opportunity' },
+    { doctype: 'CRM Deal', listLabel: 'Open Deal list', newLabel: 'Create Deal' },
   ],
 };
 
 // Purely additive: consumed by bdtNodeActivation.ts to resolve which Sales leaves are active.
 export const MAPPING_SOURCE_LABELS: Record<string, { level1Label: string; branchLabel: string }> = Object.fromEntries(
   MAPPINGS.map(entry => [entry.key, { level1Label: entry.level1Label, branchLabel: entry.branchLabel }]),
+);
+
+// The doctypes each mapping actually queries (not the display labels in
+// sourceDoctypes). The story builders in erpnextSalesStories.ts look rows up by
+// these exact strings, so a mismatch renders an empty summary rather than an
+// error — see the guard in test/salesStories.test.mjs.
+export const MAPPING_SOURCE_DOCTYPES: Record<string, string[]> = Object.fromEntries(
+  MAPPINGS.map(entry => [entry.key, [...new Set(entry.reads.map(read => read.doctype))]]),
 );
 
 export function listActiveBranchKeys(): Array<{ level1Label: string; branchLabel: string }> {
@@ -351,7 +359,9 @@ function isProblemStatus(status: unknown): boolean {
 }
 
 function displayValue(record: ErpNextGenericRecord): string | undefined {
-  const keys = ['posting_date', 'transaction_date', 'schedule_date', 'expected_closing', 'modified', 'creation', 'grand_total', 'opportunity_amount'];
+  // CRM Deal/CRM Lead use their own field names (deal_value, expected_closure_date)
+  // rather than the native Opportunity ones, so both sets are listed here.
+  const keys = ['posting_date', 'transaction_date', 'schedule_date', 'expected_closing', 'expected_closure_date', 'closed_date', 'modified', 'creation', 'grand_total', 'opportunity_amount', 'deal_value', 'expected_deal_value'];
   for (const key of keys) {
     const value = record[key];
     if (value !== undefined && value !== null && value !== '') return String(value);
@@ -435,7 +445,7 @@ function cardsFor(creds: ErpNextCreds, reads: Array<{ definition: ReadDefinition
   return reads.flatMap(({ definition, result }) => result.rows.slice(0, 4).map(record => ({
     id: `${definition.doctype}:${record.name}`,
     title: record.name,
-    subtitle: String(record.customer_name ?? record.customer ?? record.lead_name ?? record.party_name ?? record.territory_name ?? definition.doctype),
+    subtitle: String(record.customer_name ?? record.customer ?? record.lead_name ?? record.party_name ?? record.territory_name ?? record.organization ?? record.organization_name ?? definition.doctype),
     value: displayValue(record),
     status: typeof record.status === 'string' ? record.status : (typeof record.sales_stage === 'string' ? record.sales_stage : undefined),
     sourceDoctype: definition.doctype,

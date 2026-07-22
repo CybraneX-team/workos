@@ -2,9 +2,10 @@
 
 Status: accepted; implemented for local development and deployed to Azure on 2026-07-20.
 
-Decision date: 2026-07-13. Deployment amendment: 2026-07-20 (see "Deployment amendment" below).
+Decision date: 2026-07-13. Deployment amendment: 2026-07-20. Frappe CRM amendment:
+2026-07-21 (see the amendments below).
 
-Last verified: 2026-07-13.
+Last verified: 2026-07-21.
 
 ## Context
 
@@ -75,8 +76,46 @@ ideal end state:
   `../runbooks/cloud-deploy.md`); CI automation is blocked on an Azure role grant, not
   on this decision.
 
+## Frappe CRM amendment (2026-07-21)
+
+Tenant sites now install a second Frappe app, `crm` (Frappe CRM), alongside `erpnext`.
+This does not change the WorkOS/control-plane boundary — the control-plane still owns all
+Frappe access, and WorkOS still owns interpretation — but it does change what the Sales
+projection reads, so it is recorded here.
+
+**Decision: adopt Frappe CRM for the pre-sale pipeline; keep native ERPNext for the ledger.**
+
+- `CRM Lead` / `CRM Deal` become the source of truth for leads and deals. WorkOS's
+  pipeline and lead/deal performance nodes read them.
+- `Customer`, `Contact`, `Territory`, `Quotation`, `Sales Order`, `Sales Invoice` stay on
+  the native ERPNext doctypes, unchanged. Frappe CRM has no equivalent and does not aim to.
+- The hand-off between the two is Frappe CRM's own first-party "ERPNext CRM Settings"
+  integration (a won `CRM Deal` creates a real `Customer`/`Quotation`), not a custom bridge.
+
+Why this shape: Frappe CRM ships **parallel** doctypes rather than extending
+`Lead`/`Opportunity`, with its own permission model (`crm.permissions.org_hierarchy`,
+not the Role Permission Manager). Installing it does not migrate or replace anything —
+the two data models simply coexist, so the choice of which is authoritative has to be
+made deliberately. Native `Lead`/`Opportunity` records are **not** migrated: no automated
+migrator exists upstream, and the existing rows were test data only.
+
+Consequences worth recording:
+
+- **Frappe apps live in the image layer, not the `sites` volume.** `crm` therefore cannot
+  be added to a running container, which forces a custom image (`infra/erpnext-image/`)
+  for both local and remote stacks. This is new operational surface that did not exist
+  when this ADR was written.
+- **RBAC coverage is unverified.** `erpnextRoleMapping.ts` grants Frappe roles
+  (`Sales User`/`Sales Manager`), but Frappe CRM gates `CRM Lead`/`CRM Deal` visibility
+  through its own hierarchy hook. Whether the existing role grants are sufficient has not
+  been tested with a real non-Administrator user.
+- **The remote provisioning shim is duplicated logic.** Its `bench new-site` call must be
+  kept in sync with `localProvision()` by hand; see `infra/erpnext-remote-shim/README.md`.
+
 ## Authoritative files
 
+- `apps/backend/src/domains/workos-erp/erpnextSales.ts`
+- `apps/backend/src/domains/workos-erp/erpnextSalesStories.ts`
 - `apps/backend/src/lib/erpnextOutbox.ts`
 - `apps/backend/src/lib/erpnextControlPlane.ts`
 - `apps/backend/src/routes/oidc.ts`
@@ -87,4 +126,5 @@ ideal end state:
 
 ## Update or supersede this ADR when
 
-- identity/RBAC ownership changes, Frappe gains another direct application consumer, projections gain another application consumer, or the control-plane moves to its own database or a different hosting model.
+- identity/RBAC ownership changes, Frappe gains another direct application consumer, projections gain another application consumer, or the control-plane moves to its own database or a different hosting model;
+- the authoritative doctypes for any part of the Sales domain change, or Frappe CRM replaces/absorbs more of the native ERPNext surface.

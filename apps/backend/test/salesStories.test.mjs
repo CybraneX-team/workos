@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { buildCustomerRollups, buildSalesMetricStory, buildSalesRecommendations } from '../dist/routes/erpnextSalesStories.js';
+import { buildCustomerRollups, buildSalesMetricStory, buildSalesRecommendations } from '../dist/domains/workos-erp/erpnextSalesStories.js';
+import { MAPPING_SOURCE_DOCTYPES } from '../dist/domains/workos-erp/erpnextSales.js';
+import { readFile } from 'node:fs/promises';
 
 const ok = rows => ({ ok: true, rows });
 const read = (doctype, rows) => ({ definition: { doctype, fields: [] }, result: ok(rows) });
@@ -101,9 +103,9 @@ function card(story, id) {
 
 {
   const story = buildSalesMetricStory(mapping('sales_pipeline_leads', 'Leads'), [
-    read('Lead', [
-      { name: 'LEAD-1', lead_name: 'Acme', status: 'Open', source: 'Website', company_name: 'Acme Robotics', modified: '2026-07-01' },
-      { name: 'LEAD-2', lead_name: 'Beta', status: 'Open', source: '', company_name: '', modified: '2026-07-02' },
+    read('CRM Lead', [
+      { name: 'LEAD-1', lead_name: 'Acme', status: 'Open', source: 'Website', organization: 'Acme Robotics', modified: '2026-07-01' },
+      { name: 'LEAD-2', lead_name: 'Beta', status: 'Open', source: '', organization: '', modified: '2026-07-02' },
     ]),
   ]);
 
@@ -115,14 +117,16 @@ function card(story, id) {
 
 {
   const story = buildSalesMetricStory(mapping('sales_pipeline_opportunities', 'opportunities'), [
-    read('Opportunity', [
-      { name: 'OPP-1', customer_name: 'Acme', status: 'Open', sales_stage: 'Proposal', opportunity_amount: 50000, expected_closing: '2025-01-01' },
-      { name: 'OPP-2', customer_name: 'Beta', status: 'Lost', sales_stage: '', opportunity_amount: 10000 },
+    read('CRM Deal', [
+      { name: 'DEAL-1', organization: 'Acme', status: 'Proposal/Quotation', deal_value: 50000, expected_closure_date: '2025-01-01' },
+      { name: 'DEAL-2', organization: 'Beta', status: 'Lost', deal_value: 10000 },
     ]),
   ]);
 
   assert.equal(card(story, 'pipeline_value')?.value, '60,000');
-  assert.equal(card(story, 'missing_stage')?.value, 1);
+  // CRM Deal has no separate stage field — status doubles as the stage, so a
+  // deal can never be "missing stage". Guards the dealStage() fallback.
+  assert.equal(card(story, 'missing_stage')?.value, 0);
   assert.equal(story.insights.some(item => item.id === 'overdue'), true);
 }
 
@@ -139,10 +143,10 @@ function card(story, id) {
 
 {
   const story = buildSalesMetricStory(mapping('sales_performance_win_rate', 'win rate', true), [
-    read('Opportunity', [
-      { name: 'OPP-WON', status: 'Won', sales_stage: 'Won', opportunity_amount: 100 },
-      { name: 'OPP-LOST', status: 'Lost', sales_stage: 'Lost', opportunity_amount: 50 },
-      { name: 'OPP-OPEN', status: 'Open', sales_stage: 'Qualification', opportunity_amount: 75 },
+    read('CRM Deal', [
+      { name: 'DEAL-WON', status: 'Won', deal_value: 100 },
+      { name: 'DEAL-LOST', status: 'Lost', deal_value: 50 },
+      { name: 'DEAL-OPEN', status: 'Qualification', deal_value: 75 },
     ]),
   ]);
 
@@ -153,11 +157,11 @@ function card(story, id) {
 
 {
   const story = buildSalesMetricStory(mapping('sales_performance_conversion', 'conversion', true), [
-    read('Lead', [
+    read('CRM Lead', [
       { name: 'LEAD-1', lead_name: 'Acme', source: 'Website' },
       { name: 'LEAD-2', lead_name: 'Beta', source: '' },
     ]),
-    read('Opportunity', [{ name: 'OPP-1', status: 'Open', sales_stage: 'Qualification', opportunity_amount: 500 }]),
+    read('CRM Deal', [{ name: 'DEAL-1', status: 'Qualification', deal_value: 500 }]),
   ]);
 
   assert.equal(card(story, 'conversion')?.value, '50%');
@@ -183,10 +187,37 @@ function card(story, id) {
 }
 
 {
-  const story = buildSalesMetricStory(mapping('sales_pipeline_leads', 'Leads'), [read('Lead', [])]);
+  const story = buildSalesMetricStory(mapping('sales_pipeline_leads', 'Leads'), [read('CRM Lead', [])]);
 
   assert.equal(card(story, 'leads')?.value, 0);
   assert.equal(story.healthScore < 70, true);
+}
+
+// Regression guard for the silent-empty-dashboard failure mode.
+//
+// The story builders look rows up by doctype *string* (`rowsFor(reads, 'CRM
+// Deal')`). If a mapping in erpnextSales.ts is repointed to a different doctype
+// and its story builder is not updated to match, rowsFor returns [] — the node
+// renders a confident, empty, entirely wrong summary with no error anywhere.
+// That is exactly what happened during the Frappe CRM migration.
+//
+// So: every doctype a mapping reads must be referenced by the stories module.
+{
+  const storiesSource = await readFile(
+    new URL('../src/domains/workos-erp/erpnextSalesStories.ts', import.meta.url),
+    'utf8',
+  );
+  const orphans = [];
+  for (const [key, doctypes] of Object.entries(MAPPING_SOURCE_DOCTYPES)) {
+    for (const doctype of doctypes) {
+      if (!storiesSource.includes(`'${doctype}'`)) orphans.push(`${key} -> ${doctype}`);
+    }
+  }
+  assert.deepEqual(
+    orphans,
+    [],
+    `Mapping doctypes never referenced in erpnextSalesStories.ts (their stories would silently render empty):\n  ${orphans.join('\n  ')}`,
+  );
 }
 
 console.log('salesStories.test.mjs passed');

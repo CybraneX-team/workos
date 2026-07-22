@@ -1,6 +1,6 @@
 # WorkOS backend guide
 
-Last verified: 2026-07-14.
+Last verified: 2026-07-21.
 
 This application is the WorkOS-side owner of the ERPNext integration. Read `../../docs/architecture/erpnext-control-plane.md` before changing ERP boundaries.
 
@@ -36,6 +36,8 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 - `src/adapters/erpnext.ts`: projection-facing reads implemented through batch queries.
 - `db/migrations/035_erpnext_control_plane_outbox.sql`: OIDC ownership and outbox schema.
 - `test/erpnextArchitecture.test.ts`: executable ownership boundary.
+- `test/salesStories.test.mjs`: Sales story builders **and** the mapping-to-story
+  doctype consistency guard (see the Sales doctype rule below).
 - `scripts/reset-development-data.ts`: destructive, guarded shared-project reset.
 - `scripts/seed-meta-ads-fixture.ts`: dry-run-first deterministic operating-loop fixtures.
 - `scripts/advance-meta-ads-experiment-fixture.ts`: fixture-only continuation of
@@ -55,11 +57,37 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
   separate launch approval, exact account allowlist for real mode, and emergency
   pause as the only post-launch edit.
 
+## Sales doctypes: the silent-empty-dashboard trap
+
+The Sales domain reads **two different data models**, and mixing them up fails silently:
+
+- **Pipeline / lead-and-deal performance → Frappe CRM**: `CRM Lead`, `CRM Deal`
+  (fields `deal_value`, `expected_closure_date`, `organization`, `status`).
+- **Accounts, proposals, revenue → native ERPNext**: `Customer`, `Contact`,
+  `Territory`, `Quotation`, `Sales Order`, `Sales Invoice`.
+
+`CRM Deal` has **no separate stage field** — its `status` (Link to `CRM Deal Status`)
+*is* the pipeline stage. Field aliases in `erpnextSalesStories.ts` (`dealAmount`,
+`dealStage`, `dealClose`, `leadCompany`) accept either shape.
+
+⚠️ **`erpnextSalesStories.ts` looks rows up by doctype string** (`rowsFor(reads, 'CRM
+Deal')`). If a mapping in `erpnextSales.ts` is repointed at a different doctype and its
+story builder is not updated to match, `rowsFor` returns `[]` and the node renders a
+confident, empty, entirely wrong summary — **no error anywhere**. Repointing a mapping
+means updating `erpnextSales.ts` (reads + `ACTION_DOCTYPES_BY_MAPPING`),
+`erpnextSalesStories.ts` (the `rowsFor` lookups and any field access), and
+`adapters/erpnext.ts` / `erpnextChat.ts` if the Copilot tools read the same doctype.
+
+`pnpm --filter backend test:sales-stories` guards this: every doctype in
+`MAPPING_SOURCE_DOCTYPES` must be referenced in `erpnextSalesStories.ts`. It is the only
+thing standing between a doctype rename and a silently blank dashboard — do not delete it.
+
 ## Verification
 
 ```bash
 pnpm --filter backend typecheck
 pnpm --filter backend test:erpnext-architecture
+pnpm --filter backend test:sales-stories
 pnpm --filter backend test:metrics
 pnpm --filter backend test:meta-ads
 pnpm --filter backend test:meta-ads-db
@@ -68,7 +96,13 @@ pnpm --filter backend test:meta-ads-authoring-db
 
 Also run contract and control-plane tests when changing the internal API.
 
+Nothing runs these automatically — this repository has no `.github/workflows/`. Tests can
+rot unnoticed: `test/salesStories.test.mjs` imported a `dist/routes/…` path that stopped
+existing when the file moved to `dist/domains/workos-erp/`, and was silently dead until
+2026-07-21. When moving a file, grep `test/` for its old built path.
+
 ## Update this file when
 
 - an ERP route, worker, migration, ownership boundary, environment rule, or source entry point changes;
+- the doctypes backing any Sales projection change;
 - a new application starts consuming ERP integration code and package ownership must be reconsidered.

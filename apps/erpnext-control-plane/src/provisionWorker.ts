@@ -17,7 +17,11 @@ async function localProvision(slug: string) {
   if (!sites.split(/\s+/).includes(siteName)) {
     await execFileAsync('docker', ['compose', '-f', 'pwd.yml', 'exec', '-T', 'backend', 'bench', 'new-site', siteName,
       '--mariadb-user-host-login-scope=%', '--mariadb-root-password', env.FRAPPE_DB_ROOT_PASSWORD ?? 'admin',
-      '--admin-password', env.FRAPPE_SITE_ADMIN_PASSWORD ?? 'admin', '--install-app', 'erpnext'], { cwd: env.FRAPPE_DOCKER_DIR, timeout: 180_000 });
+      '--admin-password', env.FRAPPE_SITE_ADMIN_PASSWORD ?? 'admin',
+      // erpnext first: crm declares no required_apps, so install order is not
+      // enforced for us, and the CRM Deal -> Customer/Quotation hand-off
+      // ("ERPNext CRM Settings") needs erpnext present on the site.
+      '--install-app', 'erpnext', '--install-app', 'crm'], { cwd: env.FRAPPE_DOCKER_DIR, timeout: 300_000 });
   }
   const { stdout } = await execFileAsync('docker', ['compose', '-f', 'pwd.yml', 'exec', '-T', 'backend', 'bench', '--site', siteName,
     'execute', 'frappe.core.doctype.user.user.generate_keys', '--kwargs', JSON.stringify({ user: 'Administrator' })],

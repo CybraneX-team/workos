@@ -35,7 +35,9 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - `apps/erpnext-control-plane`: independently runnable ERPNext operational service and the only application that may own Frappe credentials or call Frappe directly.
 - `packages/erpnext-contracts`: runtime Zod contracts shared by the backend and control-plane.
 - `packages/*`: add a shared package only when at least two applications consume it.
-- `../infra/erpnext/pwd.yml`: sibling Docker Compose stack used for local Frappe/ERPNext.
+- `infra/erpnext-image`: build inputs (`apps.json`, `Containerfile`) for the custom Frappe image that bakes in both `erpnext` and `crm` (Frappe CRM). Frappe apps live in the image layer, so they cannot be added to a running container.
+- `infra/erpnext-remote-shim`: version-controlled **mirror** of the provisioning shim running on the `erpnext-vm` Azure VM. Nothing deploys from it; the VM is the live source of truth. Its `bench new-site` call duplicates `localProvision()` and must be kept in sync by hand.
+- `../infra/erpnext/pwd.yml`: sibling Docker Compose stack used for local Frappe/ERPNext. It is a `frappe_docker` clone with its own git remote — changes there are **not** tracked by this repo.
 
 ## ERPNext non-negotiable boundaries
 
@@ -45,6 +47,7 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - WorkOS must not hold Frappe credentials or call Frappe resource endpoints directly.
 - Do not create an `erpnext-client` or projection package while it has only one application consumer.
 - The control-plane is deployed to Azure as of 2026-07-20 (internal-ingress Container App, `ERPNEXT_ENV=remote`) and fronts the existing ERPNext VM shim. Its `erpnext` schema shares the Supabase Postgres with WorkOS `public`; isolation is by schema plus the code boundary above, not a separate database. See `docs/runbooks/cloud-deploy.md`.
+- Tenant sites run **two** Frappe apps: `erpnext` and `crm` (Frappe CRM), as of 2026-07-21. They are parallel data models — Frappe CRM's `CRM Lead`/`CRM Deal` back WorkOS's pipeline projections, while native `Customer`/`Quotation`/`Sales Order`/`Sales Invoice` back accounts and revenue. Repointing a Sales mapping at a different doctype without updating its story builder renders a silently empty dashboard; see `apps/backend/AGENTS.md`.
 
 ## Useful verification commands
 
@@ -56,7 +59,10 @@ pnpm typecheck:erpnext-control-plane
 pnpm --filter @cybranex/erpnext-contracts test
 pnpm --filter erpnext-control-plane test
 pnpm --filter backend test:erpnext-architecture
+pnpm --filter backend test:sales-stories
 ```
+
+Nothing runs these automatically — there is no `.github/workflows/` in this repository.
 
 Run the narrowest relevant checks first, then broaden in proportion to the change.
 

@@ -26,8 +26,10 @@ export interface PurchaseReceiptSummary { name: string; status: string | null; s
 export interface DeliveryNoteSummary { name: string; status: string | null; customer: string | null; posting_date: string | null; grand_total: number | null }
 export interface PickListSummary { name: string; status: string | null; purpose: string | null; modified: string | null }
 export interface ShipmentSummary { name: string; status: string | null; modified: string | null }
-export interface LeadSummary { name: string; lead_name: string; company_name: string | null; status: string; email_id: string | null }
-export interface OpportunitySummary { name: string; party_name: string; opportunity_amount: number; sales_stage: string; status: string }
+// Leads/deals live in Frappe CRM (CRM Lead / CRM Deal), not the native ERPNext
+// Lead/Opportunity doctypes. Field names differ accordingly.
+export interface LeadSummary { name: string; lead_name: string; organization: string | null; status: string; email: string | null }
+export interface OpportunitySummary { name: string; organization: string; deal_value: number; probability: number; status: string }
 export interface CustomerSummary { name: string; customer_name: string; customer_group: string | null; territory: string | null }
 
 export function getStockBalance(creds: ErpNextCreds, itemCode?: string, warehouse?: string) { const filters: RecordFilter[] = []; if (itemCode?.trim()) filters.push(['item_code','like',fuzzyLike(itemCode)]); if (warehouse?.trim()) filters.push(['warehouse','like',fuzzyLike(warehouse)]); return read<StockBalance>(creds,'Bin',['item_code','warehouse','actual_qty'],filters,50); }
@@ -41,6 +43,6 @@ export function getPurchaseReceipts(creds: ErpNextCreds, limit = 50) { return re
 export function getDeliveryNotes(creds: ErpNextCreds, limit = 50) { return read<DeliveryNoteSummary>(creds,'Delivery Note',['status','customer','posting_date','grand_total'],[['docstatus','<',2]],limit); }
 export function getPickLists(creds: ErpNextCreds, limit = 50) { return read<PickListSummary>(creds,'Pick List',['status','purpose','modified'],[['docstatus','<',2]],limit); }
 export function getShipments(creds: ErpNextCreds, limit = 50) { return read<ShipmentSummary>(creds,'Shipment',['status','modified'],[],limit); }
-export function getLeads(creds: ErpNextCreds, search?: string) { return read<LeadSummary>(creds,'Lead',['lead_name','company_name','status','email_id'],search?.trim() ? [['lead_name','like',fuzzyLike(search)]] : [],50); }
-export function getOpportunities(creds: ErpNextCreds, search?: string) { return read<OpportunitySummary>(creds,'Opportunity',['party_name','opportunity_amount','sales_stage','status'],search?.trim() ? [['party_name','like',fuzzyLike(search)]] : [],50); }
+export function getLeads(creds: ErpNextCreds, search?: string) { return read<LeadSummary>(creds,'CRM Lead',['lead_name','organization','status','email'],search?.trim() ? [['lead_name','like',fuzzyLike(search)]] : [],50); }
+export function getOpportunities(creds: ErpNextCreds, search?: string) { return read<OpportunitySummary>(creds,'CRM Deal',['organization','deal_value','probability','status'],search?.trim() ? [['organization','like',fuzzyLike(search)]] : [],50); }
 export function getCustomers(creds: ErpNextCreds, search?: string) { return read<CustomerSummary>(creds,'Customer',['customer_name','customer_group','territory'],search?.trim() ? [['customer_name','like',fuzzyLike(search)]] : [],50); }
