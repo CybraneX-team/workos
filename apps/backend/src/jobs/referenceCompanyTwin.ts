@@ -2,7 +2,7 @@ import type { PoolClient } from 'pg';
 import { env } from '../config.js';
 import { pool } from '../db.js';
 import { log } from '../lib/logger.js';
-import { geminiJson, geminiText } from '../lib/gemini.js';
+import { geminiJson, geminiText, toGeminiSchema } from '../lib/gemini.js';
 
 const LOCK_MINUTES = 10;
 const MAX_PAGE_TEXT = 60_000;
@@ -361,7 +361,15 @@ async function fetchPublicPage(url: string): Promise<{ finalUrl: string; text: s
   }
 }
 
-// ── OpenAI helpers ───────────────────────────────────────────────────────────
+// ── LLM helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Thinking tokens share the maxOutputTokens budget on Gemini 2.5. This output is
+ * large (6 roots x 4 branches x action x citation), so thinking is capped to leave
+ * room for it — uncapped, it consumed up to ~4.3k tokens in testing and truncated
+ * the JSON mid-structure.
+ */
+const STRUCTURED_THINKING_BUDGET = 1024;
 
 async function callOpenAi(params: {
   instructions: string;
@@ -373,12 +381,18 @@ async function callOpenAi(params: {
   const composedPrompt = [
     params.instructions,
     '',
-    `Return ONLY a valid JSON object named "${params.schemaName}" conforming to this JSON Schema (no markdown, no commentary):`,
-    JSON.stringify(params.schema),
+    `Return ONLY a valid JSON object named "${params.schemaName}".`,
     '',
     params.prompt,
   ].join('\n');
-  return geminiJson(composedPrompt, { maxOutputTokens: params.maxTokens });
+  // The schema is passed natively rather than pasted into the prompt: Gemini
+  // constrains decoding to it, so the model cannot emit structurally invalid JSON,
+  // and it no longer costs prompt tokens to restate.
+  return geminiJson(composedPrompt, {
+    maxOutputTokens: params.maxTokens,
+    responseSchema: toGeminiSchema(params.schema),
+    thinkingBudget: STRUCTURED_THINKING_BUDGET,
+  });
 }
 
 // ── Step 1: web research ─────────────────────────────────────────────────────

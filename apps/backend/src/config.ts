@@ -20,7 +20,9 @@ const EnvSchema = z.object({
   ERPNEXT_SUBDOMAIN_BASE: z.string().default('erp.os.cybranex.com'),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_RESPONSES_MODEL: z.string().default('gpt-4.1-mini'),
-  OPENAI_RESPONSES_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(12000),
+  // Gemini 2.5 draws thinking tokens from this same budget, and the structured twin
+  // (6 roots x 4 branches x action x citation) is a large object — 12000 truncated it.
+  OPENAI_RESPONSES_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(32000),
   OPENAI_RESPONSES_MAX_RESEARCH_TOKENS: z.coerce.number().int().positive().default(16000),
   RUN_WORKER: z
     .enum(['true', 'false'])
