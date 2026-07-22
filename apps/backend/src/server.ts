@@ -3,6 +3,7 @@ import express from 'express';
 import { env } from './config.js';
 import { startWorker } from './jobs/runner.js';
 import { startErpNextOutboxWorker } from './lib/erpnextOutbox.js';
+import { startLeadAttributionWorker } from './domains/meta-ads/leadAttribution.js';
 import { ingestionRouter } from './routes/ingestion.js';
 import { metricsRouter } from './routes/metrics.js';
 import { integrationsRouter } from './routes/integrations.js';
@@ -102,7 +103,12 @@ initializeRbac()
         startWorker();
         console.log(`[backend] worker started (${env.WORKER_ID})`);
       }
-      if (env.RUN_ERPNEXT_OUTBOX_WORKER) startErpNextOutboxWorker();
+      if (env.RUN_ERPNEXT_OUTBOX_WORKER) {
+        startErpNextOutboxWorker();
+        // Shares the flag because it has the same dependency: both only work when this instance
+        // is the one talking to the ERPNext control plane.
+        startLeadAttributionWorker();
+      }
     });
   })
   .catch((err) => {
