@@ -239,6 +239,15 @@ export function workosMetaObjectName(draftId: string, version: number, label: st
   return `[WorkOS:${draftId.slice(0, 8)}:v${version}] ${safe}`;
 }
 
+/**
+ * Lead-form names key off the question-set hash, not the draft, because that is what makes a form
+ * reusable across drafts — `findMetaLeadFormByName` is the reuse lookup, so two drafts with the
+ * same questions must produce byte-identical names.
+ */
+export function workosMetaLeadFormName(questionSetHash: string): string {
+  return `[WorkOS:form:${questionSetHash.slice(0, 12)}] Lead form`;
+}
+
 export function metaTrafficCampaignPayload(input: { name: string }): Record<string, string> {
   return {
     name: input.name,

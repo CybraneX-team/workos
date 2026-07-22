@@ -16,21 +16,28 @@ import type {
   MetaAdsLeadFormSpec,
   MetaAdsPreflightIssue,
 } from '@cybranex/shared-types';
-import { env } from '../../config.js';
+import { env, provisionEnv } from '../../config.js';
 import { pool, supabaseAdmin } from '../../db.js';
 import { decrypt } from '../../lib/crypto.js';
-import { queryRecords } from '../../lib/erpnextControlPlane.js';
+import { configureTenantLeadSync, queryRecords } from '../../lib/erpnextControlPlane.js';
 import {
+  createMetaLeadAdSet,
+  createMetaLeadCampaign,
+  createMetaLeadForm,
+  createMetaLeadFormCreative,
   createMetaPausedAd,
   createMetaSingleImageCreative,
   createMetaTrafficAdSet,
   createMetaTrafficCampaign,
+  findMetaLeadFormByName,
   findMetaObjectByName,
   getMetaAuthoringPrerequisites,
+  getMetaPageAccessToken,
   getMetaObjectState,
   MetaAuthoringApiError,
   updateMetaObjectStatus,
   uploadMetaAdImage,
+  workosMetaLeadFormName,
   workosMetaObjectName,
 } from '../../adapters/metaAdsAuthoring.js';
 import {
@@ -1267,7 +1274,7 @@ export async function getMetaAdsCampaignJob(companyId: string, jobId: string): P
 }
 
 async function executeStep(input: {
-  job: Record<string, unknown>; key: string; kind: 'image' | 'campaign' | 'adset' | 'creative' | 'ad' | 'status'; fingerprint: string;
+  job: Record<string, unknown>; key: string; kind: 'image' | 'campaign' | 'adset' | 'creative' | 'ad' | 'status' | 'leadform' | 'crmsync'; fingerprint: string;
   run: () => Promise<{ id: string; summary?: Record<string, unknown> }>;
 }): Promise<{ id: string; summary: Record<string, unknown> }> {
   const existing = await pool.query(`SELECT * FROM public.meta_ads_campaign_job_steps WHERE job_id=$1 AND step_key=$2`, [input.job.id, input.key]);
@@ -1302,7 +1309,7 @@ async function executeStep(input: {
   }
 }
 
-async function mapping(input: { job: Record<string, unknown>; kind: 'image' | 'campaign' | 'adset' | 'creative' | 'ad'; localKey: string; metaId: string; status?: string }): Promise<void> {
+async function mapping(input: { job: Record<string, unknown>; kind: 'image' | 'campaign' | 'adset' | 'creative' | 'ad' | 'leadform'; localKey: string; metaId: string; status?: string }): Promise<void> {
   await pool.query(
     `INSERT INTO public.meta_ads_entity_mappings
       (company_id,ad_account_id,draft_id,version,object_kind,local_key,meta_object_id,meta_status)
@@ -1349,12 +1356,43 @@ async function publishPaused(job: Record<string, unknown>): Promise<void> {
     imageHashes.set(ad.id, step.id);
     await mapping({ job, kind: 'image', localKey: ad.id, metaId: step.id });
   }
+  const isLeadForm = content.destination === 'lead_form' && content.leadForm !== null;
+  const leadForm = content.leadForm;
+  // Only fetched for lead-form publishes, and never surfaced through readiness — a Page token
+  // must not reach the browser.
+  const pageAccessToken = isLeadForm
+    ? await getMetaPageAccessToken(connection.accessToken, content.identity!.pageId)
+    : '';
+
+  let leadFormId = '';
+  if (isLeadForm && leadForm) {
+    const leadFormName = workosMetaLeadFormName(leadForm.questionSetHash);
+    const leadFormStep = await executeStep({
+      job, key: 'leadform', kind: 'leadform', fingerprint: fingerprint({ leadFormName, pageId: content.identity!.pageId }),
+      run: async () => {
+        const found = await findMetaLeadFormByName({ pageAccessToken, pageId: content.identity!.pageId, name: leadFormName });
+        return found ?? createMetaLeadForm({
+          pageAccessToken, pageId: content.identity!.pageId, name: leadFormName,
+          questions: leadForm.questions.map((question) => ({ type: question.type, key: question.key, label: question.label })),
+          privacyPolicyUrl: leadForm.privacyPolicyUrl, followUpUrl: leadForm.followUpUrl,
+          contextHeadline: leadForm.contextHeadline, contextDescription: leadForm.contextDescription,
+        });
+      },
+    });
+    leadFormId = leadFormStep.id;
+    await mapping({ job, kind: 'leadform', localKey: leadForm.questionSetHash, metaId: leadFormId });
+  }
+
   const campaignName = workosMetaObjectName(String(job.draft_id), Number(job.version), content.name);
+  const objective = isLeadForm ? 'OUTCOME_LEADS' : 'OUTCOME_TRAFFIC';
   const campaign = await executeStep({
-    job, key: 'campaign', kind: 'campaign', fingerprint: fingerprint({ campaignName, objective: 'OUTCOME_TRAFFIC' }),
+    job, key: 'campaign', kind: 'campaign', fingerprint: fingerprint({ campaignName, objective }),
     run: async () => {
       const found = await findMetaObjectByName({ accessToken: connection.accessToken, adAccountId: connection.accountId, edge: 'campaigns', name: campaignName });
-      return found ? { id: found.id } : createMetaTrafficCampaign({ accessToken: connection.accessToken, adAccountId: connection.accountId, name: campaignName });
+      if (found) return { id: found.id };
+      return isLeadForm
+        ? createMetaLeadCampaign({ accessToken: connection.accessToken, adAccountId: connection.accountId, name: campaignName })
+        : createMetaTrafficCampaign({ accessToken: connection.accessToken, adAccountId: connection.accountId, name: campaignName });
     },
   });
   await mapping({ job, kind: 'campaign', localKey: 'campaign', metaId: campaign.id, status: 'PAUSED' });
@@ -1366,10 +1404,13 @@ async function publishPaused(job: Record<string, unknown>): Promise<void> {
     languageIds: content.audience.languageIds, dsaBeneficiary: content.dsaBeneficiary || undefined, dsaPayor: content.dsaPayor || undefined,
   };
   const adset = await executeStep({
-    job, key: 'adset', kind: 'adset', fingerprint: fingerprint({ ...adsetPayload, accessToken: undefined }),
+    job, key: 'adset', kind: 'adset', fingerprint: fingerprint({ ...adsetPayload, accessToken: undefined, objective }),
     run: async () => {
       const found = await findMetaObjectByName({ accessToken: connection.accessToken, adAccountId: connection.accountId, edge: 'adsets', name: adsetName });
-      return found ? { id: found.id } : createMetaTrafficAdSet(adsetPayload);
+      if (found) return { id: found.id };
+      return isLeadForm
+        ? createMetaLeadAdSet({ ...adsetPayload, pageId: content.identity!.pageId })
+        : createMetaTrafficAdSet(adsetPayload);
     },
   });
   await mapping({ job, kind: 'adset', localKey: 'adset', metaId: adset.id, status: 'PAUSED' });
@@ -1382,10 +1423,13 @@ async function publishPaused(job: Record<string, unknown>): Promise<void> {
       headline: ad.headline, description: ad.description, callToAction: ad.callToAction,
     };
     const creative = await executeStep({
-      job, key: `creative:${ad.id}`, kind: 'creative', fingerprint: fingerprint({ ...creativePayload, accessToken: undefined }),
+      job, key: `creative:${ad.id}`, kind: 'creative', fingerprint: fingerprint({ ...creativePayload, accessToken: undefined, leadFormId }),
       run: async () => {
         const found = await findMetaObjectByName({ accessToken: connection.accessToken, adAccountId: connection.accountId, edge: 'adcreatives', name: creativeName });
-        return found ? { id: found.id } : createMetaSingleImageCreative(creativePayload);
+        if (found) return { id: found.id };
+        return isLeadForm
+          ? createMetaLeadFormCreative({ ...creativePayload, leadFormId })
+          : createMetaSingleImageCreative(creativePayload);
       },
     });
     await mapping({ job, kind: 'creative', localKey: ad.id, metaId: creative.id });
@@ -1398,6 +1442,41 @@ async function publishPaused(job: Record<string, unknown>): Promise<void> {
       },
     });
     await mapping({ job, kind: 'ad', localKey: ad.id, metaId: createdAd.id, status: 'PAUSED' });
+  }
+  if (isLeadForm && leadForm && leadFormId) {
+    // Deliberately non-fatal. The Meta side is already published at this point, and Meta keeps
+    // collecting submissions regardless — Frappe's first sync backfills them because
+    // `last_synced_at` starts null. Failing the job here would leave a live campaign behind a
+    // "failed" publish; instead the step row records the failure and an event surfaces it.
+    try {
+      await executeStep({
+        job, key: 'crmsync', kind: 'crmsync', fingerprint: fingerprint({ leadFormId, hash: leadForm.questionSetHash }),
+        run: async () => {
+          const result = await configureTenantLeadSync(String(job.company_id), {
+            environment: provisionEnv,
+            // Keyed on the form, not the draft: drafts sharing a question set share a form, and
+            // the mapping they imply is identical, so configuring once is enough.
+            idempotencyKey: `configure_lead_sync:${leadFormId}`,
+            sourceName: `WorkOS · ${leadForm.questionSetHash.slice(0, 12)}`,
+            discoveryAccessToken: connection.accessToken,
+            syncAccessToken: pageAccessToken,
+            backgroundSyncFrequency: 'Hourly',
+            facebookPageId: content.identity!.pageId,
+            facebookLeadFormId: leadFormId,
+            questionMappings: leadForm.questions
+              .filter((question): question is typeof question & { crmField: string } => Boolean(question.crmField))
+              .map((question) => ({ key: question.key, mappedToCrmField: question.crmField })),
+          });
+          return { id: result.sourceName };
+        },
+      });
+    } catch (error) {
+      await addEvent({
+        companyId: String(job.company_id), draftId: String(job.draft_id), type: 'lead_sync_configuration_failed',
+        userId: job.requested_by ? String(job.requested_by) : null,
+        payload: { leadFormId, error: error instanceof Error ? error.message.slice(0, 300) : 'unknown' },
+      });
+    }
   }
   const states = await Promise.all([campaign.id, adset.id, ...content.ads.map((ad) => createdObject(job, 'ad', ad.id))]
     .filter((value): value is string => Boolean(value)).map((id) => getMetaObjectState(connection.accessToken, id)));
