@@ -3,7 +3,7 @@ import {
   AlertTriangle, CheckCircle2, Copy, ExternalLink, Loader2, Megaphone,
   PackageSearch, Pause, Play, Plus, RefreshCw, Save, Send, ShieldCheck, Sparkles, Upload,
 } from 'lucide-react';
-import type { MetaAdsBrandKit, MetaAdsCampaignDraftContent, MetaAdsCreativeAsset, MetaAdsCreativeConcept } from '@cybranex/shared-types';
+import type { MetaAdsBrandKit, MetaAdsCampaignDraftContent, MetaAdsCreativeAsset, MetaAdsCreativeConcept, MetaAdsLeadFormQuestion } from '@cybranex/shared-types';
 import { useAuth } from '../../../lib/auth';
 import { fetchMetaAdsProductContext } from '../../../lib/integrations/service';
 import { useMetaAdsCampaignStudio } from '../../../lib/integrations/useMetaAdsCampaignStudio';
@@ -88,6 +88,38 @@ function BrandKitEditor({ value, assets, disabled, onSave, onUpload }: {
   );
 }
 
+/** `CRM Lead` fields a lead-form answer can be routed into. */
+const CRM_LEAD_FIELDS: Array<[string, string]> = [
+  ['first_name', 'First name'],
+  ['last_name', 'Last name'],
+  ['email', 'Email'],
+  ['mobile_no', 'Mobile number'],
+  ['organization', 'Organization'],
+  ['job_title', 'Job title'],
+  ['website', 'Website'],
+];
+
+/**
+ * Meta's four standard question types. Their answer keys are assigned by Meta, not chosen here —
+ * PHONE resolves to `phone_number`, which is why it maps to `mobile_no` rather than matching by
+ * name. Seeded on the first switch to a lead form so a draft is publishable without extra editing.
+ */
+function defaultLeadForm(): NonNullable<MetaAdsCampaignDraftContent['leadForm']> {
+  return {
+    questionSetHash: '',
+    questions: [
+      { key: 'first_name', type: 'FIRST_NAME', label: 'First name', crmField: 'first_name' },
+      { key: 'last_name', type: 'LAST_NAME', label: 'Last name', crmField: 'last_name' },
+      { key: 'email', type: 'EMAIL', label: 'Email', crmField: 'email' },
+      { key: 'phone_number', type: 'PHONE', label: 'Phone number', crmField: 'mobile_no' },
+    ],
+    privacyPolicyUrl: '',
+    followUpUrl: '',
+    contextHeadline: '',
+    contextDescription: '',
+  };
+}
+
 export function MetaAdsCampaignStudio() {
   const auth = useAuth();
   const canWrite = auth.can('paid_media', 'write');
@@ -122,6 +154,35 @@ export function MetaAdsCampaignStudio() {
     if (!form) return;
     setForm({ ...form, ads });
     await studio.saveDraft({ ads });
+  };
+
+  // questionSetHash is intentionally left alone here — the server recomputes it on every patch,
+  // because it decides which Meta form a publish binds to.
+  const setLeadForm = (patch: Partial<NonNullable<MetaAdsCampaignDraftContent['leadForm']>>) => {
+    if (!form?.leadForm) return;
+    setForm({ ...form, leadForm: { ...form.leadForm, ...patch } });
+  };
+
+  const setQuestion = (index: number, patch: Partial<MetaAdsLeadFormQuestion>) => {
+    if (!form?.leadForm) return;
+    const questions = form.leadForm.questions.map((question, position) => (position === index ? { ...question, ...patch } : question));
+    setLeadForm({ questions });
+  };
+
+  const addQuestion = () => {
+    if (!form?.leadForm) return;
+    setLeadForm({
+      questions: [...form.leadForm.questions, {
+        // Meta assigns keys for standard types but keeps ours for CUSTOM ones.
+        key: `custom_${form.leadForm.questions.length + 1}`,
+        type: 'CUSTOM', label: '', crmField: null,
+      }],
+    });
+  };
+
+  const removeQuestion = (index: number) => {
+    if (!form?.leadForm) return;
+    setLeadForm({ questions: form.leadForm.questions.filter((_, position) => position !== index) });
   };
 
   const chooseConcept = async (concept: MetaAdsCreativeConcept, assetId?: string) => {
@@ -230,7 +291,20 @@ export function MetaAdsCampaignStudio() {
               <label className={labelClass}>Offer<textarea disabled={!editable} className={`${inputClass} min-h-20`} value={form.brief.offer} onChange={(event) => setForm({ ...form, brief: { ...form.brief, offer: event.target.value } })} /></label>
               <label className={labelClass}>Target customer<textarea disabled={!editable} className={`${inputClass} min-h-20`} value={form.brief.targetCustomer} onChange={(event) => setForm({ ...form, brief: { ...form.brief, targetCustomer: event.target.value } })} /></label>
               <label className={labelClass}>Proof points<input disabled={!editable} className={inputClass} value={form.brief.proofPoints.join(', ')} onChange={(event) => setForm({ ...form, brief: { ...form.brief, proofPoints: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) } })} /></label>
-              <label className={labelClass}>Landing page<input disabled={!editable} type="url" className={inputClass} value={form.brief.landingPageUrl} onChange={(event) => setForm({ ...form, brief: { ...form.brief, landingPageUrl: event.target.value } })} placeholder="https://example.com/offer" /></label>
+              <label className={labelClass}>Destination<select disabled={!editable} className={inputClass} value={form.destination} onChange={(event) => {
+                const destination = event.target.value as MetaAdsCampaignDraftContent['destination'];
+                setForm({
+                  ...form,
+                  destination,
+                  // Seed the standard question set on first switch so the form is publishable
+                  // without further editing; keep whatever the user already built otherwise.
+                  leadForm: destination === 'lead_form' ? (form.leadForm ?? defaultLeadForm()) : form.leadForm,
+                  brief: destination === 'lead_form' && form.brief.callToAction === 'SHOP_NOW'
+                    ? { ...form.brief, callToAction: 'SIGN_UP' }
+                    : form.brief,
+                });
+              }}><option value="website">Website visits</option><option value="lead_form">Lead form (Meta instant form)</option></select></label>
+              {form.destination === 'website' && <label className={labelClass}>Landing page<input disabled={!editable} type="url" className={inputClass} value={form.brief.landingPageUrl} onChange={(event) => setForm({ ...form, brief: { ...form.brief, landingPageUrl: event.target.value } })} placeholder="https://example.com/offer" /></label>}
               <label className={labelClass}>Facebook / Instagram identity<select disabled={!editable} className={inputClass} value={form.identity?.pageId ?? ''} onChange={(event) => setForm({ ...form, identity: readiness.pages.find((page) => page.pageId === event.target.value) ?? null })}><option value="">Choose a Page</option>{readiness.pages.map((page) => <option key={page.pageId} value={page.pageId}>{page.pageName}{page.instagramUsername ? ` · @${page.instagramUsername}` : ''}</option>)}</select></label>
               <label className={labelClass}>Call to action<select disabled={!editable} className={inputClass} value={form.brief.callToAction} onChange={(event) => setForm({ ...form, brief: { ...form.brief, callToAction: event.target.value as typeof form.brief.callToAction } })}>{['LEARN_MORE','SHOP_NOW','SIGN_UP','CONTACT_US','GET_QUOTE'].map((value) => <option key={value}>{value}</option>)}</select></label>
               <label className={labelClass}>Campaign category<select disabled={!editable} className={inputClass} value={form.brief.regulatedCategory} onChange={(event) => setForm({ ...form, brief: { ...form.brief, regulatedCategory: event.target.value as typeof form.brief.regulatedCategory } })}>{[['none','Standard / none'],['credit','Credit'],['employment','Employment'],['housing','Housing'],['politics','Politics'],['alcohol','Alcohol'],['gambling','Gambling'],['tobacco','Tobacco'],['healthcare','Healthcare'],['financial_products','Financial products'],['crypto','Crypto'],['adult','Adult'],['weapons','Weapons']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><span className="block normal-case tracking-normal text-white/25">Anything other than standard is blocked and must be completed in Ads Manager.</span></label>
@@ -242,6 +316,50 @@ export function MetaAdsCampaignStudio() {
               <label className={labelClass}>End time ({readiness.timezone || 'browser timezone'})<input disabled={!editable} type="datetime-local" className={inputClass} value={localDateTime(form.endTime, readiness.timezone)} onChange={(event) => setForm({ ...form, endTime: isoFromLocal(event.target.value, readiness.timezone, form.endTime) })} /></label>
               {form.audience.countries.some((country) => ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO'].includes(country)) && <><label className={labelClass}>DSA beneficiary<input disabled={!editable} className={inputClass} value={form.dsaBeneficiary} onChange={(event) => setForm({ ...form, dsaBeneficiary: event.target.value })} /></label><label className={labelClass}>DSA payer<input disabled={!editable} className={inputClass} value={form.dsaPayor} onChange={(event) => setForm({ ...form, dsaPayor: event.target.value })} /></label></>}
             </div>
+            {form.destination === 'lead_form' && form.leadForm && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] p-4">
+                <p className="text-xs uppercase tracking-wide text-white/40">Lead form</p>
+                <p className="mt-1 text-xs text-white/35">
+                  Answers sync into Frappe CRM as leads. Forms are reused across campaigns that ask the same questions.
+                </p>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <label className={labelClass}>Privacy policy URL<input disabled={!editable} type="url" className={inputClass} value={form.leadForm.privacyPolicyUrl} onChange={(event) => setLeadForm({ privacyPolicyUrl: event.target.value })} placeholder="https://example.com/privacy" /><span className="block normal-case tracking-normal text-white/25">Required by Meta on every lead form.</span></label>
+                  <label className={labelClass}>Follow-up URL<input disabled={!editable} type="url" className={inputClass} value={form.leadForm.followUpUrl} onChange={(event) => setLeadForm({ followUpUrl: event.target.value })} placeholder="https://example.com/thanks" /><span className="block normal-case tracking-normal text-white/25">Required whenever an intro card is shown.</span></label>
+                  <label className={labelClass}>Intro headline<input disabled={!editable} className={inputClass} value={form.leadForm.contextHeadline} onChange={(event) => setLeadForm({ contextHeadline: event.target.value })} /></label>
+                  <label className={labelClass}>Intro description<input disabled={!editable} className={inputClass} value={form.leadForm.contextDescription} onChange={(event) => setLeadForm({ contextDescription: event.target.value })} /></label>
+                </div>
+                <p className="mt-4 text-xs uppercase tracking-wide text-white/40">Questions</p>
+                <div className="mt-2 space-y-2">
+                  {form.leadForm.questions.map((question, index) => (
+                    <div key={`${question.key}-${index}`} className="flex flex-wrap items-center gap-2">
+                      <input
+                        disabled={!editable || question.type !== 'CUSTOM'}
+                        className={`${inputClass} min-w-40 flex-1`}
+                        value={question.label}
+                        onChange={(event) => setQuestion(index, { label: event.target.value })}
+                        placeholder="Question shown to the person"
+                      />
+                      <select
+                        disabled={!editable}
+                        className={`${inputClass} w-44`}
+                        value={question.crmField ?? ''}
+                        onChange={(event) => setQuestion(index, { crmField: event.target.value || null })}
+                      >
+                        <option value="">Do not sync</option>
+                        {CRM_LEAD_FIELDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      {editable && question.type === 'CUSTOM' && (
+                        <button type="button" onClick={() => removeQuestion(index)} className="rounded-lg border border-white/10 px-2 py-2 text-xs text-white/50">Remove</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {editable && <button type="button" onClick={addQuestion} className="mt-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65">Add custom question</button>}
+                <p className="mt-3 text-xs text-white/25">
+                  One question must map to First name — Frappe CRM rejects the form otherwise. Standard questions use Meta&apos;s own wording.
+                </p>
+              </div>
+            )}
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] p-4">
               <div className="flex flex-wrap items-end gap-3"><label className={`${labelClass} min-w-60 flex-1`}>Optional confirmed ERPNext item<input disabled={!editable} className={inputClass} value={itemCode} onChange={(event) => setItemCode(event.target.value)} placeholder="Item code" /></label>{editable && <button type="button" disabled={productBusy} onClick={() => void attachProduct()} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65"><PackageSearch className="h-3.5 w-3.5" /> {productBusy ? 'Checking…' : 'Confirm item'}</button>}</div>
               {form.productContext && <p className="mt-3 text-xs text-emerald-100/70">{form.productContext.itemName} · price {form.productContext.price ?? 'not set'} {form.productContext.currency ?? ''} · stock {form.productContext.stockQuantity ?? 'unknown'}</p>}
