@@ -23,6 +23,40 @@ cmp apps/backend/db/migrations/039_meta_ads_campaign_studio.sql \
   apps/frontend/supabase/migrations/20260716120000_meta_ads_campaign_studio.sql
 ```
 
+Lead-form support adds a second additive migration. Without it the `leadform`
+publish step violates the `object_kind` CHECK and silently never runs:
+
+```sh
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f apps/frontend/supabase/migrations/20260722000000_meta_ads_lead_forms.sql
+
+cmp apps/backend/db/migrations/040_meta_ads_lead_forms.sql \
+  apps/frontend/supabase/migrations/20260722000000_meta_ads_lead_forms.sql
+```
+
+## 1a. Lead-form prerequisites (one-time, per Meta App and Page)
+
+Lead forms need more than the campaign permissions:
+
+| Requirement | Where | Notes |
+| --- | --- | --- |
+| `pages_manage_ads` | Meta App console | Creates the lead form. |
+| `leads_retrieval` | Meta App console | Reads submitted leads. Needs App Review for Advanced Access — **the long pole**, and outside your control. |
+| Lead Generation Terms | Facebook Page settings | Manual acceptance. No API can set it; preflight blocks with `meta_leadgen_tos_required` until it is done. |
+
+Check the terms without leaving the shell:
+
+```sh
+curl -s -G "https://graph.facebook.com/v25.0/me/accounts" \
+  --data-urlencode "access_token=$META_SANDBOX_ACCESS_TOKEN" \
+  --data-urlencode "fields=id,name,leadgen_tos_accepted"
+```
+
+Verified 2026-07-22 against the sandbox: form creation and `OUTCOME_LEADS` campaigns
+succeed with `pages_manage_ads` + `ads_management`, but the ad set is rejected until the
+Page accepts the terms, and `leads_retrieval` was not granted so the lead round-trip
+remains untested.
+
 ## 2. Automated fake-sandbox lifecycle
 
 This test creates and cleans a disposable company/user, generates deterministic

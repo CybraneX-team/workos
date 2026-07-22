@@ -199,8 +199,38 @@ The DB lifecycle test uses fake Meta/Gemini adapters but real durable jobs,
 Supabase tables, private Storage, idempotency, and cleanup. Live Meta sandbox
 acceptance is paused-publication only unless launch is explicitly enabled.
 
+## Lead-form campaigns
+
+Added 2026-07-22. `content.destination` selects the publish shape.
+
+| | `website` | `lead_form` |
+| --- | --- | --- |
+| Objective | `OUTCOME_TRAFFIC` | `OUTCOME_LEADS` |
+| Ad set | `LINK_CLICKS`, `destination_type: WEBSITE` | `LEAD_GENERATION`, `destination_type: ON_AD`, `promoted_object: {page_id}` |
+| Creative CTA value | `{link}` | `{lead_gen_form_id}` |
+| Extra steps | — | `leadform` before the campaign, `crmsync` after the ads |
+
+Design points that are not obvious from the code:
+
+- **Forms are reused by question-set hash, not created per campaign.** Frappe CRM permits
+  one enabled `Lead Sync Source` per form, so a form per campaign would multiply sync
+  sources and their polling against Meta. The hash is recomputed server-side on every patch
+  because it decides which form a publish binds to. It includes each question's target CRM
+  field, since the mapping is stored on the shared form.
+- **`crmsync` is non-fatal.** It runs after the campaign is live on Meta, which keeps
+  collecting submissions regardless — Frappe backfills on first sync because
+  `last_synced_at` starts null. A failure records the step and a
+  `lead_sync_configuration_failed` event rather than failing an already-published job.
+- **Ad-level attribution comes from `ad_id`, not the form.** See
+  `domains/meta-ads/leadAttribution.ts`.
+- **Preflight owns three Meta rules that otherwise fail mid-publish**: a lead form needs an
+  HTTPS privacy-policy URL; an intro card forces a follow-up URL (`error_subcode 1892085`);
+  and the Page must have accepted Meta's Lead Generation Terms (`leadgen_tos_accepted`,
+  which no API can set — it is manual in Page settings).
+
 ## Authoritative files
 
+- `apps/backend/src/domains/meta-ads/leadAttribution.ts` — hourly `ad_id` backfill.
 - `apps/backend/src/adapters/metaAds.ts` — `getMetaOAuthUrl` (OAuth scope list)
   and `isMetaSandboxAllowed`/sandbox-connect gating live in
   `apps/backend/src/routes/integrations.ts`, not here.

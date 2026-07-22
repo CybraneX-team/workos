@@ -3,9 +3,9 @@
 Status: accepted; implemented for local development and deployed to Azure on 2026-07-20.
 
 Decision date: 2026-07-13. Deployment amendment: 2026-07-20. Frappe CRM amendment:
-2026-07-21 (see the amendments below).
+2026-07-21. Tenant-write amendment: 2026-07-22 (see the amendments below).
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-22.
 
 ## Context
 
@@ -112,6 +112,42 @@ Consequences worth recording:
 - **The remote provisioning shim is duplicated logic.** Its `bench new-site` call must be
   kept in sync with `localProvision()` by hand; see `infra/erpnext-remote-shim/README.md`.
 
+## Tenant-write amendment (2026-07-22)
+
+Until now the control plane's entire Frappe write surface was tenant lifecycle:
+`upsertUser`, `disableUser`, `applyBranding`, `configureSso`. Nothing in the repository
+could write tenant *business* data, which is why no lead ever reached `CRM Lead`.
+
+**Decision: WorkOS may write tenant business data, but only through purpose-specific,
+allowlisted commands — never a generic doctype writer.**
+
+Two commands exist:
+
+- `PUT /internal/v1/tenants/:companyId/lead-sync` — configures Frappe CRM's Facebook lead
+  syncing for a Meta lead form WorkOS just created.
+- `PUT /internal/v1/tenants/:companyId/lead-attribution` — stamps the originating Meta ad
+  onto already-synced leads.
+
+Both follow the `configure_sso` shape: environment guard, `command_receipts` idempotency
+short-circuit, apply, receipt. Each allowlists its own doctypes and fields internally, so
+the caller never names a doctype. The alternative — one generic `POST /records/write`
+guarded by a server-side allowlist — was rejected for v1: it makes the allowlist the whole
+security boundary, and there is currently one consumer.
+
+Why this does not breach the existing boundary: the control plane still owns all Frappe
+HTTP access and credentials, and still reads no WorkOS data. WorkOS states desired tenant
+configuration; the control plane decides how to apply it.
+
+Two constraints discovered while implementing, both load-bearing:
+
+- `Lead Sync Source.before_insert` calls Graph `/me/accounts`, which a Page-scoped token
+  cannot do (`(#100) Tried accessing nonexisting field (accounts)`). The source is therefore
+  inserted with a short-lived *discovery* token and switched to the Page-scoped token as the
+  final step. Frappe stores Password values in `__Auth` (upserted) and writes only a `*****`
+  mask to the doc column, so the swap leaves no residue in version history.
+- That same `before_insert` is what creates the `Facebook Page` and `Facebook Lead Form`
+  rows. WorkOS deliberately does not write those doctypes.
+
 ## Authoritative files
 
 - `apps/backend/src/domains/workos-erp/erpnextSales.ts`
@@ -122,9 +158,11 @@ Consequences worth recording:
 - `apps/erpnext-control-plane/src/server.ts`
 - `apps/erpnext-control-plane/src/provisionWorker.ts`
 - `apps/erpnext-control-plane/src/frappe/client.ts`
+- `apps/backend/src/domains/meta-ads/leadAttribution.ts`
 - `packages/erpnext-contracts/src/index.ts`
 
 ## Update or supersede this ADR when
 
 - identity/RBAC ownership changes, Frappe gains another direct application consumer, projections gain another application consumer, or the control-plane moves to its own database or a different hosting model;
-- the authoritative doctypes for any part of the Sales domain change, or Frappe CRM replaces/absorbs more of the native ERPNext surface.
+- the authoritative doctypes for any part of the Sales domain change, or Frappe CRM replaces/absorbs more of the native ERPNext surface;
+- a second consumer needs tenant writes, at which point the generic-writer alternative rejected above should be reconsidered.

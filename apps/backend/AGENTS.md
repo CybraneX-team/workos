@@ -66,6 +66,10 @@ The Sales domain reads **two different data models**, and mixing them up fails s
 - **Accounts, proposals, revenue → native ERPNext**: `Customer`, `Contact`,
   `Territory`, `Quotation`, `Sales Order`, `Sales Invoice`.
 
+Leads reach `CRM Lead` two ways: a human typing into Frappe CRM, or Frappe CRM's own
+Facebook lead syncing, which WorkOS configures when it publishes a lead-form campaign
+(`domains/meta-ads/authoring.ts`, `crmsync` step). Nothing else in this app writes leads.
+
 `CRM Deal` has **no separate stage field** — its `status` (Link to `CRM Deal Status`)
 *is* the pipeline stage. Field aliases in `erpnextSalesStories.ts` (`dealAmount`,
 `dealStage`, `dealClose`, `leadCompany`) accept either shape.

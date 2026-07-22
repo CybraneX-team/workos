@@ -65,6 +65,30 @@ us, and the CRM Deal → Customer/Quotation hand-off needs `erpnext` present. Se
 
 WorkOS projection code calls `apps/backend/src/adapters/erpnext.ts`, which uses the internal control-plane client. The control-plane executes Frappe reads as a batch and returns independent results so one failed query does not erase successful sibling results. Business interpretation remains in WorkOS.
 
+### Tenant business writes
+
+Added 2026-07-22. WorkOS may write tenant business data only through purpose-specific,
+allowlisted commands — there is no generic doctype writer. Each command names its own
+doctypes and fields internally, so a caller can never choose them.
+
+| Endpoint | Applies |
+| --- | --- |
+| `PUT /internal/v1/tenants/:companyId/lead-sync` | Frappe CRM Facebook lead syncing for a Meta lead form WorkOS created: the `workos_meta_ad_id` custom field, a `Lead Sync Source`, and question-to-CRM-field mappings. |
+| `PUT /internal/v1/tenants/:companyId/lead-attribution` | The originating Meta ad id onto already-synced `CRM Lead` rows. |
+
+Both use the `configure_sso` shape: environment guard, `command_receipts` idempotency
+short-circuit, apply, receipt. `erpnext.command_receipts.command_kind` is plain text, so
+new commands need no migration.
+
+Two Frappe behaviours constrain `lead-sync` and are easy to break by "simplifying":
+
+- `Lead Sync Source.before_insert` calls Graph `/me/accounts`, which a Page-scoped token
+  cannot do. The source is inserted with a discovery (user) token and switched to the
+  Page-scoped token last. Frappe keeps Password values in `__Auth` (upserted) and stores
+  only a `*****` mask on the doc column, so the swap leaves nothing behind.
+- That same hook creates the `Facebook Page` and `Facebook Lead Form` rows. WorkOS must not
+  write those doctypes itself.
+
 ### Browser SSO
 
 1. A signed-in user opens `http://erp-<company-slug>.localhost:8081` and clicks `Login with workos`.

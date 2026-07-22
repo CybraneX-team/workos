@@ -48,6 +48,8 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - Do not create an `erpnext-client` or projection package while it has only one application consumer.
 - The control-plane is deployed to Azure as of 2026-07-20 (internal-ingress Container App, `ERPNEXT_ENV=remote`) and fronts the existing ERPNext VM shim. Its `erpnext` schema shares the Supabase Postgres with WorkOS `public`; isolation is by schema plus the code boundary above, not a separate database. See `docs/runbooks/cloud-deploy.md`.
 - Tenant sites run **two** Frappe apps: `erpnext` and `crm` (Frappe CRM), as of 2026-07-21. They are parallel data models — Frappe CRM's `CRM Lead`/`CRM Deal` back WorkOS's pipeline projections, while native `Customer`/`Quotation`/`Sales Order`/`Sales Invoice` back accounts and revenue. Repointing a Sales mapping at a different doctype without updating its story builder renders a silently empty dashboard; see `apps/backend/AGENTS.md`.
+- WorkOS may write tenant business data as of 2026-07-22, but **only** through purpose-specific allowlisted control-plane commands (`lead-sync`, `lead-attribution`) — never a generic doctype writer. See `docs/decisions/001-erpnext-control-plane-boundary.md`.
+- Campaign Studio can publish Meta lead-form campaigns whose submissions sync into `CRM Lead`; see `docs/architecture/meta-ads-campaign-studio.md`.
 
 ## Useful verification commands
 
