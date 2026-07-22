@@ -446,7 +446,14 @@ export async function fetchMetaAdsMetrics(
 export function getMetaOAuthUrl(state: string): string {
   const appId = process.env.META_APP_ID ?? '';
   const redirectUri = process.env.META_REDIRECT_URI ?? 'http://localhost:8080/api/integrations/meta/callback';
-  const scope = 'ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,pages_manage_ads,instagram_basic';
+  // pages_manage_ads removed: it's a real permission (manages Page-linked ads), but
+  // nothing in this codebase reads/writes anything gated by it.
+  //
+  // pages_read_user_content added: per Meta's Permissions Reference, instagram_basic's
+  // actual dependencies are pages_read_user_content + pages_show_list, not
+  // pages_read_engagement. Requesting instagram_basic without its real dependency present
+  // makes Facebook reject the whole OAuth call with "Invalid Scopes: instagram_basic".
+  const scope = 'ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,instagram_basic';
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}&response_type=code`;
 }
 

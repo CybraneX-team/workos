@@ -198,6 +198,79 @@ Open items, deliberately left rather than forgotten:
 - **RBAC through Frappe CRM is unverified** — no non-Administrator user has been tested
   against `CRM Lead`/`CRM Deal` visibility.
 
+## Configure — Meta Ads integration (manual)
+
+Found 2026-07-21 while debugging a live "Meta OAuth not configured" error: the
+backend Container App was missing `META_APP_ID`, `META_APP_SECRET`, a correct
+`META_REDIRECT_URI`, `NODE_ENV`, and any `META_AUTHORING_*` var — Meta Ads OAuth
+connect and Campaign Studio authoring had never actually been configured for
+production. Fixed the same day; all commands below were run and confirmed live
+(`/healthz` 200 on the resulting revision).
+
+```bash
+az containerapp update -n startup-twin-backend -g startup-digital-twin-rg \
+  --set-env-vars META_APP_ID=<value> META_APP_SECRET=<value> \
+  META_REDIRECT_URI=https://startup-twin-backend.delightfuldesert-4a477cb8.centralindia.azurecontainerapps.io/api/integrations/meta/callback
+
+az containerapp update -n startup-twin-backend -g startup-digital-twin-rg \
+  --set-env-vars NODE_ENV=production
+
+az containerapp update -n startup-twin-backend -g startup-digital-twin-rg \
+  --set-env-vars META_AUTHORING_MODE=allowlisted_real \
+  META_AUTHORING_ALLOWED_ACCOUNT_IDS=<act_... exact real ad account id>
+```
+
+**`NODE_ENV=production` matters project-wide, not just for Meta.** Its absence
+silently left every "dev only" guard in this codebase open in production:
+`isMetaSandboxAllowed()` (`apps/backend/src/routes/integrations.ts`), the
+`META_AUTHORING_FAKE_META`/`META_AUTHORING_FAKE_GEMINI` fake-adapter switches,
+and fixture seeding (`apps/backend/src/domains/meta-ads/README.md`: "Fixtures
+are disabled when `NODE_ENV=production`"). None of these had a working trigger
+in practice before this fix, because their *other* guard conditions (e.g.
+`META_SANDBOX_ACCESS_TOKEN` being set) were also never configured on Azure —
+but that was luck, not a second line of defense that was ever verified. Treat a
+missing `NODE_ENV` on any future Container App as a real gap, not a formality.
+
+**Meta App console prerequisites** (developers.facebook.com, app "CybraneX",
+ID `1249568431567089`), found by trial and error and not documented anywhere
+else — required before the OAuth flow above will work at all:
+
+- **App Domains** (App settings → Basic): must include the backend's bare host
+  (`startup-twin-backend.delightfuldesert-4a477cb8.centralindia.azurecontainerapps.io`),
+  or the login dialog fails with "Can't load URL — domain not in app's domains"
+  before it even gets to the redirect-URI check.
+- **Valid OAuth Redirect URIs** (Facebook Login for Business → Settings): the
+  exact `META_REDIRECT_URI` value above, full scheme and path.
+- **Use case "Manage Pages"**, permission `pages_read_user_content` explicitly
+  added (Use cases → Manage Pages → Customize → Permissions and features →
+  `+ Add` on that row). This is `instagram_basic`'s actual dependency per
+  Meta's Permissions Reference — **not** `pages_read_engagement`, despite that
+  being the more obvious-looking Pages permission already in the scope list.
+- **Use case "Manage messaging & content on Instagram"**, permission
+  `instagram_basic` explicitly added the same way. Adding the use case card
+  alone does not enable the permission — each permission needs its own
+  `+ Add` inside that use case's Customize screen.
+- Both permissions should show **"Ready for testing"** (Standard Access) once
+  added — no App Review or Business Verification needed for the app owner's
+  own testing.
+
+`pages_manage_ads` was in the OAuth scope list until this date; removed
+because nothing in this codebase reads or writes anything gated by it, and it
+was rejected by Meta with "Invalid Scopes" the moment it was requested without
+a matching console permission. See
+[`docs/architecture/meta-ads-campaign-studio.md`](../architecture/meta-ads-campaign-studio.md)
+for the full scope list and rationale.
+
+⚠️ **A sandbox test connection exists under an unrelated company** (`asd`,
+`46f1199b-a670-420e-b895-aa6e47ef1bfd`) in the shared Supabase `public.integration_connections`
+table, `account_name: "Meta Ads · CybraneX Sandbox (sandbox)"`. Traced this
+precisely rather than assuming: it cannot have come from the deployed backend —
+`META_SANDBOX_ACCESS_TOKEN`/`META_SANDBOX_AD_ACCOUNT_ID` were never set on Azure
+(confirmed by direct query), and `isMetaSandboxAllowed()` requires both. It came
+from a local dev backend session (which has those values in `apps/backend/.env`)
+writing to the same shared Supabase project dev and prod both use. Harmless,
+but leave it alone rather than "fixing" it as if it were a production leak.
+
 ## Database migrations (manual)
 
 No auto-apply anywhere. Apply against the pooled Supabase `DATABASE_URL`.

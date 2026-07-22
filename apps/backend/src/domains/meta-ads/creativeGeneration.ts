@@ -274,7 +274,13 @@ export async function generateMetaCreativeConcepts(input: {
             : imagePrompt,
           config: {
             responseModalities: [Modality.TEXT, Modality.IMAGE],
-            imageConfig: { aspectRatio: ratio, imageSize: '1K', personGeneration: 'ALLOW_ADULT' },
+            // personGeneration is Vertex AI (Enterprise) only. This client authenticates
+            // with a plain apiKey (Gemini Developer API mode, not Vertex), so setting it
+            // made every single image generation call fail with "personGeneration
+            // parameter is only supported in Gemini Enterprise Agent Platform mode, not
+            // in Gemini Developer API mode" — confirmed 2026-07-21 by reproducing the
+            // exact call directly against the real API key.
+            imageConfig: { aspectRatio: ratio, imageSize: '1K' },
           },
         });
         const inline = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData;

@@ -1,6 +1,6 @@
 # Meta Ads Campaign Studio
 
-Last verified: 2026-07-16.
+Last verified: 2026-07-21.
 
 Campaign Studio adds a narrow, approval-gated Meta write surface to Paid
 Acquisition. It is deliberately separate from the read-only operating loop:
@@ -83,10 +83,19 @@ Authoring is fail-closed and independent of read access:
   stale draft versions, and snapshot drift block the operation.
 
 The OAuth request includes `ads_read`, `ads_management`, `business_management`,
-`pages_show_list`, `pages_read_engagement`, `pages_manage_ads`, and
-`instagram_basic`. Tokens stay encrypted in `integration_connections`; no token,
-App Secret Proof, raw Graph body, or private storage path is returned to the
-browser.
+`pages_show_list`, `pages_read_engagement`, `pages_read_user_content`, and
+`instagram_basic` (`getMetaOAuthUrl` in `apps/backend/src/adapters/metaAds.ts`).
+`pages_read_user_content` is `instagram_basic`'s actual dependency per Meta's
+Permissions Reference — the previous `pages_read_engagement`-only list caused
+Meta to reject the whole OAuth request with "Invalid Scopes: instagram_basic"
+(found and fixed 2026-07-21). `pages_manage_ads` was in this list until the same
+date; it was removed because nothing in this codebase reads or writes anything
+gated by it, and its presence (without the corresponding Meta App permission
+enabled) was the first thing that broke the OAuth request. If a future feature
+needs Page-level ad management, re-add it here **and** enable it under the "Manage
+Pages" use case in the Meta App console first. Tokens stay encrypted in
+`integration_connections`; no token, App Secret Proof, raw Graph body, or private
+storage path is returned to the browser.
 
 ## Creative context and storage
 
@@ -192,6 +201,9 @@ acceptance is paused-publication only unless launch is explicitly enabled.
 
 ## Authoritative files
 
+- `apps/backend/src/adapters/metaAds.ts` — `getMetaOAuthUrl` (OAuth scope list)
+  and `isMetaSandboxAllowed`/sandbox-connect gating live in
+  `apps/backend/src/routes/integrations.ts`, not here.
 - `apps/backend/src/adapters/metaAdsAuthoring.ts` — the only Meta object writer.
 - `apps/backend/src/domains/meta-ads/authoring.ts` — policy, drafts, preflight,
   approvals, jobs, reconciliation, launch, pause, and audit history.

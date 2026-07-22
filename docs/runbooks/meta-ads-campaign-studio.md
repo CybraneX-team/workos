@@ -1,6 +1,6 @@
 # Meta Ads Campaign Studio verification
 
-Last verified: 2026-07-16.
+Last verified: 2026-07-21.
 
 This runbook verifies creative generation, final ad editing, deterministic
 preflight, paused publication, the separate launch gate, emergency pause, and
@@ -132,6 +132,36 @@ Verify:
 Repeat as analyst: creation/editing is available but approvals are hidden.
 Repeat as viewer/engineer/investor: all mutation controls are hidden.
 
+## 3a. Meta App console prerequisites (one-time, per Meta App)
+
+Found by trial and error 2026-07-21 and not documented anywhere else. Before
+any real OAuth connect (sandbox or production) will succeed, the Meta App
+itself (developers.facebook.com) needs:
+
+- **App Domains** (App settings → Basic) containing the bare host the backend's
+  `META_REDIRECT_URI` uses. Missing this fails at the Facebook login dialog
+  itself with "Can't load URL — domain not in app's domains", before the
+  redirect-URI check ever runs.
+- **Valid OAuth Redirect URIs** (Facebook Login for Business → Settings): the
+  exact `META_REDIRECT_URI` value, full scheme and path, byte-for-byte.
+- Every scope in `getMetaOAuthUrl()` (`apps/backend/src/adapters/metaAds.ts`)
+  needs its permission explicitly added under **Use cases → \<relevant use
+  case\> → Customize → Permissions and features → `+ Add`**. Adding a use
+  case card is not enough — each permission inside it needs its own `+ Add`.
+  In particular: `instagram_basic`'s actual dependency is
+  `pages_read_user_content` (under "Manage Pages"), not the more
+  obvious-looking `pages_read_engagement` that's already in the scope list.
+  Requesting a scope whose dependency isn't enabled fails the whole OAuth
+  call with `Invalid Scopes: <name>` — Meta doesn't say which dependency is
+  missing, only which top-level scope it's rejecting.
+- Each permission should show **"Ready for testing"** (Standard Access) once
+  added — sufficient for the app owner's own account without App Review.
+
+If the OAuth scope list in code ever changes, re-check this section against
+`getMetaOAuthUrl()` and Meta's own Permissions Reference
+(developers.facebook.com/docs/permissions) for each scope's real dependencies —
+don't assume a scope's dependency is whichever permission looks most related.
+
 ## 4. Live Meta sandbox smoke
 
 Create/use Meta test users and a sandbox ad account. Ensure the test user can
@@ -194,6 +224,11 @@ An empty allowlist permits no real account. Keep launch disabled for the first
 paused-publication inspection. Enabling launch is a separate operational
 decision because it can cause spend; code-level approval does not replace that
 authorization.
+
+Production (`startup-twin-backend`) was set to `allowlisted_real` on
+2026-07-21 with one real ad account, launch still disabled. See
+[`docs/runbooks/cloud-deploy.md`](cloud-deploy.md) for the exact commands and
+the account ID — do not duplicate the ID here, it drifts.
 
 ## Failure triage
 

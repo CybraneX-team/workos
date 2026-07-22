@@ -186,7 +186,13 @@ export async function getMetaAdsAuthoringReadiness(companyId: string): Promise<M
     if (prerequisites.account.accountStatus !== 1) base.blockers.push({ code: 'meta_account_inactive', message: 'The connected Meta ad account is not active.' });
     if (prerequisites.account.disableReason) base.blockers.push({ code: 'meta_account_disabled', message: 'Meta reports that the ad account is disabled.' });
     if (prerequisites.pages.length === 0) base.blockers.push({ code: 'meta_page_required', message: 'Grant access to at least one Facebook Page to publish an ad.' });
-    if (prerequisites.account.spendCap != null && prerequisites.account.amountSpent != null && prerequisites.account.amountSpent >= prerequisites.account.spendCap) {
+    // Per Meta's Ad Account reference, spend_cap of 0 means "no cap set" — not
+    // a real cap of zero. Treating 0 as a real value made this fire for every
+    // account that has never had an explicit cap configured (the common case).
+    if (
+      prerequisites.account.spendCap != null && prerequisites.account.spendCap > 0 &&
+      prerequisites.account.amountSpent != null && prerequisites.account.amountSpent >= prerequisites.account.spendCap
+    ) {
       base.blockers.push({ code: 'meta_spend_cap_reached', message: 'The Meta ad account spend cap has been reached.' });
     }
   } catch (error) {
