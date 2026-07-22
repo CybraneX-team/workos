@@ -387,6 +387,9 @@ test('EEA campaigns require DSA payer and beneficiary disclosure', () => {
 test('Meta writer payloads are traffic-only, lifetime-budgeted, and paused by default', () => {
   assert.deepEqual(metaTrafficCampaignPayload({ name: 'Test' }), {
     name: 'Test', objective: 'OUTCOME_TRAFFIC', status: 'PAUSED', special_ad_categories: '[]',
+    // Regression: Graph v25 rejects ad-set-budgeted campaigns (error_subcode 4834011) unless
+    // this is sent. Verified against the real sandbox — omitting it fails the publish outright.
+    is_adset_budget_sharing_enabled: 'false',
   });
   const adset = metaTrafficAdSetPayload({
     name: 'Broad', campaignId: 'campaign-1', lifetimeBudgetMinor: 10_000,

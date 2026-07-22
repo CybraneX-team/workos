@@ -242,6 +242,11 @@ export function metaTrafficCampaignPayload(input: { name: string }): Record<stri
     objective: 'OUTCOME_TRAFFIC',
     status: 'PAUSED',
     special_ad_categories: '[]',
+    // Required by Graph once a campaign carries no campaign-level budget — ours budget at the
+    // ad set (`lifetime_budget` in metaTrafficAdSetPayload), so Graph rejects the create with
+    // error_subcode 4834011 unless this is stated explicitly. `false` keeps today's behaviour:
+    // we publish one ad set per campaign, so there is nothing to share 20% of a budget with.
+    is_adset_budget_sharing_enabled: 'false',
   };
 }
 
