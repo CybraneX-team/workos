@@ -12,6 +12,7 @@
     "gen:rbac-seed": "tsx scripts/genRbacSeed.ts",
     "validate:bdt": "tsx scripts/validate-bdt-seed.ts",
     "reset:development": "tsx scripts/reset-development-data.ts",
+    "seed:healthcare-companies": "tsx scripts/seedHealthcareReferenceCompanies.ts",
     "seed:stripe": "node scripts/seed-stripe-test-data.js",
     "seed:meta-ads-fixture": "tsx scripts/seed-meta-ads-fixture.ts",
     "advance:meta-ads-experiment-fixture": "tsx scripts/advance-meta-ads-experiment-fixture.ts",
