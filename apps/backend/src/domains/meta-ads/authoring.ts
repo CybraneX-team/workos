@@ -13,6 +13,7 @@ import type {
   MetaAdsCreativeAsset,
   MetaAdsCreativeGenerationJob,
   MetaAdsErpProductContext,
+  MetaAdsLeadFormSpec,
   MetaAdsPreflightIssue,
 } from '@cybranex/shared-types';
 import { env } from '../../config.js';
@@ -94,6 +95,26 @@ function canonical(value: unknown): unknown {
 
 export function metaAdsDraftSnapshotHash(content: MetaAdsCampaignDraftContent): string {
   return createHash('sha256').update(JSON.stringify(canonical(content))).digest('hex');
+}
+
+/**
+ * Identity of a lead form for reuse purposes. Two drafts that hash equal can publish against the
+ * same Meta form, which matters because Frappe CRM permits exactly one enabled `Lead Sync Source`
+ * per form — a form per campaign would multiply sync sources and their polling.
+ *
+ * `crmField` is part of the identity even though Meta never sees it: the question-to-CRM mapping
+ * is stored on the shared form, so drafts that map the same questions differently cannot share one.
+ */
+export function metaAdsLeadFormQuestionSetHash(leadForm: MetaAdsLeadFormSpec): string {
+  return createHash('sha256').update(JSON.stringify(canonical({
+    questions: leadForm.questions.map((question) => ({
+      key: question.key, type: question.type, label: question.label, crmField: question.crmField,
+    })),
+    privacyPolicyUrl: leadForm.privacyPolicyUrl,
+    followUpUrl: leadForm.followUpUrl,
+    contextHeadline: leadForm.contextHeadline,
+    contextDescription: leadForm.contextDescription,
+  }))).digest('hex');
 }
 
 function allowedAccountIds(): Set<string> {
@@ -290,6 +311,8 @@ function defaultDraftContent(name: string): MetaAdsCampaignDraftContent {
   const end = new Date(start.getTime() + 7 * 86_400_000);
   return {
     name,
+    destination: 'website',
+    leadForm: null,
     brief: { goal: '', offer: '', proofPoints: [], targetCustomer: '', landingPageUrl: '', callToAction: 'LEARN_MORE', regulatedCategory: 'none' },
     identity: null,
     audience: { countries: [], ageMin: 18, ageMax: 65, languageIds: [] },
@@ -302,6 +325,20 @@ function defaultDraftContent(name: string): MetaAdsCampaignDraftContent {
     productContext: null,
     concepts: [],
     ads: [],
+  };
+}
+
+/**
+ * Drafts stored before lead-form support have no `destination` or `leadForm` key in their JSONB.
+ * Normalising on every read keeps `undefined` out of validation and payload builders, which would
+ * otherwise silently skip the website-only checks rather than failing loudly.
+ */
+function draftContent(raw: unknown): MetaAdsCampaignDraftContent {
+  const content = raw as MetaAdsCampaignDraftContent;
+  return {
+    ...content,
+    destination: content.destination === 'lead_form' ? 'lead_form' : 'website',
+    leadForm: content.leadForm ?? null,
   };
 }
 
@@ -328,6 +365,7 @@ async function addEvent(input: {
 }
 
 function mergeContent(current: MetaAdsCampaignDraftContent, patch: Partial<MetaAdsCampaignDraftContent>): MetaAdsCampaignDraftContent {
+  const leadForm = patch.leadForm === undefined ? current.leadForm : patch.leadForm;
   return {
     ...current,
     ...patch,
@@ -337,6 +375,9 @@ function mergeContent(current: MetaAdsCampaignDraftContent, patch: Partial<MetaA
     productContext: patch.productContext === undefined ? current.productContext : patch.productContext,
     concepts: patch.concepts ?? current.concepts,
     ads: patch.ads ?? current.ads,
+    // Always recomputed here rather than trusted from the client: the hash decides which Meta
+    // form a publish reuses, so a caller-supplied value could bind a draft to someone else's form.
+    leadForm: leadForm ? { ...leadForm, questionSetHash: metaAdsLeadFormQuestionSetHash(leadForm) } : null,
   };
 }
 
@@ -371,7 +412,7 @@ async function shapeDraft(row: Record<string, unknown>, includeEvents = false): 
   const adsetId = mapping.find((item) => item.object_kind === 'adset')?.meta_object_id ?? null;
   return {
     id: String(row.id), accountId: String(row.ad_account_id), status: row.status as MetaAdsCampaignDraft['status'],
-    version: Number(row.current_version), content: row.content as MetaAdsCampaignDraftContent,
+    version: Number(row.current_version), content: draftContent(row.content),
     preflight: (row.preflight as MetaAdsCampaignPreflight | null) ?? null,
     approvals: approvals.rows.map((approval) => ({
       id: String(approval.id), kind: approval.approval_kind, approvedBy: approval.approved_by ? String(approval.approved_by) : null,
@@ -448,7 +489,7 @@ export async function patchMetaAdsCampaignDraft(input: {
   const row = await draftRow(input.companyId, input.draftId);
   if (!EDITABLE_STATUSES.has(String(row.status))) fail(409, 'campaign_draft_immutable_clone_required');
   if (Number(row.current_version) !== input.expectedVersion) fail(409, 'campaign_draft_version_conflict');
-  const content = mergeContent(row.content as MetaAdsCampaignDraftContent, input.patch);
+  const content = mergeContent(draftContent(row.content), input.patch);
   const version = Number(row.current_version) + 1;
   const hash = metaAdsDraftSnapshotHash(content);
   const client = await pool.connect();
@@ -523,6 +564,11 @@ function safeLandingPage(raw: string): boolean {
 
 const REGULATED_TERMS = /\b(casino|betting|gambling|tobacco|cigarette|vape|weapon|firearm|crypto(?:currency)?|credit|loan|mortgage|employment|recruit(?:ing|ment)?|hiring|job opening|housing|real estate|apartment|prescription|diagnose|cure|politic(?:al|s)?|adult content)\b/i;
 
+/** SHOP_NOW makes no sense on a form that collects contact details rather than selling. */
+const LEAD_FORM_CALL_TO_ACTIONS = new Set<MetaAdsCampaignDraftContent['brief']['callToAction']>([
+  'SIGN_UP', 'GET_QUOTE', 'CONTACT_US', 'LEARN_MORE',
+]);
+
 export function evaluateMetaAdsCampaignDraft(input: {
   content: MetaAdsCampaignDraftContent;
   readiness: MetaAdsAuthoringReadiness;
@@ -539,7 +585,48 @@ export function evaluateMetaAdsCampaignDraft(input: {
   if (!content.brief.goal.trim() || !content.brief.offer.trim() || !content.brief.targetCustomer.trim()) {
     issues.push(issue('campaign_brief_incomplete', 'Goal, offer, and target customer are required.', 'brief'));
   }
-  if (!safeLandingPage(content.brief.landingPageUrl)) issues.push(issue('landing_page_url_invalid', 'Use a public HTTPS landing-page URL.', 'brief.landingPageUrl'));
+  // Lead-form ads keep people inside Meta's instant form, so there is no landing page to check.
+  // Tested against `!== 'lead_form'` rather than `=== 'website'` so a draft whose JSONB predates
+  // this field still gets the website checks instead of silently skipping them.
+  if (content.destination !== 'lead_form' && !safeLandingPage(content.brief.landingPageUrl)) {
+    issues.push(issue('landing_page_url_invalid', 'Use a public HTTPS landing-page URL.', 'brief.landingPageUrl'));
+  }
+  if (content.destination === 'lead_form') {
+    const leadForm = content.leadForm;
+    if (!leadForm) {
+      issues.push(issue('lead_form_missing', 'Configure the lead form for this campaign.', 'leadForm'));
+    } else {
+      // Meta rejects a leadgen form without one, so fail here rather than mid-publish.
+      if (!safeLandingPage(leadForm.privacyPolicyUrl)) {
+        issues.push(issue('lead_form_privacy_policy_invalid', 'Meta requires a public HTTPS privacy-policy URL on every lead form.', 'leadForm.privacyPolicyUrl'));
+      }
+      if (leadForm.followUpUrl.trim() && !safeLandingPage(leadForm.followUpUrl)) {
+        issues.push(issue('lead_form_follow_up_invalid', 'Use a public HTTPS URL for the follow-up page.', 'leadForm.followUpUrl'));
+      }
+      // Verified against Graph v25: supplying a context card without a follow-up URL fails the
+      // create with error_subcode 1892085 ("Missing field(s): FollowUpActionURL").
+      if ((leadForm.contextHeadline.trim() || leadForm.contextDescription.trim()) && !leadForm.followUpUrl.trim()) {
+        issues.push(issue('lead_form_follow_up_required', 'Meta requires a follow-up URL when the form shows an intro card.', 'leadForm.followUpUrl'));
+      }
+      if (leadForm.questions.length === 0) {
+        issues.push(issue('lead_form_questions_required', 'Add at least one question to the lead form.', 'leadForm.questions'));
+      }
+      // Frappe CRM's facebook_lead_form.py throws unless first_name is mapped; catching it here
+      // keeps the failure in preflight instead of halfway through a publish job.
+      if (leadForm.questions.filter((question) => question.crmField === 'first_name').length !== 1) {
+        issues.push(issue('lead_form_first_name_required', 'Exactly one question must map to the CRM first name field.', 'leadForm.questions'));
+      }
+      const duplicateKeys = new Set<string>();
+      for (const question of leadForm.questions) {
+        if (duplicateKeys.has(question.key)) issues.push(issue('lead_form_duplicate_question', 'Each lead-form question must be unique.', 'leadForm.questions'));
+        duplicateKeys.add(question.key);
+        if (!question.label.trim()) issues.push(issue('lead_form_question_label_required', 'Every lead-form question needs a label.', 'leadForm.questions'));
+      }
+      if (!LEAD_FORM_CALL_TO_ACTIONS.has(content.brief.callToAction)) {
+        issues.push(issue('lead_form_cta_invalid', 'Choose a lead-appropriate call to action.', 'brief.callToAction'));
+      }
+    }
+  }
   if (content.specialAdCategories.length > 0) issues.push(issue('special_ad_category_blocked', 'Special Ad Category campaigns must be created in Ads Manager.', 'specialAdCategories'));
   const policyText = [content.name, content.brief.goal, content.brief.offer, content.brief.targetCustomer, ...content.brief.proofPoints,
     ...content.ads.flatMap((ad) => [ad.primaryText, ad.headline, ad.description])].join(' ');
@@ -553,6 +640,14 @@ export function evaluateMetaAdsCampaignDraft(input: {
     issues.push(issue('meta_page_invalid', 'Choose an accessible Facebook Page identity.', 'identity'));
   } else if (content.identity?.instagramActorId !== accessibleIdentity.instagramActorId) {
     issues.push(issue('meta_instagram_identity_invalid', 'Choose the Instagram identity attached to the selected Facebook Page.', 'identity'));
+  }
+  // Meta rejects the ad set — not the form or campaign — with "You can't run lead ads until your
+  // Facebook Page accepts Facebook's Lead Generation Terms of Service." Checked against live
+  // readiness rather than the stored identity, and only when it is knowably false, so a Page the
+  // API declines to report on does not block publishing. Acceptance is manual in Page settings;
+  // no API can do it for the user.
+  if (content.destination === 'lead_form' && accessibleIdentity?.leadgenTosAccepted === false) {
+    issues.push(issue('meta_leadgen_tos_required', `Accept Meta's Lead Generation Terms for the ${accessibleIdentity.pageName} Page before publishing a lead form.`, 'identity'));
   }
   if (content.audience.countries.length === 0 || content.audience.countries.some((country) => !/^[A-Z]{2}$/.test(country))) {
     issues.push(issue('audience_location_invalid', 'Choose at least one two-letter country code.', 'audience.countries'));
@@ -600,7 +695,7 @@ export function evaluateMetaAdsCampaignDraft(input: {
 
 export async function preflightMetaAdsCampaign(companyId: string, draftId: string, phase: 'draft' | 'launch' = 'draft'): Promise<MetaAdsCampaignPreflight> {
   const row = await draftRow(companyId, draftId);
-  const content = row.content as MetaAdsCampaignDraftContent;
+  const content = draftContent(row.content);
   const [readiness, brand, assets] = await Promise.all([
     getMetaAdsAuthoringReadiness(companyId),
     getMetaAdsBrandKit(companyId),
@@ -698,7 +793,7 @@ export async function enqueueMetaAdsCreativeGeneration(input: {
   }
   const brand = await getMetaAdsBrandKit(input.companyId);
   if (!brand.businessName || !brand.valueProposition || !brand.targetAudience) fail(409, 'brand_kit_incomplete');
-  const content = row.content as MetaAdsCampaignDraftContent;
+  const content = draftContent(row.content);
   if (!content.brief.goal || !content.brief.offer || !content.brief.targetCustomer) fail(409, 'campaign_brief_incomplete');
   if (input.replaceConceptId && !content.concepts.some((concept) => concept.id === input.replaceConceptId)) fail(404, 'creative_concept_not_found');
   const actor = await actorName(input.userId);
@@ -807,7 +902,7 @@ export async function processOneMetaAdsCreativeJob(companyId?: string): Promise<
       brief: snapshot.brief, brand: job.brand_snapshot as MetaAdsBrandKit,
       product: (job.product_snapshot as MetaAdsErpProductContext | null) ?? null,
     });
-    const current = row.content as MetaAdsCampaignDraftContent;
+    const current = draftContent(row.content);
     let nextConcepts = concepts;
     let nextAds = current.ads;
     if (snapshot.replaceConceptId) {
@@ -1138,7 +1233,11 @@ export async function cloneMetaAdsCampaignDraft(input: { companyId: string; user
   const source = await draftRow(input.companyId, input.draftId);
   const connection = await connectionContext(input.companyId);
   if (!connection) fail(409, 'meta_not_connected');
-  const content = { ...(source.content as MetaAdsCampaignDraftContent), name: `${(source.content as MetaAdsCampaignDraftContent).name} (copy)` };
+  // A clone keeps its lead-form spec verbatim, so it hashes equal and publishes against the same
+  // Meta form rather than minting a duplicate. That is safe because attribution resolves through
+  // `ad_id` (unique per clone), not through the shared form id.
+  const sourceContent = draftContent(source.content);
+  const content = { ...sourceContent, name: `${sourceContent.name} (copy)` };
   const hash = metaAdsDraftSnapshotHash(content);
   const client = await pool.connect();
   try {
@@ -1222,7 +1321,7 @@ async function loadJobDraft(job: Record<string, unknown>): Promise<{ row: Record
   if (Number(row.current_version) !== Number(job.version) || String(row.snapshot_hash) !== String(job.snapshot_hash)) fail(409, 'campaign_job_snapshot_drift');
   const connection = await connectionContext(String(job.company_id));
   if (!connection || connection.accountId !== String(job.ad_account_id)) fail(409, 'meta_account_changed');
-  return { row, content: row.content as MetaAdsCampaignDraftContent, connection };
+  return { row, content: draftContent(row.content), connection };
 }
 
 async function createdObject(job: Record<string, unknown>, kind: string, localKey: string): Promise<string | null> {

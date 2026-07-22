@@ -9,6 +9,8 @@ export interface MetaAuthoringPage {
   pageName: string;
   instagramActorId: string | null;
   instagramUsername: string | null;
+  /** Meta refuses to create a lead-gen ad set until the Page owner accepts these terms. */
+  leadgenTosAccepted: boolean;
 }
 
 export interface MetaAuthoringPrerequisites {
@@ -134,7 +136,7 @@ export async function getMetaAuthoringPrerequisites(
         amountSpent: 0,
         balance: 0,
       },
-      pages: [{ pageId: 'page_workos_fixture', pageName: 'WorkOS Fixture Page', instagramActorId: 'ig_workos_fixture', instagramUsername: 'workos_fixture' }],
+      pages: [{ pageId: 'page_workos_fixture', pageName: 'WorkOS Fixture Page', instagramActorId: 'ig_workos_fixture', instagramUsername: 'workos_fixture', leadgenTosAccepted: true }],
     };
   }
   const [account, pages] = await Promise.all([
@@ -145,10 +147,10 @@ export async function getMetaAuthoringPrerequisites(
       fields: 'id,name,currency,timezone_name,account_status,disable_reason,spend_cap,amount_spent,balance',
     }),
     graphGetAll<{
-      id: string; name?: string;
+      id: string; name?: string; leadgen_tos_accepted?: boolean;
       instagram_business_account?: { id?: string; username?: string; name?: string };
     }>('/me/accounts', accessToken, {
-      fields: 'id,name,instagram_business_account{id,username,name}',
+      fields: 'id,name,leadgen_tos_accepted,instagram_business_account{id,username,name}',
       limit: '200',
     }),
   ]);
@@ -169,6 +171,7 @@ export async function getMetaAuthoringPrerequisites(
       pageName: page.name || page.id,
       instagramActorId: page.instagram_business_account?.id ?? null,
       instagramUsername: page.instagram_business_account?.username ?? page.instagram_business_account?.name ?? null,
+      leadgenTosAccepted: page.leadgen_tos_accepted === true,
     })),
   };
 }
@@ -215,7 +218,7 @@ export async function findMetaObjectByName(input: {
 }
 
 async function createNamedObject(
-  kind: 'cmp' | 'set' | 'crt' | 'ad',
+  kind: 'cmp' | 'set' | 'crt' | 'ad' | 'frm',
   path: string,
   accessToken: string,
   name: string,
@@ -356,6 +359,222 @@ export async function createMetaSingleImageCreative(input: {
   callToAction: string;
 }): Promise<{ id: string }> {
   return createNamedObject('crt', `/${input.adAccountId}/adcreatives`, input.accessToken, input.name, metaSingleImageCreativePayload(input));
+}
+
+/* ── Lead-form authoring ──────────────────────────────────────────────────────
+ * Every payload shape below was verified against Graph v25 on the Meta sandbox rather than
+ * taken from documentation. Notable findings encoded here:
+ *  - lead forms are created on the PAGE edge with a PAGE-scoped token, not the ad account;
+ *  - `context_card` makes `follow_up_action_url` mandatory (error_subcode 1892085);
+ *  - Meta assigns answer keys for standard question types: FIRST_NAME -> `first_name`,
+ *    LAST_NAME -> `last_name`, EMAIL -> `email`, PHONE -> `phone_number` (not `phone`);
+ *  - CUSTOM questions keep the `key` we supply.
+ */
+
+export interface MetaLeadFormQuestionInput {
+  type: 'FIRST_NAME' | 'LAST_NAME' | 'EMAIL' | 'PHONE' | 'CUSTOM';
+  key: string;
+  label: string;
+}
+
+export interface MetaLeadFormInput {
+  name: string;
+  questions: MetaLeadFormQuestionInput[];
+  privacyPolicyUrl: string;
+  followUpUrl: string;
+  contextHeadline: string;
+  contextDescription: string;
+}
+
+/**
+ * Fetch a Page-scoped token. Kept separate from `getMetaAuthoringPrerequisites` on purpose: that
+ * result is serialised to the browser, and a Page token must never leave the server.
+ */
+export async function getMetaPageAccessToken(userAccessToken: string, pageId: string): Promise<string> {
+  if (fakeEnabled()) return `fake_page_token_${pageId}`;
+  const page = await graphGet<{ access_token?: string }>(`/${pageId}`, userAccessToken, { fields: 'access_token' });
+  if (!page.access_token) {
+    throw new MetaAuthoringApiError('meta_page_token_unavailable', 'Meta did not return a Page access token. Reconnect Meta and confirm Page access.', false, 403);
+  }
+  return page.access_token;
+}
+
+export function metaLeadFormPayload(input: MetaLeadFormInput): Record<string, string> {
+  const hasContextCard = Boolean(input.contextHeadline.trim() || input.contextDescription.trim());
+  return {
+    name: input.name,
+    questions: JSON.stringify(input.questions.map((question) => (
+      // Standard types carry their label implicitly; sending `key` for them is rejected because
+      // Meta owns that value.
+      question.type === 'CUSTOM'
+        ? { type: 'CUSTOM', key: question.key, label: question.label }
+        : { type: question.type }
+    ))),
+    privacy_policy: JSON.stringify({ url: input.privacyPolicyUrl, link_text: 'Privacy Policy' }),
+    ...(input.followUpUrl.trim() ? { follow_up_action_url: input.followUpUrl.trim() } : {}),
+    ...(hasContextCard ? {
+      context_card: JSON.stringify({
+        title: input.contextHeadline,
+        content: [input.contextDescription],
+        style: 'PARAGRAPH_STYLE',
+        button_text: 'Continue',
+      }),
+    } : {}),
+  };
+}
+
+export async function createMetaLeadForm(input: MetaLeadFormInput & {
+  pageAccessToken: string;
+  pageId: string;
+}): Promise<{ id: string }> {
+  return createNamedObject('frm', `/${input.pageId}/leadgen_forms`, input.pageAccessToken, input.name, metaLeadFormPayload(input));
+}
+
+/**
+ * Lead forms live on the Page, not the ad account, so this cannot go through
+ * `findMetaObjectByName`. Archived forms are skipped: Meta refuses to delete a form
+ * (`error_subcode 33`), so a reused name may still resolve to a retired one.
+ */
+export async function findMetaLeadFormByName(input: {
+  pageAccessToken: string;
+  pageId: string;
+  name: string;
+}): Promise<{ id: string } | null> {
+  if (fakeEnabled()) {
+    const id = fakeId('frm', input.name);
+    return fakeStatuses.has(id) ? { id } : null;
+  }
+  const rows = await graphGetAll<{ id: string; name?: string; status?: string }>(
+    `/${input.pageId}/leadgen_forms`, input.pageAccessToken, { fields: 'id,name,status', limit: '500' },
+  );
+  const found = rows.find((row) => row.name === input.name && row.status !== 'ARCHIVED');
+  return found ? { id: found.id } : null;
+}
+
+export function metaLeadCampaignPayload(input: { name: string }): Record<string, string> {
+  return {
+    name: input.name,
+    objective: 'OUTCOME_LEADS',
+    status: 'PAUSED',
+    special_ad_categories: '[]',
+    // Same Graph v25 requirement as the traffic payload — see metaTrafficCampaignPayload.
+    is_adset_budget_sharing_enabled: 'false',
+  };
+}
+
+export async function createMetaLeadCampaign(input: {
+  accessToken: string;
+  adAccountId: string;
+  name: string;
+}): Promise<{ id: string }> {
+  return createNamedObject('cmp', `/${input.adAccountId}/campaigns`, input.accessToken, input.name, metaLeadCampaignPayload(input));
+}
+
+export function metaLeadAdSetPayload(input: {
+  name: string;
+  campaignId: string;
+  pageId: string;
+  lifetimeBudgetMinor: number;
+  startTime: string;
+  endTime: string;
+  countries: string[];
+  ageMin: number;
+  ageMax: number;
+  languageIds: number[];
+  dsaBeneficiary?: string;
+  dsaPayor?: string;
+}): Record<string, string> {
+  return {
+    name: input.name,
+    campaign_id: input.campaignId,
+    billing_event: 'IMPRESSIONS',
+    // Meta's documented OUTCOME_LEADS mapping: destination ON_AD (the instant form),
+    // optimization LEAD_GENERATION, and a page_id promoted object.
+    optimization_goal: 'LEAD_GENERATION',
+    destination_type: 'ON_AD',
+    promoted_object: JSON.stringify({ page_id: input.pageId }),
+    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+    lifetime_budget: String(input.lifetimeBudgetMinor),
+    start_time: input.startTime,
+    end_time: input.endTime,
+    targeting: JSON.stringify({
+      geo_locations: { countries: input.countries },
+      age_min: input.ageMin,
+      age_max: input.ageMax,
+      ...(input.languageIds.length ? { locales: input.languageIds } : {}),
+    }),
+    ...(input.dsaBeneficiary ? { dsa_beneficiary: input.dsaBeneficiary } : {}),
+    ...(input.dsaPayor ? { dsa_payor: input.dsaPayor } : {}),
+    status: 'PAUSED',
+  };
+}
+
+export async function createMetaLeadAdSet(input: {
+  accessToken: string;
+  adAccountId: string;
+  name: string;
+  campaignId: string;
+  pageId: string;
+  lifetimeBudgetMinor: number;
+  startTime: string;
+  endTime: string;
+  countries: string[];
+  ageMin: number;
+  ageMax: number;
+  languageIds: number[];
+  dsaBeneficiary?: string;
+  dsaPayor?: string;
+}): Promise<{ id: string }> {
+  return createNamedObject('set', `/${input.adAccountId}/adsets`, input.accessToken, input.name, metaLeadAdSetPayload(input));
+}
+
+export function metaLeadFormCreativePayload(input: {
+  name: string;
+  pageId: string;
+  instagramActorId: string | null;
+  imageHash: string;
+  leadFormId: string;
+  primaryText: string;
+  headline: string;
+  description: string;
+  callToAction: string;
+}): Record<string, string> {
+  return {
+    name: input.name,
+    object_story_spec: JSON.stringify({
+      page_id: input.pageId,
+      ...(input.instagramActorId ? { instagram_actor_id: input.instagramActorId } : {}),
+      link_data: {
+        image_hash: input.imageHash,
+        // An instant-form ad never leaves Meta, but link_data still requires a link; the Page
+        // itself is the conventional stand-in, and the CTA value is what actually opens the form.
+        link: `https://facebook.com/${input.pageId}`,
+        message: input.primaryText,
+        name: input.headline,
+        description: input.description,
+        call_to_action: { type: input.callToAction, value: { lead_gen_form_id: input.leadFormId } },
+      },
+    }),
+    degrees_of_freedom_spec: JSON.stringify({
+      creative_features_spec: { standard_enhancements: { enroll_status: 'OPT_OUT' } },
+    }),
+  };
+}
+
+export async function createMetaLeadFormCreative(input: {
+  accessToken: string;
+  adAccountId: string;
+  name: string;
+  pageId: string;
+  instagramActorId: string | null;
+  imageHash: string;
+  leadFormId: string;
+  primaryText: string;
+  headline: string;
+  description: string;
+  callToAction: string;
+}): Promise<{ id: string }> {
+  return createNamedObject('crt', `/${input.adAccountId}/adcreatives`, input.accessToken, input.name, metaLeadFormCreativePayload(input));
 }
 
 export async function createMetaPausedAd(input: {

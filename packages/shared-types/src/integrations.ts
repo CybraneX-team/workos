@@ -397,6 +397,13 @@ export interface MetaAdsPageIdentity {
   pageName: string;
   instagramActorId: string | null;
   instagramUsername: string | null;
+  /**
+   * Whether the Page has accepted Meta's Lead Generation Terms of Service — a one-time manual
+   * step in Page settings that no API can perform. Optional because drafts saved before
+   * lead-form support have no such field; preflight reads it from live readiness, never from a
+   * stored snapshot.
+   */
+  leadgenTosAccepted?: boolean;
 }
 
 export interface MetaAdsAuthoringReadiness {
@@ -507,8 +514,50 @@ export interface MetaAdsDraftAd {
   callToAction: MetaAdsCreativeConcept['callToAction'];
 }
 
+/**
+ * Where an ad sends the person who clicks it. `website` is the original behaviour (a link ad
+ * pointing at `brief.landingPageUrl`); `lead_form` publishes a Meta instant form instead and
+ * routes submissions into Frappe CRM.
+ */
+export type MetaAdsCampaignDestination = 'website' | 'lead_form';
+
+/**
+ * Meta's own standard question types. Their answer keys are assigned by Meta, not by us —
+ * verified against Graph v25: FIRST_NAME -> `first_name`, LAST_NAME -> `last_name`,
+ * EMAIL -> `email`, PHONE -> `phone_number` (note: not `phone`).
+ */
+export type MetaAdsLeadFormQuestionType = 'FIRST_NAME' | 'LAST_NAME' | 'EMAIL' | 'PHONE' | 'CUSTOM';
+
+export interface MetaAdsLeadFormQuestion {
+  /** Meta's answer key. Standard types get a Meta-assigned key; CUSTOM questions carry ours. */
+  key: string;
+  type: MetaAdsLeadFormQuestionType;
+  /** Shown to the person filling the form. Meta supplies a default for standard types. */
+  label: string;
+  /** Target `CRM Lead` fieldname, or null to collect the answer without syncing it. */
+  crmField: string | null;
+}
+
+export interface MetaAdsLeadFormSpec {
+  /**
+   * Content hash over the question set plus the copy Meta bakes into a form at creation time.
+   * Forms are reused when this matches, because Frappe CRM allows exactly one enabled
+   * `Lead Sync Source` per form — minting one form per campaign would multiply sync sources
+   * and their polling against Meta.
+   */
+  questionSetHash: string;
+  questions: MetaAdsLeadFormQuestion[];
+  /** Required by Meta on every lead form. */
+  privacyPolicyUrl: string;
+  /** Optional "thank you" destination shown after submission. */
+  followUpUrl: string;
+  contextHeadline: string;
+  contextDescription: string;
+}
+
 export interface MetaAdsCampaignDraftContent {
   name: string;
+  destination: MetaAdsCampaignDestination;
   brief: MetaAdsCampaignBrief;
   identity: MetaAdsPageIdentity | null;
   audience: MetaAdsCampaignAudience;
@@ -521,6 +570,8 @@ export interface MetaAdsCampaignDraftContent {
   productContext: MetaAdsErpProductContext | null;
   concepts: MetaAdsCreativeConcept[];
   ads: MetaAdsDraftAd[];
+  /** Present only when `destination` is `lead_form`. */
+  leadForm: MetaAdsLeadFormSpec | null;
 }
 
 export interface MetaAdsPreflightIssue {

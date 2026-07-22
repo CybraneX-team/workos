@@ -96,10 +96,27 @@ const adSchema = z.object({
   id: z.string().uuid(), conceptId: z.string().uuid().nullable(), assetId: z.string().uuid(), name: z.string().min(1).max(200),
   primaryText: z.string().max(500), headline: z.string().max(100), description: z.string().max(150), callToAction: ctaSchema,
 });
+const leadFormQuestionSchema = z.object({
+  key: z.string().min(1).max(200),
+  type: z.enum(['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'PHONE', 'CUSTOM']),
+  label: z.string().min(1).max(200),
+  crmField: z.string().max(140).nullable(),
+});
+const leadFormSchema = z.object({
+  // Accepted but always recomputed in mergeContent — the hash selects which Meta form a publish
+  // reuses, so a caller must not be able to choose it.
+  questionSetHash: z.string().max(64).default(''),
+  questions: z.array(leadFormQuestionSchema).max(20),
+  privacyPolicyUrl: z.string().max(2_000),
+  followUpUrl: z.string().max(2_000),
+  contextHeadline: z.string().max(200),
+  contextDescription: z.string().max(500),
+});
 const draftPatchSchema = z.object({
   expectedVersion: z.number().int().positive(),
   patch: z.object({
     name: z.string().max(200).optional(), brief: briefSchema.partial().optional(), identity: pageIdentitySchema.nullable().optional(),
+    destination: z.enum(['website', 'lead_form']).optional(), leadForm: leadFormSchema.nullable().optional(),
     audience: audienceSchema.partial().optional(), lifetimeBudgetMinor: z.number().int().nonnegative().optional(),
     startTime: z.string().optional(), endTime: z.string().optional(), specialAdCategories: z.array(z.string()).max(0).optional(),
     dsaBeneficiary: z.string().max(500).optional(), dsaPayor: z.string().max(500).optional(),

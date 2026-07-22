@@ -20,8 +20,13 @@ import {
   evaluateMetaAdsCampaignDraft,
   isMetaAuthoringAccountPermitted,
   metaAdsDraftSnapshotHash,
+  metaAdsLeadFormQuestionSetHash,
 } from '../src/domains/meta-ads/authoring.js';
 import {
+  metaLeadAdSetPayload,
+  metaLeadCampaignPayload,
+  metaLeadFormCreativePayload,
+  metaLeadFormPayload,
   metaSingleImageCreativePayload,
   metaTrafficAdSetPayload,
   metaTrafficCampaignPayload,
@@ -301,7 +306,7 @@ const authoringReadiness = (): MetaAdsAuthoringReadiness => ({
   mode: 'sandbox_only', connected: true, permitted: true, launchEnabled: true,
   accountId: 'act_sandbox', accountName: 'Sandbox', currency: 'USD', timezone: 'UTC', sandbox: true,
   tokenExpiresAt: '2026-09-01T00:00:00.000Z', accountStatus: 1,
-  pages: [{ pageId: 'page-1', pageName: 'Example', instagramActorId: null, instagramUsername: null }],
+  pages: [{ pageId: 'page-1', pageName: 'Example', instagramActorId: null, instagramUsername: null, leadgenTosAccepted: true }],
   maxLifetimeBudgetMinor: 100_000, blockers: [], warnings: [],
 });
 
@@ -312,6 +317,8 @@ const authoringBrand = (): MetaAdsBrandKit => ({
 
 const authoringContent = (): MetaAdsCampaignDraftContent => ({
   name: 'Website traffic',
+  destination: 'website',
+  leadForm: null,
   brief: { goal: 'Drive qualified visits', offer: 'See how the product works', proofPoints: ['Transparent setup'], targetCustomer: 'Operations teams', landingPageUrl: 'https://example.com/product', callToAction: 'LEARN_MORE', regulatedCategory: 'none' },
   identity: { pageId: 'page-1', pageName: 'Example', instagramActorId: null, instagramUsername: null },
   audience: { countries: ['US'], ageMin: 18, ageMax: 65, languageIds: [] },
@@ -382,6 +389,173 @@ test('EEA campaigns require DSA payer and beneficiary disclosure', () => {
   const result = evaluateMetaAdsCampaignDraft({ content, readiness: authoringReadiness(), brand: authoringBrand(), availableAssetIds: new Set(['asset-1']), now: new Date('2026-07-20T00:00:00.000Z') });
   assert.equal(result.ready, false);
   assert.ok(result.issues.some((value) => value.code === 'dsa_disclosure_required'));
+});
+
+const leadFormContent = (): MetaAdsCampaignDraftContent => {
+  const base = authoringContent();
+  return {
+    ...base,
+    name: 'Lead capture',
+    destination: 'lead_form',
+    brief: { ...base.brief, landingPageUrl: '', callToAction: 'SIGN_UP' },
+    leadForm: {
+      questionSetHash: '',
+      // Keys are Meta-assigned, verified against Graph v25 — note `phone_number`, not `phone`.
+      questions: [
+        { key: 'first_name', type: 'FIRST_NAME', label: 'First name', crmField: 'first_name' },
+        { key: 'last_name', type: 'LAST_NAME', label: 'Last name', crmField: 'last_name' },
+        { key: 'email', type: 'EMAIL', label: 'Email', crmField: 'email' },
+        { key: 'phone_number', type: 'PHONE', label: 'Phone number', crmField: 'mobile_no' },
+      ],
+      privacyPolicyUrl: 'https://example.com/privacy',
+      followUpUrl: 'https://example.com/thanks',
+      contextHeadline: 'Talk to us',
+      contextDescription: 'We reply within one business day.',
+    },
+  };
+};
+
+const evaluateLeadForm = (content: MetaAdsCampaignDraftContent) => evaluateMetaAdsCampaignDraft({
+  content, readiness: authoringReadiness(), brand: authoringBrand(),
+  availableAssetIds: new Set(['asset-1']), now: new Date('2026-07-20T00:00:00.000Z'),
+});
+
+test('lead-form preflight drops the landing-page rule and enforces Meta and CRM requirements', () => {
+  const content = leadFormContent();
+  const ready = evaluateLeadForm(content);
+  // An empty landingPageUrl must not block a lead-form draft — nobody leaves Meta.
+  assert.ok(!ready.issues.some((value) => value.code === 'landing_page_url_invalid'));
+  assert.equal(ready.ready, true);
+
+  const noPrivacy = evaluateLeadForm({ ...content, leadForm: { ...content.leadForm!, privacyPolicyUrl: 'http://example.com/privacy' } });
+  assert.ok(noPrivacy.issues.some((value) => value.code === 'lead_form_privacy_policy_invalid'));
+
+  // Frappe CRM throws on save without exactly one first_name mapping.
+  const noFirstName = evaluateLeadForm({
+    ...content,
+    leadForm: { ...content.leadForm!, questions: content.leadForm!.questions.filter((q) => q.crmField !== 'first_name') },
+  });
+  assert.ok(noFirstName.issues.some((value) => value.code === 'lead_form_first_name_required'));
+
+  const twoFirstNames = evaluateLeadForm({
+    ...content,
+    leadForm: { ...content.leadForm!, questions: [...content.leadForm!.questions, { key: 'alt', type: 'CUSTOM', label: 'Alt', crmField: 'first_name' }] },
+  });
+  assert.ok(twoFirstNames.issues.some((value) => value.code === 'lead_form_first_name_required'));
+
+  const badCta = evaluateLeadForm({ ...content, brief: { ...content.brief, callToAction: 'SHOP_NOW' } });
+  assert.ok(badCta.issues.some((value) => value.code === 'lead_form_cta_invalid'));
+
+  const missingSpec = evaluateLeadForm({ ...content, leadForm: null });
+  assert.ok(missingSpec.issues.some((value) => value.code === 'lead_form_missing'));
+
+  // Graph v25 rejects a context card without a follow-up URL (error_subcode 1892085).
+  const contextNoFollowUp = evaluateLeadForm({ ...content, leadForm: { ...content.leadForm!, followUpUrl: '' } });
+  assert.ok(contextNoFollowUp.issues.some((value) => value.code === 'lead_form_follow_up_required'));
+  // ...but a form with no context card at all needs no follow-up URL.
+  const noContextCard = evaluateLeadForm({
+    ...content,
+    leadForm: { ...content.leadForm!, followUpUrl: '', contextHeadline: '', contextDescription: '' },
+  });
+  assert.equal(noContextCard.ready, true);
+});
+
+test('lead-form preflight blocks a Page that has not accepted Meta lead-gen terms', () => {
+  // Reproduces a real sandbox failure: form and campaign create fine, then the ad set is rejected
+  // with "You can't run lead ads until your Facebook Page accepts Facebook's Lead Generation
+  // Terms of Service." Catching it in preflight avoids a half-published campaign.
+  const readinessWithoutTos = (): MetaAdsAuthoringReadiness => ({
+    ...authoringReadiness(),
+    pages: [{ pageId: 'page-1', pageName: 'Example', instagramActorId: null, instagramUsername: null, leadgenTosAccepted: false }],
+  });
+  const evaluate = (content: MetaAdsCampaignDraftContent) => evaluateMetaAdsCampaignDraft({
+    content, readiness: readinessWithoutTos(), brand: authoringBrand(),
+    availableAssetIds: new Set(['asset-1']), now: new Date('2026-07-20T00:00:00.000Z'),
+  });
+
+  const blocked = evaluate(leadFormContent());
+  assert.equal(blocked.ready, false);
+  assert.ok(blocked.issues.some((value) => value.code === 'meta_leadgen_tos_required'));
+
+  // The terms only govern lead ads, so a website campaign on the same Page is unaffected.
+  const website = evaluate(authoringContent());
+  assert.ok(!website.issues.some((value) => value.code === 'meta_leadgen_tos_required'));
+
+  // A Page whose status Meta declines to report must not block publishing.
+  const unknown = evaluateMetaAdsCampaignDraft({
+    content: leadFormContent(),
+    readiness: { ...authoringReadiness(), pages: [{ pageId: 'page-1', pageName: 'Example', instagramActorId: null, instagramUsername: null }] },
+    brand: authoringBrand(), availableAssetIds: new Set(['asset-1']), now: new Date('2026-07-20T00:00:00.000Z'),
+  });
+  assert.ok(!unknown.issues.some((value) => value.code === 'meta_leadgen_tos_required'));
+});
+
+test('lead-form Meta payloads target the instant form and stay paused', () => {
+  const spec = leadFormContent().leadForm!;
+  const form = metaLeadFormPayload({
+    name: 'Standard', questions: spec.questions.map((q) => ({ type: q.type, key: q.key, label: q.label })),
+    privacyPolicyUrl: spec.privacyPolicyUrl, followUpUrl: spec.followUpUrl,
+    contextHeadline: spec.contextHeadline, contextDescription: spec.contextDescription,
+  });
+  // Meta owns the answer key for standard types, so only CUSTOM questions carry one.
+  assert.deepEqual(JSON.parse(form.questions), [
+    { type: 'FIRST_NAME' }, { type: 'LAST_NAME' }, { type: 'EMAIL' }, { type: 'PHONE' },
+  ]);
+  assert.equal(JSON.parse(form.privacy_policy).url, 'https://example.com/privacy');
+  assert.equal(form.follow_up_action_url, 'https://example.com/thanks');
+  assert.ok(form.context_card);
+
+  const custom = metaLeadFormPayload({
+    name: 'Custom', questions: [{ type: 'CUSTOM', key: 'team_size', label: 'How big is your team?' }],
+    privacyPolicyUrl: 'https://example.com/privacy', followUpUrl: '', contextHeadline: '', contextDescription: '',
+  });
+  assert.deepEqual(JSON.parse(custom.questions), [{ type: 'CUSTOM', key: 'team_size', label: 'How big is your team?' }]);
+  // No context card means no follow-up URL is sent, matching what Graph accepts.
+  assert.equal(Object.hasOwn(custom, 'context_card'), false);
+  assert.equal(Object.hasOwn(custom, 'follow_up_action_url'), false);
+
+  assert.equal(metaLeadCampaignPayload({ name: 'Leads' }).objective, 'OUTCOME_LEADS');
+  assert.equal(metaLeadCampaignPayload({ name: 'Leads' }).is_adset_budget_sharing_enabled, 'false');
+
+  const adset = metaLeadAdSetPayload({
+    name: 'Broad', campaignId: 'campaign-1', pageId: 'page-1', lifetimeBudgetMinor: 10_000,
+    startTime: '2026-08-01T00:00:00.000Z', endTime: '2026-08-08T00:00:00.000Z',
+    countries: ['US'], ageMin: 18, ageMax: 65, languageIds: [],
+  });
+  assert.equal(adset.optimization_goal, 'LEAD_GENERATION');
+  assert.equal(adset.destination_type, 'ON_AD');
+  assert.deepEqual(JSON.parse(adset.promoted_object), { page_id: 'page-1' });
+  assert.equal(adset.status, 'PAUSED');
+
+  const creative = metaLeadFormCreativePayload({
+    name: 'Creative', pageId: 'page-1', instagramActorId: null, imageHash: 'hash', leadFormId: 'form-1',
+    primaryText: 'Text', headline: 'Headline', description: 'Description', callToAction: 'SIGN_UP',
+  });
+  const linkData = JSON.parse(creative.object_story_spec).link_data;
+  assert.deepEqual(linkData.call_to_action, { type: 'SIGN_UP', value: { lead_gen_form_id: 'form-1' } });
+});
+
+test('drafts stored before lead-form support still get the website landing-page rule', () => {
+  // Legacy `meta_ads_campaign_drafts.content` JSONB has no `destination` key at all. The check
+  // keys off `!== 'lead_form'` so these keep failing loudly rather than silently skipping.
+  const legacy = { ...authoringContent(), brief: { ...authoringContent().brief, landingPageUrl: 'http://localhost:3000' } };
+  delete (legacy as Partial<MetaAdsCampaignDraftContent>).destination;
+  delete (legacy as Partial<MetaAdsCampaignDraftContent>).leadForm;
+  const result = evaluateLeadForm(legacy as MetaAdsCampaignDraftContent);
+  assert.ok(result.issues.some((value) => value.code === 'landing_page_url_invalid'));
+});
+
+test('lead-form question-set hash decides form reuse and ignores incoming values', () => {
+  const content = leadFormContent();
+  const spec = content.leadForm!;
+  const hash = metaAdsLeadFormQuestionSetHash(spec);
+  assert.equal(hash, metaAdsLeadFormQuestionSetHash({ ...spec, questionSetHash: 'attacker-supplied' }));
+
+  // The CRM mapping lives on the shared form, so drafts mapping the same questions differently
+  // must not collide onto one form.
+  const remapped = { ...spec, questions: spec.questions.map((q) => (q.key === 'email' ? { ...q, crmField: 'website' } : q)) };
+  assert.notEqual(hash, metaAdsLeadFormQuestionSetHash(remapped));
+  assert.notEqual(hash, metaAdsLeadFormQuestionSetHash({ ...spec, privacyPolicyUrl: 'https://example.com/other' }));
 });
 
 test('Meta writer payloads are traffic-only, lifetime-budgeted, and paused by default', () => {
