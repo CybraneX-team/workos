@@ -1,0 +1,16 @@
+[Unit]
+Description=ERPNext provisioning shim
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=erpadmin
+WorkingDirectory=/home/erpadmin/provision-shim
+EnvironmentFile=/home/erpadmin/provision-shim/.env
+ExecStart=/usr/bin/node /home/erpadmin/provision-shim/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

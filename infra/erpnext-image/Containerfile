@@ -1,0 +1,94 @@
+# Custom Frappe image: ERPNext + Frappe CRM baked into the image layer.
+#
+# Why this exists: Frappe apps live in the image's filesystem, NOT in the
+# `sites`/`logs` volumes. A runtime `bench get-app crm` inside a running
+# container is lost on the next `docker compose up`. Both the local stack
+# (infra/erpnext/pwd.yml, a frappe_docker clone) and the production VM
+# (/home/erpadmin/frappe_docker/pwd.yml on erpnext-vm) run the stock
+# `frappe/erpnext` image, so `crm` must be baked in here and both stacks
+# repointed at the result.
+#
+# Derived from frappe_docker's `images/layered/Containerfile`, with two
+# deliberate changes:
+#   1. apps.json is COPYed rather than mounted as a BuildKit secret. Upstream
+#      uses a secret because apps.json may embed private-repo tokens; ours
+#      lists only public repos, and `az acr build` supports --secret-build-arg
+#      (a build ARG) but not `--mount=type=secret`.
+#   2. entrypoint.sh/start.sh are copied out of the pinned
+#      `frappe/erpnext:${ERPNEXT_VERSION}` image rather than vendored into this
+#      repo from frappe_docker's `resources/core/` (where they would silently
+#      drift from upstream).
+#
+# The final stage MUST be `frappe/base`, not `frappe/erpnext`: the latter
+# declares /home/frappe/frappe-bench/{sites,logs} as VOLUMEs, which during a
+# build are mounted ephemerally — they cannot be deleted ("device or resource
+# busy") and anything written into them is discarded, which would silently drop
+# the baked assets. VOLUME is therefore declared here, after the asset move.
+#
+# Build (amd64, in ACR — the VM is amd64 and local dev machines are arm64):
+#   az acr build --registry startupdigitaltwin123 \
+#     --image erpnext-crm:v16.26.1-crm1 \
+#     --file Containerfile infra/erpnext-image
+#
+# Keep ERPNEXT_VERSION in sync with the erpnext branch pinned in apps.json.
+
+ARG FRAPPE_BRANCH=version-16
+ARG FRAPPE_IMAGE_PREFIX=frappe
+ARG ERPNEXT_VERSION=v16.26.1
+
+FROM ${FRAPPE_IMAGE_PREFIX}/build:${FRAPPE_BRANCH} AS builder
+
+ARG FRAPPE_BRANCH=version-16
+ARG FRAPPE_PATH=https://github.com/frappe/frappe
+# Change CACHE_BUST to force a rebuild when app branches have moved but no
+# build input in this directory has changed.
+ARG CACHE_BUST=""
+
+USER frappe
+
+COPY --chown=frappe:frappe apps.json /opt/frappe/apps.json
+
+RUN : "${CACHE_BUST}" && \
+  bench init \
+    --apps_path=/opt/frappe/apps.json \
+    --frappe-branch=${FRAPPE_BRANCH} \
+    --frappe-path=${FRAPPE_PATH} \
+    --no-procfile \
+    --no-backups \
+    --skip-redis-config-generation \
+    --verbose \
+    /home/frappe/frappe-bench && \
+  cd /home/frappe/frappe-bench && \
+  echo "{}" > sites/common_site_config.json && \
+  find apps -mindepth 1 -path "*/.git" | xargs rm -fr
+
+# Only used as a source for the upstream entrypoint/start scripts.
+FROM ${FRAPPE_IMAGE_PREFIX}/erpnext:${ERPNEXT_VERSION} AS upstream
+
+FROM ${FRAPPE_IMAGE_PREFIX}/base:${FRAPPE_BRANCH} AS backend
+
+USER frappe
+
+COPY --from=builder --chown=frappe:frappe /home/frappe/frappe-bench /home/frappe/frappe-bench
+
+WORKDIR /home/frappe/frappe-bench
+
+# Move assets to image-layer storage. The upstream entrypoint symlinks
+# sites/assets -> ../assets at container start, so sites/assets must not exist
+# in the image itself.
+RUN cp -r /home/frappe/frappe-bench/sites/assets /home/frappe/frappe-bench/assets && \
+  rm -rf /home/frappe/frappe-bench/sites/assets
+
+VOLUME [ \
+  "/home/frappe/frappe-bench/sites", \
+  "/home/frappe/frappe-bench/logs" \
+]
+
+USER root
+COPY --from=upstream /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --from=upstream /usr/local/bin/start.sh /usr/local/bin/start.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/start.sh
+
+USER frappe
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["start.sh"]

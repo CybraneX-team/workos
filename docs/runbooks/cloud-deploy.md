@@ -166,7 +166,7 @@ call in `localProvision()` (`apps/erpnext-control-plane/src/provisionWorker.ts`)
 provision differently and the gap only appears when a real tenant is created.
 
 A copy is now version-controlled at `infra/erpnext-remote-shim/` (committed
-2026-07-21 — the file previously existed only on the VM, with no history or
+2026-07-22 — the file previously existed only on the VM, with no history or
 backup). It is a **mirror, not a deployment source**: nothing deploys from it
 automatically. See its README for the copy-up procedure. Verify a deploy with
 `md5sum` on both ends plus `systemctl is-active erpnext-provision-shim` and
