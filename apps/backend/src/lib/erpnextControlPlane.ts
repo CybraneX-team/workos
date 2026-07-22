@@ -1,7 +1,9 @@
 import {
-  RecordQueryBatchResponseSchema, TenantListResponseSchema, TenantStatusSchema,
-  type ConfigureSsoRequest, type ErpNextEnvironment, type ProvisionTenantRequest,
-  type RecordQuery, type ReconcileUsersRequest, type TenantStatus,
+  ConfigureLeadSyncResponseSchema, RecordQueryBatchResponseSchema, StampLeadAttributionResponseSchema,
+  TenantListResponseSchema, TenantStatusSchema,
+  type ConfigureLeadSyncRequest, type ConfigureSsoRequest, type ErpNextEnvironment,
+  type ProvisionTenantRequest, type RecordQuery, type ReconcileUsersRequest,
+  type StampLeadAttributionRequest, type TenantStatus,
 } from '@cybranex/erpnext-contracts';
 import { env } from '../config.js';
 
@@ -46,4 +48,16 @@ export async function reconcileTenantUsers(companyId: string, payload: Reconcile
 
 export async function configureTenantSso(companyId: string, payload: ConfigureSsoRequest) {
   return request(`/internal/v1/tenants/${companyId}/sso`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export async function configureTenantLeadSync(companyId: string, payload: ConfigureLeadSyncRequest) {
+  return ConfigureLeadSyncResponseSchema.parse(
+    await request(`/internal/v1/tenants/${companyId}/lead-sync`, { method: 'PUT', body: JSON.stringify(payload) }),
+  );
+}
+
+export async function stampTenantLeadAttribution(companyId: string, payload: StampLeadAttributionRequest) {
+  return StampLeadAttributionResponseSchema.parse(
+    await request(`/internal/v1/tenants/${companyId}/lead-attribution`, { method: 'PUT', body: JSON.stringify(payload) }),
+  );
 }

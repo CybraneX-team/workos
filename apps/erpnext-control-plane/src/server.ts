@@ -1,11 +1,14 @@
 import express from 'express';
 import {
-  ConfigureSsoRequestSchema, ProvisionTenantRequestSchema, RecordQueryBatchRequestSchema,
-  ReconcileUsersRequestSchema, type ErpNextEnvironment, serviceError,
+  ConfigureLeadSyncRequestSchema, ConfigureSsoRequestSchema, ProvisionTenantRequestSchema,
+  RecordQueryBatchRequestSchema, ReconcileUsersRequestSchema, StampLeadAttributionRequestSchema,
+  type ErpNextEnvironment, serviceError,
 } from '@cybranex/erpnext-contracts';
 import { env } from './config.js';
 import { pool } from './db.js';
-import { configureSso, disableUser, getRecords, upsertUser } from './frappe/client.js';
+import {
+  configureLeadSync, configureSso, disableUser, getRecords, stampLeadAttribution, upsertUser,
+} from './frappe/client.js';
 import { credentials, tenantRow, toStatus } from './tenantStore.js';
 import { startProvisionWorker } from './provisionWorker.js';
 
@@ -108,6 +111,34 @@ app.put('/internal/v1/tenants/:companyId/sso', async (req, res) => {
   await configureSso(creds, parsed.data);
   await pool.query(`insert into erpnext.command_receipts(environment,company_id,command_kind,idempotency_key) values($1,$2,'configure_sso',$3)`, [parsed.data.environment, req.params.companyId, parsed.data.idempotencyKey]);
   return res.json({ applied: true });
+});
+
+app.put('/internal/v1/tenants/:companyId/lead-sync', async (req, res) => {
+  const parsed = ConfigureLeadSyncRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(serviceError('invalid_request', parsed.error.message, false));
+  if (!ensureEnvironment(parsed.data.environment, res)) return;
+  const receipt = await pool.query('select 1 from erpnext.command_receipts where environment=$1 and company_id=$2 and command_kind=$3 and idempotency_key=$4', [parsed.data.environment, req.params.companyId, 'configure_lead_sync', parsed.data.idempotencyKey]);
+  // Source name is derived from the question-set hash upstream, so replaying is safe to answer.
+  if (receipt.rowCount) return res.json({ applied: true, sourceName: parsed.data.sourceName });
+  const creds = await credentials(req.params.companyId, parsed.data.environment);
+  if (!creds) return res.status(409).json(serviceError('tenant_not_ready', 'ERPNext tenant is not ready.', true));
+  const result = await configureLeadSync(creds, parsed.data);
+  await pool.query(`insert into erpnext.command_receipts(environment,company_id,command_kind,idempotency_key) values($1,$2,'configure_lead_sync',$3)`, [parsed.data.environment, req.params.companyId, parsed.data.idempotencyKey]);
+  return res.json({ applied: true, sourceName: result.sourceName });
+});
+
+app.put('/internal/v1/tenants/:companyId/lead-attribution', async (req, res) => {
+  const parsed = StampLeadAttributionRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(serviceError('invalid_request', parsed.error.message, false));
+  if (!ensureEnvironment(parsed.data.environment, res)) return;
+  const receipt = await pool.query('select 1 from erpnext.command_receipts where environment=$1 and company_id=$2 and command_kind=$3 and idempotency_key=$4', [parsed.data.environment, req.params.companyId, 'stamp_lead_attribution', parsed.data.idempotencyKey]);
+  // Replay is a no-op, not a re-apply: the caller selects only leads whose ad id is still empty.
+  if (receipt.rowCount) return res.json({ stamped: 0, skipped: 0 });
+  const creds = await credentials(req.params.companyId, parsed.data.environment);
+  if (!creds) return res.status(409).json(serviceError('tenant_not_ready', 'ERPNext tenant is not ready.', true));
+  const result = await stampLeadAttribution(creds, parsed.data);
+  await pool.query(`insert into erpnext.command_receipts(environment,company_id,command_kind,idempotency_key) values($1,$2,'stamp_lead_attribution',$3)`, [parsed.data.environment, req.params.companyId, parsed.data.idempotencyKey]);
+  return res.json(result);
 });
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

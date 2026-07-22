@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  ConfigureLeadSyncRequestSchema,
   ConfigureSsoRequestSchema,
   ErpNextEnvironmentSchema,
   MutatingCommandResponseSchema,
@@ -11,8 +12,10 @@ import {
   ReconcileUsersResponseSchema,
   ReconcileUsersRequestSchema,
   ServiceErrorSchema,
+  StampLeadAttributionRequestSchema,
   TenantListResponseSchema,
   TenantStatusSchema,
+  WORKOS_LEAD_AD_ID_FIELD,
   serviceError,
 } from '../src/index.js';
 
@@ -50,6 +53,53 @@ test('record batch applies bounded defaults', () => {
   });
   assert.equal(parsed.queries[0].limit, 100);
   assert.equal(parsed.queries[0].pageSize, 1000);
+});
+
+test('lead-sync command requires a first_name mapping and applies the frequency default', () => {
+  const base = {
+    environment: 'local' as const,
+    idempotencyKey: 'lead-sync:company',
+    sourceName: 'WorkOS · Standard lead form',
+    discoveryAccessToken: 'user-token',
+    syncAccessToken: 'page-scoped-token',
+    facebookPageId: '1234567890',
+    facebookLeadFormId: '9876543210',
+  };
+  // Frappe CRM throws server-side without first_name; the contract fails closed first.
+  assert.equal(ConfigureLeadSyncRequestSchema.safeParse({
+    ...base, questionMappings: [{ key: 'email', mappedToCrmField: 'email' }],
+  }).success, false);
+
+  const parsed = ConfigureLeadSyncRequestSchema.parse({
+    ...base,
+    questionMappings: [
+      { key: 'first_name', mappedToCrmField: 'first_name' },
+      { key: 'email', mappedToCrmField: 'email' },
+    ],
+  });
+  assert.equal(parsed.backgroundSyncFrequency, 'Hourly');
+
+  assert.equal(ConfigureLeadSyncRequestSchema.safeParse({
+    ...base, backgroundSyncFrequency: 'Every 2 Minutes',
+    questionMappings: [{ key: 'first_name', mappedToCrmField: 'first_name' }],
+  }).success, false);
+});
+
+test('lead-attribution command bounds its batch and names the shared custom field', () => {
+  assert.equal(WORKOS_LEAD_AD_ID_FIELD, 'workos_meta_ad_id');
+  assert.equal(StampLeadAttributionRequestSchema.safeParse({
+    environment: 'local', idempotencyKey: 'attribution:company', entries: [],
+  }).success, false);
+  assert.equal(StampLeadAttributionRequestSchema.safeParse({
+    environment: 'local',
+    idempotencyKey: 'attribution:company',
+    entries: Array.from({ length: 201 }, (_, index) => ({ leadName: `CRM-LEAD-${index}`, adId: '1' })),
+  }).success, false);
+  assert.equal(StampLeadAttributionRequestSchema.parse({
+    environment: 'local',
+    idempotencyKey: 'attribution:company',
+    entries: [{ leadName: 'CRM-LEAD-2026-00001', adId: '120210000000000' }],
+  }).entries.length, 1);
 });
 
 test('user and sso commands validate runtime payloads', () => {

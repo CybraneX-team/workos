@@ -1,4 +1,8 @@
-import type { ConfigureSsoRequest, DesiredUser, RecordFilter } from '@cybranex/erpnext-contracts';
+import {
+  WORKOS_LEAD_AD_ID_FIELD,
+  type ConfigureLeadSyncRequest, type ConfigureSsoRequest, type DesiredUser,
+  type RecordFilter, type StampLeadAttributionRequest,
+} from '@cybranex/erpnext-contracts';
 
 export interface TenantCredentials {
   apiUrl: string;
@@ -74,6 +78,117 @@ export async function applyBranding(creds: TenantCredentials): Promise<void> {
       console.error('[erpnext-control-plane][branding]', doctype, name, String(err));
     });
   }
+}
+
+/**
+ * Idempotently add a Custom Field. Frappe names Custom Fields `{doctype}-{fieldname}`, so the
+ * existence check is a plain GET rather than a filtered list.
+ */
+async function ensureCustomField(
+  creds: TenantCredentials,
+  input: { doctype: string; fieldname: string; label: string; insertAfter: string },
+): Promise<void> {
+  const name = `${input.doctype}-${input.fieldname}`;
+  const exists = await request(creds, 'GET', `/api/resource/Custom Field/${encodeURIComponent(name)}`)
+    .then(() => true).catch(() => false);
+  if (exists) return;
+  await request(creds, 'POST', '/api/resource/Custom Field', {
+    dt: input.doctype, fieldname: input.fieldname, label: input.label, fieldtype: 'Data',
+    insert_after: input.insertAfter, read_only: 1, no_copy: 1,
+    // Written by WorkOS, never by a CRM user — keep it off the standard form layout.
+    hidden: 0, allow_on_submit: 0,
+  });
+}
+
+interface FacebookLeadFormQuestionRow extends Record<string, unknown> {
+  key?: string;
+  mapped_to_crm_field?: string | null;
+}
+
+/**
+ * Point a tenant's Frappe CRM at a Meta lead form WorkOS just created.
+ *
+ * Ordering is load-bearing:
+ *  1. the ad-id custom field must exist before any lead lands;
+ *  2. `Lead Sync Source` is inserted with the *discovery* token, because `before_insert` calls
+ *     `/me/accounts` — this is what creates the `Facebook Page` / `Facebook Lead Form` rows, so
+ *     WorkOS never writes those doctypes itself;
+ *  3. question mappings are written onto the discovered form;
+ *  4. the source is switched to the Page-scoped token and enabled last, so no background sync
+ *     can fire against a half-configured source.
+ */
+export async function configureLeadSync(
+  creds: TenantCredentials,
+  input: ConfigureLeadSyncRequest,
+): Promise<{ sourceName: string }> {
+  await ensureCustomField(creds, {
+    doctype: 'CRM Lead', fieldname: WORKOS_LEAD_AD_ID_FIELD,
+    label: 'WorkOS Meta Ad ID', insertAfter: 'source',
+  });
+
+  const sourcePath = `/api/resource/Lead Sync Source/${encodeURIComponent(input.sourceName)}`;
+  const sourceExists = await request(creds, 'GET', sourcePath).then(() => true).catch(() => false);
+
+  if (!sourceExists) {
+    await request(creds, 'POST', '/api/resource/Lead Sync Source', {
+      name: input.sourceName,
+      type: 'Facebook',
+      access_token: input.discoveryAccessToken,
+      background_sync_frequency: input.backgroundSyncFrequency,
+      enabled: 0,
+    });
+  } else {
+    // Re-running for a form created after this source existed: `before_insert` will not fire
+    // again, so refresh discovery explicitly or the new form is never registered locally.
+    await request(creds, 'POST',
+      '/api/method/crm.lead_syncing.doctype.lead_sync_source.facebook.fetch_and_store_pages_from_facebook',
+      { access_token: input.discoveryAccessToken });
+  }
+
+  const formPath = `/api/resource/Facebook Lead Form/${encodeURIComponent(input.facebookLeadFormId)}`;
+  const form = await request<{ data?: { questions?: FacebookLeadFormQuestionRow[] } }>(creds, 'GET', formPath);
+  const mappingByKey = new Map(input.questionMappings.map((entry) => [entry.key, entry.mappedToCrmField]));
+  const questions = (form.data?.questions ?? []).map((row) => ({
+    ...row,
+    // Meta owns the key set; leave anything WorkOS did not author untouched rather than
+    // blanking a mapping a CRM user may have set by hand.
+    mapped_to_crm_field: mappingByKey.get(String(row.key ?? '')) ?? row.mapped_to_crm_field ?? null,
+  }));
+  await request(creds, 'PUT', formPath, { questions });
+
+  await request(creds, 'PUT', sourcePath, {
+    access_token: input.syncAccessToken,
+    background_sync_frequency: input.backgroundSyncFrequency,
+    facebook_page: input.facebookPageId,
+    facebook_lead_form: input.facebookLeadFormId,
+    enabled: 1,
+  });
+
+  return { sourceName: input.sourceName };
+}
+
+/**
+ * Backfill the originating Meta ad onto synced leads. Frappe CRM's syncer requests only
+ * `id,created_time,field_data`, so `ad_id` — which Meta does return — never reaches `CRM Lead`.
+ * Per-entry failures are counted, not thrown: one deleted lead must not fail a whole batch.
+ */
+export async function stampLeadAttribution(
+  creds: TenantCredentials,
+  input: StampLeadAttributionRequest,
+): Promise<{ stamped: number; skipped: number }> {
+  let stamped = 0;
+  let skipped = 0;
+  for (const entry of input.entries) {
+    try {
+      await request(creds, 'PUT', `/api/resource/CRM Lead/${encodeURIComponent(entry.leadName)}`,
+        { [WORKOS_LEAD_AD_ID_FIELD]: entry.adId });
+      stamped++;
+    } catch (error) {
+      console.error('[erpnext-control-plane][lead-attribution]', entry.leadName, String(error));
+      skipped++;
+    }
+  }
+  return { stamped, skipped };
 }
 
 export async function configureSso(creds: TenantCredentials, input: ConfigureSsoRequest): Promise<void> {
