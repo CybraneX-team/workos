@@ -259,6 +259,112 @@ dbDescribe('Meta Ads Campaign Studio database lifecycle', { concurrency: 1 }, ()
     assert.doesNotMatch(JSON.stringify(draft), /fake-authoring-token|access_token|appsecret_proof/i);
   });
 
+  test('publishes a lead-form campaign and survives an unreachable CRM', async () => {
+    // Self-contained: creative generation requires a brand kit, and this must not depend on
+    // whichever sibling test happened to run first.
+    await putMetaAdsBrandKit(companyId, userId, {
+      businessName: 'Campaign Studio Fixture',
+      brandVoice: 'Clear, useful, and specific.',
+      valueProposition: 'Plan paid acquisition changes with evidence and control.',
+      targetAudience: 'Small business operators improving paid acquisition.',
+      primaryColor: '#2457ff',
+      secondaryColor: '#0b1020',
+      logoAssetId: null,
+      requiredPhrases: [],
+      prohibitedPhrases: ['guaranteed results'],
+    });
+
+    let draft = await createMetaAdsCampaignDraft({ companyId, userId, name: 'Lead form fixture' });
+    const startTime = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    const endTime = new Date(Date.now() + 8 * 24 * 60 * 60_000).toISOString();
+    draft = await patchMetaAdsCampaignDraft({
+      companyId, userId, draftId: draft.id, expectedVersion: draft.version,
+      patch: {
+        destination: 'lead_form',
+        brief: {
+          goal: 'Collect qualified enquiries', offer: 'A controlled paid-acquisition workspace',
+          proofPoints: ['Human approval before publication'], targetCustomer: 'Small business operators',
+          // Lead-form drafts have no landing page; preflight must not demand one.
+          landingPageUrl: '', callToAction: 'SIGN_UP', regulatedCategory: 'none',
+        },
+        identity: {
+          pageId: 'page_workos_fixture', pageName: 'WorkOS Fixture Page',
+          instagramActorId: 'ig_workos_fixture', instagramUsername: 'workos_fixture',
+        },
+        leadForm: {
+          questionSetHash: '',
+          questions: [
+            { key: 'first_name', type: 'FIRST_NAME', label: 'First name', crmField: 'first_name' },
+            { key: 'email', type: 'EMAIL', label: 'Email', crmField: 'email' },
+            { key: 'phone_number', type: 'PHONE', label: 'Phone number', crmField: 'mobile_no' },
+          ],
+          privacyPolicyUrl: 'https://example.com/privacy',
+          followUpUrl: 'https://example.com/thanks',
+          contextHeadline: 'Talk to us', contextDescription: 'We reply within one business day.',
+        },
+        audience: { countries: ['US'], ageMin: 21, ageMax: 65, languageIds: [1001] },
+        lifetimeBudgetMinor: 5_000, startTime, endTime,
+      },
+    });
+    // The hash is derived server-side; a caller cannot choose which form a publish binds to.
+    assert.ok(draft.content.leadForm?.questionSetHash);
+    assert.equal(draft.content.destination, 'lead_form');
+
+    const generation = await enqueueMetaAdsCreativeGeneration({
+      companyId, userId, draftId: draft.id, expectedVersion: draft.version, idempotencyKey: `leadgen-${suffix}`,
+    });
+    assert.equal(await processOneMetaAdsCreativeJob(companyId), true);
+    assert.equal((await getMetaAdsCreativeGenerationJob(companyId, generation.id)).status, 'complete');
+
+    draft = await getMetaAdsCampaignDraft(companyId, draft.id);
+    const concept = draft.content.concepts[0];
+    draft = await patchMetaAdsCampaignDraft({
+      companyId, userId, draftId: draft.id, expectedVersion: draft.version,
+      patch: {
+        ads: [{
+          id: randomUUID(), conceptId: concept.id, name: 'Lead creative', assetId: concept.assetIds['1:1'],
+          primaryText: concept.primaryText, headline: concept.headline, description: concept.description,
+          callToAction: 'SIGN_UP',
+        }],
+      },
+    });
+
+    const preflight = await preflightMetaAdsCampaign(companyId, draft.id);
+    assert.equal(preflight.ready, true, JSON.stringify(preflight.issues));
+    assert.ok(!preflight.issues.some((issue) => issue.code === 'landing_page_url_invalid'));
+
+    draft = await submitMetaAdsCampaignDraft({ companyId, userId, draftId: draft.id, expectedVersion: draft.version });
+    await approveMetaAdsCampaignPublish({
+      companyId, userId, draftId: draft.id, note: 'Reviewed the lead form, questions, and CRM mapping.',
+      idempotencyKey: `publish-lead-${suffix}`,
+    });
+    assert.equal(await processOneMetaAdsCampaignJob(companyId), true);
+
+    const job = await getMetaAdsCampaignJob(companyId, (await getMetaAdsCampaignDraft(companyId, draft.id)).latestJob!.id);
+    const steps = new Map(job.steps.map((step) => [step.key, step]));
+    assert.ok(steps.has('leadform'), 'lead form step should run before the campaign');
+    assert.equal(steps.get('leadform')!.status, 'complete');
+    assert.equal(steps.get('campaign')!.status, 'complete');
+
+    // This company has no ERPNext tenant, so crmsync cannot succeed. The publish must still
+    // complete: Meta is already live and keeps collecting, and Frappe backfills on first sync.
+    assert.equal(steps.get('crmsync')?.status, 'failed');
+    assert.equal(job.status, 'complete');
+    assert.equal((await getMetaAdsCampaignDraft(companyId, draft.id)).status, 'published_paused');
+
+    const events = await pool.query(
+      `SELECT count(*)::int AS n FROM public.meta_ads_campaign_events WHERE draft_id=$1 AND event_type='lead_sync_configuration_failed'`,
+      [draft.id],
+    );
+    assert.equal(events.rows[0].n, 1, 'a failed CRM handoff must be surfaced, not swallowed');
+
+    const mapped = await pool.query(
+      `SELECT meta_object_id FROM public.meta_ads_entity_mappings WHERE draft_id=$1 AND object_kind='leadform'`,
+      [draft.id],
+    );
+    assert.equal(mapped.rowCount, 1);
+  });
+
   test('rejects stale edits, cross-tenant reads, and conflicting idempotency-key reuse', async () => {
     const draft = await createMetaAdsCampaignDraft({ companyId, userId, name: 'Conflict fixture' });
     await assert.rejects(
