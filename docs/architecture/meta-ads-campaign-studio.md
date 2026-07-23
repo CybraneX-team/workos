@@ -1,6 +1,6 @@
 # Meta Ads Campaign Studio
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-22.
 
 Campaign Studio adds a narrow, approval-gated Meta write surface to Paid
 Acquisition. It is deliberately separate from the read-only operating loop:
@@ -9,15 +9,18 @@ work when authoring is disabled.
 
 ## Product boundary
 
-V1 creates only this structure:
+Campaign Studio creates only this structure:
 
 ```text
-Website Traffic campaign
+campaign                        (destination: website | lead_form)
   └─ one broad ad set
        └─ one to three single-image ads
 ```
 
-- Objective: `OUTCOME_TRAFFIC`; optimization: `LINK_CLICKS`.
+- Two destinations as of 2026-07-22, selected by `content.destination`:
+  `website` (`OUTCOME_TRAFFIC` / `LINK_CLICKS`) and `lead_form`
+  (`OUTCOME_LEADS` / `LEAD_GENERATION`, plus a Meta instant form). See
+  "Lead-form campaigns" below.
 - One lifetime budget with mandatory start/end dates; no daily budget.
 - Country, adult age range, and optional language targeting only. Omitting
   placement fields leaves Advantage+ placements enabled.
@@ -30,9 +33,10 @@ Website Traffic campaign
   require cloning to a new WorkOS draft.
 - Meta generative enhancements are explicitly opted out.
 
-Campaign Studio does not create audiences, pixels, catalogs, forms, videos,
-carousel ads, dynamic creatives, Advantage+ campaigns, or conversion campaigns.
-It does not scrape a website or silently import ERPNext context.
+Campaign Studio does not create audiences, pixels, catalogs, videos, carousel
+ads, dynamic creatives, Advantage+ campaigns, or conversion campaigns. It does
+not scrape a website or silently import ERPNext context. It does create Meta
+lead forms, as of 2026-07-22.
 
 ## User flow and permissions
 

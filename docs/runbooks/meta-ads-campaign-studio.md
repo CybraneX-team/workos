@@ -1,6 +1,6 @@
 # Meta Ads Campaign Studio verification
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-22.
 
 This runbook verifies creative generation, final ad editing, deterministic
 preflight, paused publication, the separate launch gate, emergency pause, and

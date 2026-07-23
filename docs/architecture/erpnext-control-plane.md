@@ -4,7 +4,7 @@ Status: implemented for local development **and deployed to Azure** (2026-07-20)
 The cloud deployment is documented in `../runbooks/cloud-deploy.md`; this document
 describes the architecture and boundaries, which are unchanged by that deployment.
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-22.
 
 ## Purpose
 
