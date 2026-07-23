@@ -21,4 +21,8 @@ For Meta Ads operating-loop work, start with:
 - `docs/runbooks/meta-ads-campaign-studio.md`
 - `apps/backend/src/domains/meta-ads/README.md`
 
+For how marketing connects to sales (attribution, CPL/CAC, what is built vs remaining):
+
+- `docs/architecture/marketing-sales-integration-layers.md`
+
 Then read the nearest app-specific `AGENTS.md`. Do not store secrets or transient environment/test identifiers in memory files.

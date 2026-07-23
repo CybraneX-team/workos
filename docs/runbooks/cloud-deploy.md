@@ -186,17 +186,29 @@ first, and expect it to stop again on schedule.
 |---|---|
 | Image on all 9 services | `startupdigitaltwin123.azurecr.io/erpnext-crm:v16.26.1-crm1` |
 | Apps per site | `frappe 16.27.1`, `erpnext 16.28.0`, `crm 1.79.0` |
-| Tenant sites | `erp-hello-world`, `erp-flasshh-our0`, `erp-asd-n12o` (all `.localhost`) |
+| Tenant sites (re-checked 2026-07-22) | `erp-asd-g9bi.localhost`, `erp-setup-check-labs-o7e0.localhost` |
 | Rollback backups on VM | `pwd.yml.bak-pre-crm-20260721`, `provision-shim/index.js.bak-pre-crm-20260721` |
+
+Tenant sites churn — confirm with `bench list-sites` rather than trusting this table:
+
+```bash
+az vm run-command invoke -g startup-digital-twin-rg -n erpnext-vm --command-id RunShellScript \
+  --scripts "cd /home/erpadmin/frappe_docker && docker compose -f pwd.yml exec -T backend bench list-sites"
+```
+
+The earlier `erp-hello-world` / `erp-flasshh-our0` / `erp-asd-n12o` sites and the leftover
+`erp-crmtest-73972.localhost` test site are all gone as of 2026-07-22.
 
 Open items, deliberately left rather than forgotten:
 
-- **`erp-crmtest-73972.localhost`** — a leftover end-to-end provisioning test site.
-  `bench drop-site` needs the real MariaDB root password (the shim's `admin` fallback is
-  not it in production). Harmless; no WorkOS company points at it.
-- **`bench migrate` not run** on the three tenant sites after their framework version bump.
+- **`bench migrate` not run** on the tenant sites after their framework version bump.
 - **RBAC through Frappe CRM is unverified** — no non-Administrator user has been tested
   against `CRM Lead`/`CRM Deal` visibility.
+- **Tenants carry CRM data but no ERPNext transactional data** (verified 2026-07-22 on
+  `erp-asd-g9bi.localhost`: 7 `CRM Organization`, 12 `CRM Lead`, 7 `CRM Deal`, but 0
+  `Customer`, `Sales Order`, `Sales Invoice`, and `Quotation`). Every native-ERPNext-backed
+  Sales node therefore renders empty — expected, not a regression. No `Lead Sync Source` is
+  configured either.
 
 ## Configure — Meta Ads integration (manual)
 
