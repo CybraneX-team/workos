@@ -12,7 +12,7 @@ export interface TenantCredentials {
   apiSecret: string;
 }
 
-async function request<T>(creds: TenantCredentials, method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(creds: TenantCredentials, method: string, path: string, body?: unknown, timeoutMs = 30_000): Promise<T> {
   const response = await fetch(`${creds.apiUrl.replace(/\/$/, '')}${path}`, {
     method,
     headers: {
@@ -21,7 +21,7 @@ async function request<T>(creds: TenantCredentials, method: string, path: string
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`frappe_request_failed:${method}:${path}:${response.status}:${text.slice(0, 300)}`);
@@ -64,6 +64,70 @@ export async function upsertUser(creds: TenantCredentials, user: DesiredUser): P
 
 export async function disableUser(creds: TenantCredentials, email: string): Promise<void> {
   await request(creds, 'PUT', `/api/resource/User/${encodeURIComponent(email)}`, { enabled: 0, roles: [] });
+}
+
+export interface TenantSetupInput {
+  companyName: string;
+  country: string;
+  currency: string;
+  fyStartDate: string;
+  fyEndDate: string;
+  timezone?: string | null;
+}
+
+/** ERPNext abbreviations are short and alphanumeric; Company rejects anything else. */
+export function companyAbbreviation(companyName: string): string {
+  const words = companyName.replace(/[^A-Za-z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const initials = words.map(word => word[0]).join('').toUpperCase().slice(0, 5);
+  if (initials) return initials;
+  // Names that are entirely punctuation/non-Latin leave no initials to take.
+  const fallback = companyName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 5);
+  return fallback || 'CO';
+}
+
+// `bench new-site --install-app erpnext` leaves the setup wizard unrun: no Company,
+// no chart of accounts, no fiscal year, and a desk that redirects to /setup-wizard.
+// Both entry points below are @frappe.whitelist(), so this runs over the same REST
+// surface as every other command here — one implementation for local and remote,
+// and no duplication into infra/erpnext-remote-shim.
+export async function completeSetup(creds: TenantCredentials, input: TenantSetupInput): Promise<void> {
+  const timezone = input.timezone?.trim() || undefined;
+
+  // Must precede setup_complete. process_setup_stages() calls set_missing_values()
+  // once frappe's own stage is marked complete, which *overwrites* country/currency/
+  // time_zone in the args from System Settings. If a previous attempt died after
+  // frappe's stage, a retry would silently re-inject the empty values and fail the
+  // same way — writing System Settings first is what makes retries converge.
+  await request(creds, 'POST', '/api/method/frappe.desk.page.setup_wizard.setup_wizard.initialize_system_settings_and_user', {
+    // `en`, not `English`. The two endpoints disagree: this one assigns `language`
+    // straight to System Settings' Link field, so it needs the Language *docname*,
+    // while setup_complete below runs it through get_language_code(), which looks a
+    // Language up by `language_name` and therefore wants the display name. Passing
+    // 'English' here fails with `LinkValidationError: Could not find Language: English`.
+    system_settings_data: { language: 'en', country: input.country, currency: input.currency, time_zone: timezone },
+    // create_or_update_user() returns early without an email. Frappe users are
+    // provisioned by reconcile_users/SSO, not here.
+    user_data: {},
+  }, 120_000);
+
+  await request(creds, 'POST', '/api/method/frappe.desk.page.setup_wizard.setup_wizard.setup_complete', {
+    args: {
+      language: 'English',
+      country: input.country,
+      currency: input.currency,
+      // Frappe reads args.timezone here, but writes it to System Settings.time_zone.
+      timezone,
+      company_name: input.companyName,
+      company_abbr: companyAbbreviation(input.companyName),
+      fy_start_date: input.fyStartDate,
+      fy_end_date: input.fyEndDate,
+      chart_of_accounts: 'Standard',
+      setup_demo: 0,
+      enable_telemetry: 0,
+    },
+    // Builds the chart of accounts and runs crm's setup_wizard_complete hook
+    // (create_demo_data), so this is minutes, not the 30s default.
+  }, 600_000);
 }
 
 export async function applyBranding(creds: TenantCredentials): Promise<void> {

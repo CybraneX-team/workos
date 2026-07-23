@@ -30,12 +30,22 @@ async function listAuthUsers(admin: ReturnType<typeof createClient>): Promise<Us
   }
 }
 
-async function localSites(composeDirectory: string): Promise<string[]> {
-  const { stdout } = await execFileAsync('docker', ['compose', '-f', 'pwd.yml', 'exec', '-T', 'backend', 'bench', 'list-sites'], {
-    cwd: composeDirectory,
-    timeout: 30_000,
-  });
-  return stdout.split(/\s+/).filter(site => /^erp-[a-z0-9-]+\.localhost$/.test(site));
+/**
+ * Returns null when the local Frappe stack cannot be reached at all — a stopped
+ * stack (or a remote-only setup, where ERPNEXT_ENV=remote and nothing runs here)
+ * must not abort the WorkOS reset. Any local sites then survive as orphans, the
+ * same way VM sites already do; the caller surfaces that rather than hiding it.
+ */
+async function localSites(composeDirectory: string): Promise<string[] | null> {
+  try {
+    const { stdout } = await execFileAsync('docker', ['compose', '-f', 'pwd.yml', 'exec', '-T', 'backend', 'bench', 'list-sites'], {
+      cwd: composeDirectory,
+      timeout: 30_000,
+    });
+    return stdout.split(/\s+/).filter(site => /^erp-[a-z0-9-]+\.localhost$/.test(site));
+  } catch {
+    return null;
+  }
 }
 
 async function main() {
@@ -52,16 +62,21 @@ async function main() {
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const users = await listAuthUsers(admin);
   const { rows: companyRows } = await pool.query<{ count: string }>('select count(*)::text as count from public.companies');
-  const sites = await localSites(composeDirectory);
+  const discoveredSites = await localSites(composeDirectory);
+  const sites = discoveredSites ?? [];
 
   console.log(JSON.stringify({
     mode: execute ? 'execute' : 'dry-run',
     sharedSupabaseProjectRef: projectRef,
     companies: Number(companyRows[0]?.count ?? 0),
     authUsers: users.length,
-    localFrappeSites: sites,
+    localFrappeSites: discoveredSites === null ? 'unreachable (local stack not running)' : sites,
     productionFrappeSitesWillBeDeleted: false,
   }, null, 2));
+
+  if (discoveredSites === null) {
+    console.warn('Local Frappe stack unreachable: skipping local site deletion. Any local sites, and all ERPNext VM sites, must be dropped with `bench drop-site` by hand.');
+  }
 
   if (!execute) {
     console.log(`Dry run only. Execute with --execute --confirm=${CONFIRMATION} --project-ref=${projectRef}`);

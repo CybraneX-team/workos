@@ -101,6 +101,26 @@ locally: the VM is amd64 while dev machines are arm64, and `az acr build`
 supports only `--secret-build-arg`, not the BuildKit `--mount=type=secret`
 that upstream's `images/custom/Containerfile` uses for `apps.json`.
 
+🔴 **KNOWN BROKEN — this build is not reproducible, and the tag lies.**
+`apps.json` pins **moving branches** (`erpnext@version-16`, `crm@main`), not commits, so
+re-running the command above with byte-identical inputs produces a different image
+whenever upstream has moved. Measured 2026-07-22:
+
+| App | Baked into the deployed image | What a rebuild pulls today |
+|---|---|---|
+| frappe | 16.27.1 | 16.28.0 |
+| erpnext | 16.28.0 | 16.29.0 |
+| crm | 1.79.0 | 1.79.1 |
+
+The tag `v16.26.1-crm1` also advertises a version the image does not contain — it holds
+erpnext 16.28.0. `ARG ERPNEXT_VERSION=v16.26.1` in the `Containerfile` is used only to
+source `entrypoint.sh`/`start.sh` from `frappe/erpnext:v16.26.1`, and is now three minor
+versions behind the branch tip its own comment says to keep it in sync with.
+
+Fixing this means pinning `apps.json` to commit SHAs and either retagging honestly or
+dropping the version from the tag. Until then, treat any rebuild as a **version upgrade**,
+not a reproduction — and re-check `bench --site <site> list-apps` afterwards.
+
 ⚠️ The final stage **must** derive from `frappe/base`, not `frappe/erpnext`. The
 latter declares `sites`/`logs` as `VOLUME`s, which during a build are mounted
 ephemerally: they cannot be deleted (`device or resource busy`) and anything
@@ -172,6 +192,24 @@ automatically. See its README for the copy-up procedure. Verify a deploy with
 `md5sum` on both ends plus `systemctl is-active erpnext-provision-shim` and
 `curl -s localhost:3001/health`.
 
+🔴 **KNOWN BROKEN — the two have already drifted.** Verified 2026-07-22; the committed
+mirror is byte-identical to the VM (`index.js` md5 `c321fb65…`), so this is real
+divergence from `localProvision()`, not a stale copy:
+
+1. **`/provision` is not idempotent.** `localProvision()` guards with `bench list-sites`
+   before creating (`provisionWorker.ts:15`). The shim defines `siteExists()`
+   (`index.js:30`) but wires it **only** to `/ondemand-ask` (`index.js:55`) — `/provision`
+   calls `bench new-site` unconditionally. Because `provisionWorker.run()` retries up to
+   `max_attempts`, a remote provision that fails after the site directory exists will fail
+   **every** retry with "site already exists" and end at `status='failed'`. The same
+   scenario self-heals locally.
+2. **`--mariadb-user-host-login-scope=%` is missing** from the shim.
+   `provisionWorker.ts:19` passes it; `index.js` does not. Local and production create
+   site DB users with different host scopes.
+
+Setup completion is **not** part of this drift: the control-plane runs the wizard over
+REST for both paths — see "Tenant setup is completed during provisioning" below.
+
 ### VM power schedule
 
 `erpnext-vm` is **not** always on. Two Logic Apps (`erpnext-vm-start`,
@@ -180,28 +218,41 @@ run-command` fails with `OperationNotAllowed ... requires the VM to be running`
 outside that window — `az vm start -g startup-digital-twin-rg -n erpnext-vm`
 first, and expect it to stop again on schedule.
 
-### Current live ERPNext state (verified 2026-07-21)
+### Current live ERPNext state (verified 2026-07-22)
 
 | | |
 |---|---|
 | Image on all 9 services | `startupdigitaltwin123.azurecr.io/erpnext-crm:v16.26.1-crm1` |
 | Apps per site | `frappe 16.27.1`, `erpnext 16.28.0`, `crm 1.79.0` |
-| Tenant sites (re-checked 2026-07-22) | `erp-asd-g9bi.localhost`, `erp-setup-check-labs-o7e0.localhost` |
+| Tenant sites (2026-07-22) | `erp-asd-g9bi.localhost`, `erp-setup-check-labs-o7e0.localhost` |
+| **ERPNext setup complete** | Now performed automatically during provisioning; see below |
 | Rollback backups on VM | `pwd.yml.bak-pre-crm-20260721`, `provision-shim/index.js.bak-pre-crm-20260721` |
 
-Tenant sites churn — confirm with `bench list-sites` rather than trusting this table:
+`erp-hello-world`, `erp-flasshh-our0`, `erp-asd-n12o` and `erp-crmtest-73972` were all
+dropped on 2026-07-22 alongside a full WorkOS development reset, so the next signup
+provisions a clean tenant through the fixed path. Dropped sites are archived under
+`/home/frappe/frappe-bench/archived/sites` in the `sites` volume, not erased.
+
+The two sites listed above were provisioned **after** that reset, through the fixed path.
+Both verified 2026-07-22: `setup_complete = 1`, with a `Company` and a `Fiscal Year` — the
+setup-wizard automation works end to end in production.
+
+Tenant sites churn faster than this table. Confirm before trusting it:
 
 ```bash
 az vm run-command invoke -g startup-digital-twin-rg -n erpnext-vm --command-id RunShellScript \
   --scripts "cd /home/erpadmin/frappe_docker && docker compose -f pwd.yml exec -T backend bench list-sites"
 ```
 
-The earlier `erp-hello-world` / `erp-flasshh-our0` / `erp-asd-n12o` sites and the leftover
-`erp-crmtest-73972.localhost` test site are all gone as of 2026-07-22.
+**The MariaDB root password is not `admin`.** `pwd.yml` declares
+`MYSQL_ROOT_PASSWORD: admin`, but that only applies at first initialisation — the live
+password is `FRAPPE_DB_ROOT_PASSWORD` in `/home/erpadmin/provision-shim/.env`. Source that
+file for any `bench drop-site`; `admin` fails with `Access denied for user 'root'`.
 
 Open items, deliberately left rather than forgotten:
 
-- **`bench migrate` not run** on the tenant sites after their framework version bump.
+- **`bench migrate` not run** after the framework version bump. The current tenants were
+  created fresh on the new image, but the next image roll onto existing sites will need it.
 - **RBAC through Frappe CRM is unverified** — no non-Administrator user has been tested
   against `CRM Lead`/`CRM Deal` visibility.
 - **Tenants carry CRM data but no ERPNext transactional data** (verified 2026-07-22 on
@@ -209,6 +260,50 @@ Open items, deliberately left rather than forgotten:
   `Customer`, `Sales Order`, `Sales Invoice`, and `Quotation`). Every native-ERPNext-backed
   Sales node therefore renders empty — expected, not a regression. No `Lead Sync Source` is
   configured either.
+
+### Tenant setup is completed during provisioning
+
+**Fixed 2026-07-22.** Previously every new signup produced an unconfigured site: both
+provisioning paths stopped after `bench new-site` + `generate_keys`, so the tenant had no
+`Company`, chart of accounts or fiscal year, `erpnext.tenants.status` went to `'ready'`
+anyway, and the first user to open the desk landed on `/desk/setup-wizard/0` — where
+completing the wizard without a country crashed on
+`erpnext/setup/setup_wizard/operations/install_fixtures.py:152`
+(`"territory_name": country.replace("'", "")`, no null guard, **still unguarded on
+`frappe/erpnext@version-16`** — this was never fixable by a version bump).
+
+The control-plane now completes setup itself, in `completeSetup()`
+(`apps/erpnext-control-plane/src/frappe/client.ts`), between provisioning and
+`applyBranding()`. `status='ready'` is only written after it succeeds, so
+`resolveErpNextCreds()` and `routes/bdtNodeActivation.ts`'s `erpConnected` gate no longer
+unlock BDT branches against an empty site.
+
+Both entry points it calls are `@frappe.whitelist()`, so this runs over the same REST
+surface as every other control-plane command — **one implementation covering local and
+remote, with nothing duplicated into `infra/erpnext-remote-shim/`.**
+
+Two things worth knowing before changing it:
+
+- `initialize_system_settings_and_user` **must** run before `setup_complete`. Once
+  frappe's own stage is marked complete in `Installed Application`, `process_setup_stages()`
+  calls `set_missing_values()`, which *overwrites* `country`/`currency`/`time_zone` in the
+  args from System Settings. A retry after a partial failure would otherwise re-inject the
+  empty values and fail identically.
+- The company's locale facts travel on `ProvisionTenantRequest` and are stored on
+  `erpnext.provision_jobs` (migration `002`). The control-plane must not read
+  `public.companies` itself; the backend resolves them in `companySetupFacts()`
+  (`apps/backend/src/lib/erpnextOutbox.ts`) from `companies.country`/`currency`, reusing
+  `currencyForCountry()` and the new `fiscalYearForCountry()`/`timezoneForCountry()`.
+
+Fiscal year policy: April–March for India, calendar year elsewhere — Frappe's
+`country_info.json` carries currency and timezones but no fiscal-year data.
+
+`crm`'s `setup_wizard_complete` hook (`crm.demo.api.create_demo_data`) runs as part of
+this, so new tenants start with a populated demo CRM pipeline. That is deliberate;
+`crm.demo.api.clear_demo_data` is whitelisted if it needs reversing.
+
+Frappe CRM never depended on this: `CRM Lead`/`CRM Deal` have no `company` field, so
+pipeline data worked even on the unconfigured sites.
 
 ## Configure — Meta Ads integration (manual)
 

@@ -59,6 +59,17 @@ These rules are checked by `apps/backend/test/erpnextArchitecture.test.ts`.
 - Sites are provisioned with **two** Frappe apps: `erpnext`, then `crm` (Frappe CRM). Both stacks must run the custom image built from `infra/erpnext-image/` — Frappe apps live in the image layer, so `crm` cannot be added to a running container. Provisioning a site with an image that lacks `crm` fails at `bench new-site --install-app crm`.
 - The remote provisioning shim (`/home/erpadmin/provision-shim/index.js` on `erpnext-vm`) mirrors `localProvision()`'s `bench new-site` call. Changing install-app behavior here requires editing that file on the VM too, or the two paths silently diverge. A mirror is version-controlled at `infra/erpnext-remote-shim/`, but **nothing deploys from it** — the VM is still the live source of truth, so update both by hand.
 - `localProvision()` runs `bench new-site` as a **host** process via `docker compose exec`, taking several minutes (longer under arm64 emulation) and logging nothing on success. It is not visible to `ps` inside the container; check the host with `ps aux | grep 'bench new-site'` before assuming a job is stuck.
+- **`completeSetup()` (`src/frappe/client.ts`) runs ERPNext's setup wizard** between provisioning and `applyBranding()`, before `status='ready'`. Both entry points are `@frappe.whitelist()`, so it goes over REST and covers local **and** remote from one place — do not duplicate it into the shim. Order matters twice: `initialize_system_settings_and_user` must precede `setup_complete` (once frappe's stage is marked complete, `set_missing_values()` overwrites `country`/`currency`/`time_zone` from System Settings, so a retry would re-fail identically), and setup must precede branding (the wizard rewrites workspaces and Website Settings).
+- Setup needs the company's locale facts, which arrive on `ProvisionTenantRequest` and are stored on `erpnext.provision_jobs` (migration `002`) because the worker claims the job later. Do not look them up here — reading `public.companies` breaks the boundary, and `test/erpnextArchitecture.test.ts` enforces that.
+- The job lock is **15 minutes**, not 5: it must outlast `bench new-site` plus the setup wizard (chart of accounts + `crm`'s `create_demo_data` hook), or a second worker reclaims the job mid-setup.
+
+## 🔴 Known broken (verified 2026-07-22, unfixed)
+
+- **The remote shim has drifted from `localProvision()`.** `/provision` is **not
+  idempotent** — `siteExists()` exists in the shim but is wired only to `/ondemand-ask`, so
+  a retry after a partial failure fails permanently with "site already exists", whereas
+  `localProvision()`'s `bench list-sites` guard self-heals. The shim also omits
+  `--mariadb-user-host-login-scope=%`. See `infra/erpnext-remote-shim/README.md`.
 
 ## Verification
 

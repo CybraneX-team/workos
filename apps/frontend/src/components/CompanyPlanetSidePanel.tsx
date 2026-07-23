@@ -1,5 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
-import { Search, Command, ArrowLeft, ChevronRight, Globe, Loader2 } from 'lucide-react';
+import { Search, Command, ArrowLeft, ChevronRight, Globe, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 // import { Briefcase, Rocket, TrendingUp} from 'lucide-react';
 import type {
   CompanyPlanetContext,
@@ -64,6 +64,7 @@ export function CompanyPlanetSidePanel({
   setSearchQuery,
   industryColor = '#C1AEFF',
   // onRoleChange,
+  onRefresh,
   onResearchCompany,
   onClassificationChange,
 }: CompanyPlanetSidePanelProps) {
@@ -418,6 +419,55 @@ export function CompanyPlanetSidePanel({
           activeClassification={context.classification}
           onClassificationChange={onClassificationChange}
         />
+      )}
+
+      {/* Research state. Without this a failed job is indistinguishable from a
+          successful one that found nothing — both render an empty ROOT SYSTEMS list. */}
+      {!context.needsResearch && context.status && context.status !== 'ready' && (
+        <div
+          className="rounded-2xl shrink-0 px-3.5 py-3"
+          style={{
+            width: '196px',
+            background: 'rgba(0,0,0,0.78)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            border: `1px solid ${context.status === 'failed' ? 'rgba(248,113,113,0.35)' : 'rgba(255,255,255,0.10)'}`,
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            {context.status === 'failed'
+              ? <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              : <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: industryColor }} />}
+            <span
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: context.status === 'failed' ? '#f87171' : industryColor }}
+            >
+              {context.status === 'failed' ? 'Research failed' : 'Researching…'}
+            </span>
+          </div>
+
+          {context.status === 'failed' && (
+            <>
+              <p className="mt-1.5 text-[9px] text-zinc-400 leading-relaxed break-words">
+                {context.lastError ?? 'The research job did not complete.'}
+              </p>
+              {onRefresh && (
+                <button
+                  onClick={() => void onRefresh()}
+                  className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                  style={{
+                    background: `${industryColor}22`,
+                    border: `1px solid ${industryColor}44`,
+                    color: industryColor,
+                  }}
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Retry research
+                </button>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       <div className="rounded-2xl overflow-hidden flex flex-col" style={panelStyle}>

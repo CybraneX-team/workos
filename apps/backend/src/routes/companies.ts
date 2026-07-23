@@ -66,8 +66,46 @@ const COUNTRY_CURRENCIES: Record<string, string> = {
   'united states of america': 'USD', vietnam: 'VND', other: 'USD',
 };
 
-function currencyForCountry(country: string): string {
+export function currencyForCountry(country: string): string {
   return COUNTRY_CURRENCIES[country.trim().toLowerCase()] ?? 'USD';
+}
+
+// Frappe's country_info.json carries currency and timezones but no fiscal-year
+// data, so the policy lives here: April-March where that is the statutory year,
+// calendar year everywhere else.
+const APRIL_MARCH_FY_COUNTRIES = new Set(['india']);
+
+const COUNTRY_TIMEZONES: Record<string, string> = {
+  australia: 'Australia/Sydney', bangladesh: 'Asia/Dhaka', brazil: 'America/Sao_Paulo',
+  canada: 'America/Toronto', china: 'Asia/Shanghai', france: 'Europe/Paris',
+  germany: 'Europe/Berlin', 'hong kong': 'Asia/Hong_Kong', india: 'Asia/Kolkata',
+  indonesia: 'Asia/Jakarta', ireland: 'Europe/Dublin', italy: 'Europe/Rome',
+  japan: 'Asia/Tokyo', kenya: 'Africa/Nairobi', malaysia: 'Asia/Kuala_Lumpur',
+  mexico: 'America/Mexico_City', nepal: 'Asia/Kathmandu', netherlands: 'Europe/Amsterdam',
+  'new zealand': 'Pacific/Auckland', nigeria: 'Africa/Lagos', pakistan: 'Asia/Karachi',
+  philippines: 'Asia/Manila', 'saudi arabia': 'Asia/Riyadh', singapore: 'Asia/Singapore',
+  'south africa': 'Africa/Johannesburg', 'south korea': 'Asia/Seoul', korea: 'Asia/Seoul',
+  spain: 'Europe/Madrid', 'sri lanka': 'Asia/Colombo', switzerland: 'Europe/Zurich',
+  thailand: 'Asia/Bangkok', turkey: 'Europe/Istanbul', uae: 'Asia/Dubai',
+  'united arab emirates': 'Asia/Dubai', uk: 'Europe/London', 'united kingdom': 'Europe/London',
+  'great britain': 'Europe/London', usa: 'America/New_York', us: 'America/New_York',
+  'united states': 'America/New_York', 'united states of america': 'America/New_York',
+  vietnam: 'Asia/Ho_Chi_Minh',
+};
+
+export function timezoneForCountry(country: string): string {
+  return COUNTRY_TIMEZONES[country.trim().toLowerCase()] ?? 'UTC';
+}
+
+/** Current fiscal year for `country`, as the ISO dates ERPNext's setup wizard expects. */
+export function fiscalYearForCountry(country: string, today = new Date()): { start: string; end: string } {
+  const year = today.getUTCFullYear();
+  if (!APRIL_MARCH_FY_COUNTRIES.has(country.trim().toLowerCase())) {
+    return { start: `${year}-01-01`, end: `${year}-12-31` };
+  }
+  // getUTCMonth() is 0-based, so >= 3 means April or later.
+  const startYear = today.getUTCMonth() >= 3 ? year : year - 1;
+  return { start: `${startYear}-04-01`, end: `${startYear + 1}-03-31` };
 }
 
 function normalizeCurrency(value: unknown): string | null {

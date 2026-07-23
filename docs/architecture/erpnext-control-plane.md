@@ -46,13 +46,41 @@ The only shared ERP package is `@cybranex/erpnext-contracts`, because both appli
 1. Company creation in `apps/backend/src/routes/companies.ts` enqueues three coalesced commands: `provision_tenant`, `configure_sso`, and `reconcile_users`.
 2. The WorkOS outbox worker claims only rows matching `ERPNEXT_TARGET_ENV`.
 3. The control-plane persists a provision job and tenant state before returning `202`.
-4. Its worker creates or reuses the Frappe site, generates Administrator API keys, applies branding, encrypts credentials, and marks the tenant ready.
+4. Its worker creates or reuses the Frappe site, generates Administrator API keys, **completes ERPNext's setup wizard**, applies branding, encrypts credentials, and marks the tenant ready.
 5. SSO and user commands retry until status is `ready`.
+
+Step 4's "creates or reuses" is true only of `localProvision()`; the remote shim always
+creates.
 
 Sites are created with **both** `erpnext` and `crm` (Frappe CRM) installed, in
 that order — `crm` declares no `required_apps`, so ordering is not enforced for
 us, and the CRM Deal → Customer/Quotation hand-off needs `erpnext` present. See
 "Frappe apps and the custom image" below.
+
+### Completing ERPNext setup
+
+A site from `bench new-site --install-app erpnext` has no `Company`, chart of accounts or
+fiscal year until ERPNext's setup wizard runs, and its `install_fixtures` crashes on a null
+country. `completeSetup()` in `src/frappe/client.ts` runs that wizard over REST — both
+`initialize_system_settings_and_user` and `setup_complete` are `@frappe.whitelist()`, so no
+`bench` access is needed and **local and remote share one implementation**; nothing is
+duplicated into the remote shim.
+
+It runs before `applyBranding()` (the wizard rewrites workspaces and Website Settings) and
+before `status='ready'`, so `ready` now implies the tenant is genuinely usable — which is
+what `resolveErpNextCreds()` and `routes/bdtNodeActivation.ts`'s `erpConnected` gate assume.
+
+`initialize_system_settings_and_user` must precede `setup_complete`: once frappe's own stage
+is marked complete in `Installed Application`, `process_setup_stages()` calls
+`set_missing_values()`, which overwrites `country`/`currency`/`time_zone` in the args from
+System Settings. Writing System Settings first is what lets a retry after a partial failure
+converge instead of failing identically.
+
+The company's locale facts (`companyName`, `country`, `currency`, fiscal-year dates,
+`timezone`) arrive on `ProvisionTenantRequest` and are stored on `erpnext.provision_jobs`
+(migration `002`) because the worker claims the job long after the request. The
+control-plane does **not** read `public.companies` — the backend resolves them in
+`companySetupFacts()` (`apps/backend/src/lib/erpnextOutbox.ts`).
 
 ### User and role reconciliation
 
@@ -213,7 +241,22 @@ pnpm typecheck:erpnext-control-plane
 
 For end-to-end verification, follow `../runbooks/local-erpnext-sso.md`.
 
-## Known reliability gap (2026-07-21)
+## Known gaps
+
+### ~~Tenants are provisioned unconfigured~~ (fixed 2026-07-22)
+
+Provisioning used to stop after `bench new-site` + `generate_keys`, leaving every tenant
+marked `ready` with no `Company`, chart of accounts, fiscal year, or default currency, and
+dumping the first user onto `/desk/setup-wizard/0`. See "Completing ERPNext setup" above
+for the current behaviour and `../runbooks/cloud-deploy.md` for the history.
+
+### The remote shim has drifted from `localProvision()` (unfixed)
+
+`/provision` is not idempotent and omits `--mariadb-user-host-login-scope=%`. See
+`../../infra/erpnext-remote-shim/README.md`. Setup completion is deliberately **not** part
+of this drift — it lives in the control-plane and covers both paths.
+
+### Dropped Postgres connection kills both workers (2026-07-21, unfixed)
 
 Both the backend and the control-plane can be killed by a dropped Postgres connection.
 Each has a `pool.on('error', ...)` handler, but that covers only **idle** pooled clients;

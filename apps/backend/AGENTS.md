@@ -57,6 +57,41 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
   separate launch approval, exact account allowlist for real mode, and emergency
   pause as the only post-launch edit.
 
+## Gemini structured output: two traps
+
+`lib/gemini.ts` is the single place the backend calls Gemini. Both traps below were
+live failures, not theory — they produced `reference_companies.status='failed'` with
+zero nodes, which the planet UI rendered as an empty "ROOT SYSTEMS" list.
+
+**1. `maxOutputTokens` is shared with thinking.** On 2.5 models, thinking tokens come
+out of the same budget as the answer; measured between ~1.2k and ~4.3k on identical
+prompts. An uncapped thinker starves a large structured response and truncates it
+mid-JSON. Pass `thinkingBudget` for anything that must parse, and keep it > 0 — 2.5 Pro
+rejects 0. `finishReason` is checked, so truncation now raises
+`gemini_finish_max_tokens:` with the budget and thinking count rather than masquerading
+as a parse error.
+
+**2. `responseSchema` rejects rich JSON Schema.** Gemini compiles the schema into a
+decoding state machine and 400s with *"produces a constraint that has too many states
+for serving"* on numeric `minimum`/`maximum`, string `maxLength`, and nested
+`minItems`/`maxItems`. `toGeminiSchema()` inlines `$ref`/`$defs`, drops
+`additionalProperties`, rewrites `type: ['string','null']` as `nullable`, and **strips
+every value-range keyword**. Those constraints are re-checked after parsing (see
+`validateGeneratedTwin`), which is what actually enforces them — do not add them back
+into the schema sent to Gemini.
+
+Stripping them silently changes *output*, not just validation: a `relevance` field with
+`minimum: 0, maximum: 100` came back on a 0-10 scale once the bounds were gone, and the
+planet UI renders that value as `N% relevance`. `toGeminiSchema()` therefore folds the
+dropped bounds into `description` ("Must be between 0 and 100 inclusive."), which Gemini
+supports and which costs no decoder states. Keep that behaviour when adding keywords to
+`UNSUPPORTED_SCHEMA_KEYS`.
+
+Truncated *prose* (the `webSearch` research step) is deliberately tolerated with a
+warning; only JSON requests treat `MAX_TOKENS` as fatal. `gemini-2.5-flash` also 503s
+frequently under load, so `geminiText` retries 429/5xx itself rather than burning the
+caller's job-level attempts.
+
 ## Sales doctypes: the silent-empty-dashboard trap
 
 The Sales domain reads **two different data models**, and mixing them up fails silently:
@@ -95,6 +130,53 @@ means updating `erpnextSales.ts` (reads + `ACTION_DOCTYPES_BY_MAPPING`),
 `pnpm --filter backend test:sales-stories` guards this: every doctype in
 `MAPPING_SOURCE_DOCTYPES` must be referenced in `erpnextSalesStories.ts`. It is the only
 thing standing between a doctype rename and a silently blank dashboard — do not delete it.
+
+## 🔴 Known broken: BDT coverage gaps (verified 2026-07-22)
+
+**Two Sales Level-1 nodes are 100% dead.** `MAPPINGS` in `erpnextSales.ts` is 15 mapped
+and 22 `unsupported()`:
+
+| Level-1 node | mapped | unsupported |
+|---|---|---|
+| Customers & Accounts | 3 | 3 |
+| Pipeline & Opportunities | 5 | 2 |
+| Revenue Operations | 1 | 5 |
+| **Partnerships & Channels** | **0** | **5** |
+| Sales Performance | 6 | 1 |
+| **Sales Resources** | **0** | **6** |
+
+`listActiveBranchKeys()` filters out `unsupported`, so those two nodes contribute **zero**
+active branches — 11 branch items that can never activate under any configuration. They
+render permanently locked. Either bind them or hide them at the catalog level; a node that
+can never activate is worse than an absent one.
+
+**Segment dimensions are available but unread.** `industry` appears **zero** times in
+`erpnextSales.ts`. `territory` is read only from `Customer` (lines 192, 200) — never from
+`CRM Lead`, `CRM Deal`, or `CRM Organization`, all three of which carry `industry`,
+`territory`, `no_of_employees`, and `annual_revenue`. `CRM Territory` is a real nested-set
+tree, so rollups are available. This is why `sales_accounts_icp_segments` is marked
+`unsupported` ("not represented as a WorkOS doctype") when the underlying fields exist.
+
+## 🔴 Known broken: Marketing node binding is rename-fragile
+
+Sales **derives** its active branches (`listActiveBranchKeys()`, `erpnextSales.ts:342`).
+Marketing **hardcodes** them — `MARKETING_PAID_ACQUISITION_KEYS` in
+`routes/bdtNodeActivation.ts:35`, and again in the frontend as
+`META_METRIC_NODE_STABLE_KEYS` / `META_SPEND_REACH_STABLE_KEYS`
+(`BdtActionWorkspace.tsx:71,77`), with literal-label fallbacks
+(`'ad performance health'`, `'spend & reach health'`).
+
+Those keys are **content-derived**: `genBdtSeed.ts`'s `buildMetadata()` computes
+`sourceKey: \`${level1SourceKey}_${slug(branchItem)}\``. The key is stable across tree
+*reorders* — its stated purpose — but **not across renames**. Renaming a branch item in
+`data/bdtSpecTree.ts` (e.g. "Ad Performance" → "Ad Health") changes the derived key, which
+silently unbinds *both* the backend activation array and the frontend gate at once, and the
+label fallback misses too.
+
+This is the same failure class as the doctype trap above, triggered by an **editorial**
+change rather than a schema one — and unlike Sales, **no test guards it**;
+`test:sales-stories` covers Sales doctypes only. Renaming any `mkt_paid_acquisition_*`
+branch item requires updating `bdtNodeActivation.ts` and `BdtActionWorkspace.tsx` together.
 
 ## Verification
 

@@ -33,9 +33,14 @@ app.post('/internal/v1/tenants/:companyId/provision', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('begin');
-    const { rows } = await client.query(`insert into erpnext.provision_jobs(environment,company_id,company_slug,idempotency_key) values($1,$2,$3,$4)
-      on conflict(environment,idempotency_key) do update set company_slug=excluded.company_slug returning id,status`,
-      [parsed.data.environment, req.params.companyId, parsed.data.companySlug, parsed.data.idempotencyKey]);
+    const { rows } = await client.query(`insert into erpnext.provision_jobs(environment,company_id,company_slug,idempotency_key,company_name,country,currency,fy_start_date,fy_end_date,timezone)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      on conflict(environment,idempotency_key) do update set company_slug=excluded.company_slug,company_name=excluded.company_name,
+        country=excluded.country,currency=excluded.currency,fy_start_date=excluded.fy_start_date,fy_end_date=excluded.fy_end_date,
+        timezone=excluded.timezone returning id,status`,
+      [parsed.data.environment, req.params.companyId, parsed.data.companySlug, parsed.data.idempotencyKey,
+        parsed.data.companyName, parsed.data.country, parsed.data.currency,
+        parsed.data.fyStartDate, parsed.data.fyEndDate, parsed.data.timezone ?? null]);
     await client.query(`insert into erpnext.tenants(environment,company_id,status) values($1,$2,'provisioning')
       on conflict(environment,company_id) do update set status=case when erpnext.tenants.status='ready' then 'ready' else 'provisioning' end,updated_at=now()`,
       [parsed.data.environment, req.params.companyId]);
