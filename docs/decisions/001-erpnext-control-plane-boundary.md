@@ -86,9 +86,14 @@ projection reads, so it is recorded here.
 **Decision: adopt Frappe CRM for the pre-sale pipeline; keep native ERPNext for the ledger.**
 
 - `CRM Lead` / `CRM Deal` become the source of truth for leads and deals. WorkOS's
-  pipeline and lead/deal performance nodes read them.
+  pipeline and lead/deal performance nodes read them. `CRM Organization` backs the
+  firmographic/ICP view alongside them.
 - `Customer`, `Contact`, `Territory`, `Quotation`, `Sales Order`, `Sales Invoice` stay on
   the native ERPNext doctypes, unchanged. Frappe CRM has no equivalent and does not aim to.
+- Segmentation reads across both models: `industry` and `territory` exist on each side,
+  while `no_of_employees` / `annual_revenue` are CRM-only and `market_segment` /
+  `customer_group` are ERPNext-only. The ICP node reads `CRM Organization` (prospect pool)
+  and `Customer` (won accounts) together so the two can be compared.
 - The hand-off between the two is Frappe CRM's own first-party "ERPNext CRM Settings"
   integration (a won `CRM Deal` creates a real `Customer`/`Quotation`), not a custom bridge.
 

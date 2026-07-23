@@ -61,10 +61,20 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 
 The Sales domain reads **two different data models**, and mixing them up fails silently:
 
-- **Pipeline / lead-and-deal performance → Frappe CRM**: `CRM Lead`, `CRM Deal`
-  (fields `deal_value`, `expected_closure_date`, `organization`, `status`).
+- **Pipeline / lead-and-deal performance → Frappe CRM**: `CRM Lead`, `CRM Deal`,
+  `CRM Organization` (fields `deal_value`, `expected_closure_date`, `organization`,
+  `status`, plus the segmentation fields below).
 - **Accounts, proposals, revenue → native ERPNext**: `Customer`, `Contact`,
-  `Territory`, `Quotation`, `Sales Order`, `Sales Invoice`.
+  `Territory`, `Quotation`, `Sales Order`, `Sales Invoice` (`Customer` also carries
+  `industry` and `market_segment`).
+
+**Segmentation dimensions.** `industry` and `territory` share a fieldname across both
+models and are read everywhere via `SEGMENT_FIELDS`; `no_of_employees` and
+`annual_revenue` exist on the CRM doctypes only (`FIRMOGRAPHIC_FIELDS`). `ICP segments`
+is **derived** from these — it is no longer `unsupported()`, so do not restore the old
+"not represented as a WorkOS doctype" reason. Its story deliberately scores missing
+`industry` but **not** missing `territory`: CRM territories are optional and routinely
+empty on real tenants, so penalising them would floor the node for everyone.
 
 Leads reach `CRM Lead` two ways: a human typing into Frappe CRM, or Frappe CRM's own
 Facebook lead syncing, which WorkOS configures when it publishes a lead-form campaign

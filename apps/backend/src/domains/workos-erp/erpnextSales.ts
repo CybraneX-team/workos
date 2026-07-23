@@ -163,6 +163,11 @@ interface SalesLeafRow {
 }
 
 const BASE_FIELDS = ['modified', 'creation'];
+// Segmentation dimensions carried by both Frappe CRM (CRM Lead/Deal/Organization) and native
+// ERPNext (Customer). Read everywhere so pipeline can be sliced by segment, not just totalled.
+const SEGMENT_FIELDS = ['industry', 'territory'];
+// Size and revenue exist on the CRM doctypes only — native Customer has neither.
+const FIRMOGRAPHIC_FIELDS = ['no_of_employees', 'annual_revenue'];
 const STATUS_FIELDS = ['status', ...BASE_FIELDS];
 const SUBMITTABLE_FIELDS = ['docstatus', ...BASE_FIELDS];
 const SUBMITTABLE_STATUS_FIELDS = ['status', ...SUBMITTABLE_FIELDS];
@@ -189,15 +194,23 @@ function unsupported(key: string, label: string, level1Label: string, branchLabe
 const MAPPINGS: MappingDefinition[] = [
   // Customers & Accounts
   mapping('sales_accounts_accounts', 'Accounts', 'Customers & Accounts', 'Accounts', ['Customer'], [
-    { doctype: 'Customer', fields: ['customer_name', 'customer_group', 'territory', 'customer_type', ...BASE_FIELDS] },
+    { doctype: 'Customer', fields: ['customer_name', 'customer_group', 'territory', 'customer_type', 'industry', 'market_segment', ...BASE_FIELDS] },
   ]),
   mapping('sales_accounts_contacts', 'contacts', 'Customers & Accounts', 'contacts', ['Contact'], [
     { doctype: 'Contact', fields: ['first_name', 'last_name', 'email_id', 'phone', 'company_name', ...BASE_FIELDS] },
   ]),
-  unsupported('sales_accounts_icp_segments', 'ICP segments', 'Customers & Accounts', 'ICP segments', 'ICP segmentation is a strategic construct not represented as a WorkOS doctype.'),
+  // ICP is derived from firmographics, not read from a stored tier: CRM Organization carries the
+  // prospect-pool shape (industry/size/revenue/territory) and Customer the won-account shape
+  // (industry/market_segment/customer_group/territory). Both doctypes and every field below were
+  // verified present on a live tenant — a field the site rejects fails the *whole* read, not just
+  // that column (see safeRead/normalizeErpNextReadError).
+  mapping('sales_accounts_icp_segments', 'ICP segments', 'Customers & Accounts', 'ICP segments', ['CRM Organization', 'Customer'], [
+    { doctype: 'CRM Organization', fields: ['organization_name', 'industry', 'territory', 'no_of_employees', 'annual_revenue', ...BASE_FIELDS] },
+    { doctype: 'Customer', fields: ['customer_name', 'customer_group', 'territory', 'industry', 'market_segment', ...BASE_FIELDS] },
+  ], 'partial', 'ICP fit is derived from firmographics present on organizations and customers; explicit ICP tiering is not a WorkOS doctype.'),
   unsupported('sales_accounts_account_plans', 'account plans', 'Customers & Accounts', 'account plans', 'Account plans are typically maintained in a CRM playbook tool, not WorkOS core.'),
   mapping('sales_accounts_customer_history', 'customer history', 'Customers & Accounts', 'customer history', ['Customer', 'Sales Order', 'Sales Invoice'], [
-    { doctype: 'Customer', fields: ['customer_name', 'customer_group', 'territory', ...BASE_FIELDS] },
+    { doctype: 'Customer', fields: ['customer_name', 'customer_group', 'territory', 'industry', 'market_segment', ...BASE_FIELDS] },
     { doctype: 'Sales Order', fields: ['customer', 'transaction_date', 'grand_total', ...SUBMITTABLE_STATUS_FIELDS], filters: BUYING_FILTER },
     { doctype: 'Sales Invoice', fields: ['customer', 'posting_date', 'grand_total', ...SUBMITTABLE_STATUS_FIELDS], filters: BUYING_FILTER },
   ], 'partial', 'Customer history is inferred from orders and invoices; full relationship timeline may live in CRM activity logs.'),
@@ -205,16 +218,16 @@ const MAPPINGS: MappingDefinition[] = [
 
   // Pipeline & Opportunities
   mapping('sales_pipeline_leads', 'Leads', 'Pipeline & Opportunities', 'Leads', ['CRM Lead'], [
-    { doctype: 'CRM Lead', fields: ['lead_name', 'status', 'source', 'organization', 'converted', ...BASE_FIELDS] },
+    { doctype: 'CRM Lead', fields: ['lead_name', 'status', 'source', 'organization', 'converted', ...SEGMENT_FIELDS, ...FIRMOGRAPHIC_FIELDS, ...BASE_FIELDS] },
   ]),
   mapping('sales_pipeline_opportunities', 'opportunities', 'Pipeline & Opportunities', 'opportunities', ['CRM Deal'], [
-    { doctype: 'CRM Deal', fields: ['organization', 'status', 'deal_value', 'probability', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['organization', 'status', 'deal_value', 'probability', ...SEGMENT_FIELDS, ...FIRMOGRAPHIC_FIELDS, ...BASE_FIELDS] },
   ]),
   mapping('sales_pipeline_deal_stages', 'deal stages', 'Pipeline & Opportunities', 'deal stages', ['CRM Deal'], [
-    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'probability', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'probability', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
   ], 'partial', 'Deal-stage view reuses CRM Deal.status (Link to CRM Deal Status); custom stage funnels beyond the configured statuses are not modeled.'),
   mapping('sales_pipeline_pipeline_coverage', 'pipeline coverage', 'Pipeline & Opportunities', 'pipeline coverage', ['CRM Deal'], [
-    { doctype: 'CRM Deal', fields: ['deal_value', 'expected_deal_value', 'status', 'probability', 'expected_closure_date', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['deal_value', 'expected_deal_value', 'status', 'probability', 'expected_closure_date', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
   ], 'partial', 'Pipeline coverage ratio is approximated from open CRM Deal value; it does not account for external quota targets.'),
   unsupported('sales_pipeline_demos', 'demos', 'Pipeline & Opportunities', 'demos', 'Demo scheduling/tracking is not a native WorkOS CRM doctype.'),
   mapping('sales_pipeline_proposals', 'proposals', 'Pipeline & Opportunities', 'proposals', ['Quotation'], [
@@ -248,18 +261,18 @@ const MAPPINGS: MappingDefinition[] = [
     { doctype: 'Sales Order', fields: ['customer', 'transaction_date', 'grand_total', ...SUBMITTABLE_STATUS_FIELDS], filters: BUYING_FILTER },
   ]),
   mapping('sales_performance_win_rate', 'win rate', 'Sales Performance', 'win rate', ['CRM Deal'], [
-    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'lost_reason', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'lost_reason', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
   ], 'partial', 'Win rate is derived from CRM Deal status counts (Won vs Lost) in the read window, not a lifetime aggregate.'),
   mapping('sales_performance_conversion', 'conversion', 'Sales Performance', 'conversion', ['CRM Lead', 'CRM Deal'], [
-    { doctype: 'CRM Lead', fields: ['lead_name', 'status', 'source', 'converted', ...BASE_FIELDS] },
-    { doctype: 'CRM Deal', fields: ['status', 'deal_value', ...BASE_FIELDS] },
+    { doctype: 'CRM Lead', fields: ['lead_name', 'status', 'source', 'converted', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
   ], 'partial', 'Lead-to-deal conversion is approximated by counting records in the read window, not a true cohort funnel.'),
   mapping('sales_performance_sales_cycle', 'sales cycle', 'Sales Performance', 'sales cycle', ['CRM Deal'], [
-    { doctype: 'CRM Deal', fields: ['expected_closure_date', 'closed_date', 'status', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['expected_closure_date', 'closed_date', 'status', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
   ], 'partial', 'Sales cycle length is approximated from CRM Deal creation/closing dates in the read window.'),
   unsupported('sales_performance_quota_attainment', 'quota attainment', 'Sales Performance', 'quota attainment', 'Quota targets are not stored in WorkOS; attainment cannot be computed without a target source.'),
   mapping('sales_performance_pipeline_health', 'pipeline health', 'Sales Performance', 'pipeline health', ['CRM Deal'], [
-    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'probability', ...BASE_FIELDS] },
+    { doctype: 'CRM Deal', fields: ['status', 'deal_value', 'probability', ...SEGMENT_FIELDS, ...BASE_FIELDS] },
   ], 'partial', 'Pipeline health rolls up open CRM Deal counts/value by status; it does not model velocity trends.'),
 
   // Sales Resources — no ERPNext enablement-asset doctype exists
@@ -280,6 +293,10 @@ const ACTION_DOCTYPES_BY_MAPPING: Record<string, Array<{ doctype: string; includ
   ],
   sales_accounts_contacts: [
     { doctype: 'Contact', listLabel: 'Open Contact list', newLabel: 'Create Contact' },
+  ],
+  sales_accounts_icp_segments: [
+    { doctype: 'CRM Organization', listLabel: 'Open Organization list', newLabel: 'Create Organization' },
+    { doctype: 'Customer', includeNew: false, listLabel: 'Open Customers' },
   ],
   sales_accounts_customer_history: [
     { doctype: 'Customer', includeNew: false, listLabel: 'Open Customers' },

@@ -139,9 +139,17 @@ Frappe CRM's `CRM Lead`/`CRM Deal` are distinct doctypes from ERPNext's native
 (`crm.permissions.org_hierarchy`, not the Role Permission Manager).
 
 WorkOS's Sales projection reads `CRM Lead`/`CRM Deal` for pipeline and
-lead/deal performance nodes, and continues to read native `Customer`,
-`Contact`, `Territory`, `Quotation`, `Sales Order`, and `Sales Invoice` for
-accounts and revenue (`apps/backend/src/domains/workos-erp/erpnextSales.ts`).
+lead/deal performance nodes, `CRM Organization` for the firmographic/ICP view,
+and continues to read native `Customer`, `Contact`, `Territory`, `Quotation`,
+`Sales Order`, and `Sales Invoice` for accounts and revenue
+(`apps/backend/src/domains/workos-erp/erpnextSales.ts`).
+
+Segmentation spans both models. `industry` and `territory` share a fieldname on
+each side; `no_of_employees` and `annual_revenue` are CRM-only; `market_segment`
+and `customer_group` are ERPNext-only. The ICP node reads `CRM Organization`
+(prospect pool) and `Customer` (won accounts) together so the two can be
+compared — it derives ICP fit from firmographics rather than reading a stored
+tier, which is why it is marked `partial` rather than fully supported.
 
 Frappe apps live in the **image layer**, not in the `sites`/`logs` volumes, so
 `crm` cannot be added at runtime — a `bench get-app` inside a running container

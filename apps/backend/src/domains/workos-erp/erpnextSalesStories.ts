@@ -307,6 +307,22 @@ function leadCompany(row: ErpNextGenericRecord): unknown {
   return row.company_name ?? row.organization;
 }
 
+// Segmentation accessors. `industry` and `territory` share a fieldname across Frappe CRM
+// (CRM Lead/Deal/Organization) and native ERPNext (Customer), so no aliasing is needed —
+// they exist as functions purely so call sites read consistently with the aliases above.
+function segIndustry(row: ErpNextGenericRecord): unknown {
+  return row.industry;
+}
+
+function segTerritory(row: ErpNextGenericRecord): unknown {
+  return row.territory;
+}
+
+// A Select with fixed bands ('1-10' … '1000+'), so it needs no bucketing.
+function segSize(row: ErpNextGenericRecord): unknown {
+  return row.no_of_employees;
+}
+
 function isOverdue(row: ErpNextGenericRecord): boolean {
   const expected = dateValue(dealClose(row));
   if (!expected) return false;
@@ -336,6 +352,39 @@ function breakdownFromCounts(id: string, title: string, counts: Map<string, numb
     items: [...counts.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([label, value]) => ({ label, value, tone: toneFor?.(label) })),
+  };
+}
+
+/**
+ * Two-dimensional breakdown rendered as composite `A · B` labels.
+ *
+ * SalesBreakdown.items is a flat list, so a genuine matrix cannot be expressed — and the
+ * frontend renders every item, so an uncapped cross-tab of two open-ended dimensions (industry
+ * has no fixed value set) would flood the panel. `limit` keeps the top cells and is load-bearing
+ * even where current tenant data happens to be small.
+ */
+function crossTabBreakdown(
+  id: string,
+  title: string,
+  rows: ErpNextGenericRecord[],
+  first: (row: ErpNextGenericRecord) => unknown,
+  second: (row: ErpNextGenericRecord) => unknown,
+  limit = 8,
+): SalesBreakdown {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const a = isMissing(first(row)) ? 'Missing' : String(first(row));
+    const b = isMissing(second(row)) ? 'Missing' : String(second(row));
+    const label = `${a} · ${b}`;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return {
+    id,
+    title,
+    items: [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([label, value]) => ({ label, value })),
   };
 }
 
@@ -499,6 +548,71 @@ function accountsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metric
   };
 }
 
+/**
+ * ICP fit, derived from firmographics rather than a stored tier.
+ *
+ * Reads both sides deliberately: `CRM Organization` is the prospect pool (industry, size band,
+ * revenue) and `Customer` is the won-account profile (industry, market segment, customer group).
+ * Comparing the two is what makes the node actionable — a tenant with no customers yet still
+ * gets a usable prospect view.
+ *
+ * ⚠️ Scoring asymmetry, deliberate: only **missing industry** is penalised. `territory` is left
+ * out of the score because Frappe CRM tenants routinely leave `CRM Territory` empty (verified:
+ * 0/7 organizations and 0/12 leads carried a territory on a live tenant). Penalising it the way
+ * `accountsStory` penalises native Customer territories would floor this node's health for every
+ * tenant that simply does not use CRM territories — a confident-looking wrong signal. The gap is
+ * surfaced as an insight instead. Do not "fix" this into consistency with accountsStory.
+ */
+function icpSegmentsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
+  const organizations = rowsFor(reads, 'CRM Organization');
+  const customers = rowsFor(reads, 'Customer');
+  const missingIndustry = organizations.filter(row => isMissing(segIndustry(row))).length;
+  const missingSize = organizations.filter(row => isMissing(segSize(row))).length;
+  const missingTerritory = organizations.filter(row => isMissing(segTerritory(row))).length;
+  const profiled = organizations.filter(row => !isMissing(segIndustry(row)) && !isMissing(segSize(row))).length;
+  const industryCount = countBy(organizations, segIndustry).size;
+
+  return {
+    templateKey: 'generic',
+    headline: `${organizations.length} organization(s) across ${industryCount} industr${industryCount === 1 ? 'y' : 'ies'}; ${profiled} fully profiled and ${customers.length} won account(s).`,
+    healthScore: score(organizations.length + customers.length, missingIndustry * 5 + missingSize * 3, mappingDef.status === 'partial'),
+    metricCards: [
+      metricCard('organizations', 'Organizations', organizations.length, 'CRM Organization records forming the prospect pool.'),
+      metricCard('won_accounts', 'Won accounts', customers.length, 'Customer records — the realised side of the ICP.'),
+      metricCard('profiled', 'Fully profiled', profiled, 'Organizations carrying both industry and size band.', profiled === organizations.length ? 'good' : 'neutral'),
+      metricCard('missing_industry', 'Missing industry', missingIndustry, 'Organizations with no industry set — the primary ICP dimension.', missingIndustry ? 'warning' : 'good'),
+    ],
+    breakdowns: [
+      breakdownFromCounts('org_industry', 'Industry mix (prospects)', countBy(organizations, segIndustry)),
+      breakdownFromCounts('org_size', 'Size band mix', countBy(organizations, segSize)),
+      crossTabBreakdown('icp_grid', 'ICP grid — industry · size', organizations, segIndustry, segSize),
+      breakdownFromCounts('org_territory', 'Territory mix', countBy(organizations, segTerritory)),
+      breakdownFromCounts('customer_industry', 'Industry mix (won accounts)', countBy(customers, segIndustry)),
+      breakdownFromCounts('customer_market_segment', 'Market segment mix', countBy(customers, 'market_segment')),
+    ],
+    insights: [
+      insight('icp_coverage', 'ICP coverage', `${organizations.length - missingIndustry} organization(s) carry an industry and ${organizations.length - missingSize} carry a size band.`),
+      ...(missingIndustry ? [insight('industry_gap', 'Industry gap', `${missingIndustry} organization(s) cannot be placed on the ICP grid without an industry.`, 'warning')] : []),
+      ...(missingTerritory ? [insight('territory_unused', 'Territory unused', `${missingTerritory} of ${organizations.length} organization(s) have no territory. CRM territories are optional, so this is informational and does not affect the score.`)] : []),
+      ...(customers.length === 0 ? [insight('no_won_accounts', 'No won accounts yet', 'No Customer records exist, so the prospect pool cannot be compared against realised wins.')] : []),
+    ],
+    evidence: evidence(reads, (definition, record) => ({
+      id: `${definition.doctype}:${record.name}`,
+      label: String(record.organization_name ?? record.customer_name ?? record.name),
+      sourceDoctype: definition.doctype,
+      sourceId: record.name,
+      detail: definition.doctype === 'CRM Organization' ? 'Prospect organization' : 'Won account',
+      attributes: compactAttributes([
+        !isMissing(segIndustry(record)) && { label: 'Industry', value: String(segIndustry(record)) },
+        !isMissing(segSize(record)) && { label: 'Size', value: String(segSize(record)) },
+        !isMissing(segTerritory(record)) && { label: 'Territory', value: String(segTerritory(record)) },
+        !isMissing(record.market_segment) && { label: 'Market segment', value: String(record.market_segment) },
+        !isMissing(record.customer_group) && { label: 'Group', value: String(record.customer_group) },
+      ]),
+    })),
+  };
+}
+
 function contactsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricStory {
   const contacts = rowsFor(reads, 'Contact');
   const missingEmail = contacts.filter(row => isMissing(row.email_id)).length;
@@ -593,6 +707,9 @@ function leadsStory(mappingDef: SalesStoryMapping, reads: ReadBundle): MetricSto
     breakdowns: [
       breakdownFromCounts('status', 'Lead status mix', countBy(leads, 'status', 'No status'), label => isProblemStatus(label) ? 'warning' : undefined),
       breakdownFromCounts('source', 'Lead source mix', countBy(leads, leadSource)),
+      breakdownFromCounts('industry', 'Industry mix', countBy(leads, segIndustry)),
+      breakdownFromCounts('size', 'Size band mix', countBy(leads, segSize)),
+      breakdownFromCounts('territory', 'Territory mix', countBy(leads, segTerritory)),
     ],
     insights: [
       insight('lead_pool', 'Lead pool quality', `${leads.length - missingCompany} lead(s) include company context and ${leads.length - missingSource} include source attribution.`),
@@ -633,6 +750,9 @@ function opportunityStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Met
     breakdowns: [
       breakdownFromCounts('stage', 'Stage mix', countBy(opportunities, dealStage, 'No stage')),
       breakdownFromCounts('status', 'Status mix', countBy(opportunities, 'status', 'No status'), label => isProblemStatus(label) ? 'warning' : undefined),
+      breakdownFromCounts('industry', 'Industry mix', countBy(opportunities, segIndustry)),
+      breakdownFromCounts('size', 'Size band mix', countBy(opportunities, segSize)),
+      breakdownFromCounts('territory', 'Territory mix', countBy(opportunities, segTerritory)),
     ],
     insights: [
       insight('pipeline', 'Pipeline shape', `${open} open opportunit${open === 1 ? 'y is' : 'ies are'} carrying ${money(sumNumber(opportunities.filter(row => isOpenStatus(row.status ?? row.sales_stage)), dealAmount))} in value.`),
@@ -824,6 +944,9 @@ function conversionStory(mappingDef: SalesStoryMapping, reads: ReadBundle): Metr
     breakdowns: [
       breakdownFromCounts('source', 'Lead source mix', countBy(leads, leadSource)),
       breakdownFromCounts('opp_status', 'Opportunity status mix', countBy(opportunities, row => row.status ?? row.sales_stage ?? 'No status')),
+      breakdownFromCounts('lead_industry', 'Lead industry mix', countBy(leads, segIndustry)),
+      breakdownFromCounts('opp_industry', 'Opportunity industry mix', countBy(opportunities, segIndustry)),
+      breakdownFromCounts('lead_territory', 'Lead territory mix', countBy(leads, segTerritory)),
     ],
     insights: [insight('caveat', 'Approximate funnel', 'This compares current-window Lead and Opportunity counts; it is not a cohort conversion model.')],
     evidence: defaultEvidence(reads),
@@ -869,6 +992,8 @@ function pipelineHealthStory(mappingDef: SalesStoryMapping, reads: ReadBundle): 
     breakdowns: [
       breakdownFromCounts('stage', 'Open pipeline by stage', countBy(open, dealStage, 'No stage')),
       breakdownFromCounts('status', 'Pipeline status mix', countBy(opportunities, row => row.status ?? row.sales_stage ?? 'No status'), label => isProblemStatus(label) ? 'warning' : undefined),
+      breakdownFromCounts('industry', 'Open pipeline by industry', countBy(open, segIndustry)),
+      breakdownFromCounts('territory', 'Open pipeline by territory', countBy(open, segTerritory)),
     ],
     insights: [insight('health', 'Pipeline health', `${open.length - unvalued} open opportunit${open.length - unvalued === 1 ? 'y has' : 'ies have'} value assigned.`)],
     evidence: opportunityEvidence(reads),
@@ -912,6 +1037,7 @@ function commercialEvidence(reads: ReadBundle): SalesEvidence[] {
 const STORY_BUILDERS: Record<string, StoryBuilder> = {
   sales_accounts_accounts: accountsStory,
   sales_accounts_contacts: contactsStory,
+  sales_accounts_icp_segments: icpSegmentsStory,
   sales_accounts_customer_history: customerHistoryStory,
   sales_pipeline_leads: leadsStory,
   sales_pipeline_opportunities: opportunityStory,
@@ -943,6 +1069,18 @@ const recommendationBuilders: Record<string, (rows: ErpNextGenericRecord[], read
   sales_pipeline_leads: rows => {
     const missingSource = rows.filter(row => isMissing(leadSource(row))).length;
     return missingSource ? [{ label: 'Fix lead attribution', reason: `${missingSource} lead(s) are missing source data.`, severity: 'warning' }] : [];
+  },
+  // Industry only. Territory is intentionally not recommended here — see icpSegmentsStory's
+  // scoring note: CRM territories are optional and routinely unused, so nagging about them
+  // would fire on every tenant forever.
+  sales_accounts_icp_segments: (_rows, reads) => {
+    const organizations = rowsFor(reads, 'CRM Organization');
+    const missingIndustry = organizations.filter(row => isMissing(segIndustry(row))).length;
+    const missingSize = organizations.filter(row => isMissing(segSize(row))).length;
+    const recommendations: SalesRecommendation[] = [];
+    if (missingIndustry) recommendations.push({ label: 'Set organization industries', reason: `${missingIndustry} organization(s) have no industry, so they cannot be placed on the ICP grid.`, severity: 'warning' });
+    if (missingSize) recommendations.push({ label: 'Set employee-count bands', reason: `${missingSize} organization(s) have no size band.`, severity: 'info' });
+    return recommendations;
   },
   sales_pipeline_opportunities: (_rows, reads) => opportunityRecommendations(reads),
   sales_pipeline_deal_stages: (_rows, reads) => opportunityRecommendations(reads),

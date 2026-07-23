@@ -193,6 +193,96 @@ function card(story, id) {
   assert.equal(story.healthScore < 70, true);
 }
 
+// Segment breakdowns on the pipeline nodes.
+{
+  const story = buildSalesMetricStory(mapping('sales_pipeline_leads', 'Leads'), [
+    read('CRM Lead', [
+      { name: 'LEAD-1', lead_name: 'Ada', status: 'Open', source: 'Facebook', industry: 'Technology', territory: 'West', no_of_employees: '11-50' },
+      { name: 'LEAD-2', lead_name: 'Bo', status: 'Open', source: 'Web', industry: 'Technology', territory: '', no_of_employees: '1-10' },
+      { name: 'LEAD-3', lead_name: 'Cy', status: 'Open', source: 'Web', industry: '', territory: '', no_of_employees: '' },
+    ]),
+  ]);
+
+  const industry = story.breakdowns.find(item => item.id === 'industry');
+  assert.equal(industry?.items.find(item => item.label === 'Technology')?.value, 2);
+  assert.equal(industry?.items.find(item => item.label === 'Missing')?.value, 1);
+  assert.equal(story.breakdowns.some(item => item.id === 'territory'), true);
+  assert.equal(story.breakdowns.some(item => item.id === 'size'), true);
+}
+
+// ICP segments: cross-tab formation and Missing fallback.
+{
+  const icp = mapping('sales_accounts_icp_segments', 'ICP segments', true);
+  const reads = [
+    read('CRM Organization', [
+      { name: 'ORG-1', organization_name: 'Acme', industry: 'Technology', territory: 'West', no_of_employees: '51-200', annual_revenue: 5000000 },
+      { name: 'ORG-2', organization_name: 'Beta', industry: 'Technology', territory: '', no_of_employees: '51-200', annual_revenue: 200000 },
+      { name: 'ORG-3', organization_name: 'Gamma', industry: '', territory: '', no_of_employees: '', annual_revenue: 0 },
+    ]),
+    read('Customer', [
+      { name: 'CUST-1', customer_name: 'Acme Robotics', customer_group: 'Enterprise', territory: 'West', industry: 'Technology', market_segment: 'Upper Income' },
+    ]),
+  ];
+  const story = buildSalesMetricStory(icp, reads);
+  const actions = buildSalesRecommendations(icp, reads);
+
+  assert.equal(card(story, 'organizations')?.value, 3);
+  assert.equal(card(story, 'won_accounts')?.value, 1);
+  assert.equal(card(story, 'profiled')?.value, 2);
+  assert.equal(card(story, 'missing_industry')?.value, 1);
+
+  const grid = story.breakdowns.find(item => item.id === 'icp_grid');
+  assert.equal(grid?.items.find(item => item.label === 'Technology · 51-200')?.value, 2);
+  // Unset dimensions must fall back to Missing, not be dropped — otherwise the grid
+  // silently under-reports its own coverage.
+  assert.equal(grid?.items.some(item => item.label === 'Missing · Missing'), true);
+  assert.equal(story.breakdowns.some(item => item.id === 'customer_market_segment'), true);
+  assert.equal(actions.some(action => action.label === 'Set organization industries'), true);
+}
+
+// The real tenant shape (verified 2026-07-22 against erp-asd-g9bi.localhost): organizations
+// fully carry industry and size, NO organization has a territory, and there are no Customer
+// rows at all. Territory must not be scored, or every tenant that simply does not use CRM
+// territories reads as unhealthy.
+//
+// `territory: null` is deliberate — Frappe returns null, not '', for an unset Link field, and
+// Frappe treats the two as distinct. Asserting against '' here would pass while production
+// silently behaved differently.
+{
+  const icp = mapping('sales_accounts_icp_segments', 'ICP segments', true);
+  const reads = [
+    read('CRM Organization', [
+      { name: 'ORG-1', organization_name: 'Acme', industry: 'Technology', territory: null, no_of_employees: '1-10', annual_revenue: 100000 },
+      { name: 'ORG-2', organization_name: 'Beta', industry: 'Defense', territory: null, no_of_employees: '1-10', annual_revenue: 90000 },
+    ]),
+    read('Customer', []),
+  ];
+  const story = buildSalesMetricStory(icp, reads);
+  const actions = buildSalesRecommendations(icp, reads);
+
+  assert.equal(card(story, 'missing_industry')?.value, 0);
+  assert.equal(card(story, 'won_accounts')?.value, 0);
+  // Only the 'partial' penalty applies — no territory penalty.
+  assert.equal(story.healthScore, 82);
+  // The territory breakdown still renders, entirely Missing, rather than vanishing.
+  const territory = story.breakdowns.find(item => item.id === 'org_territory');
+  assert.equal(territory?.items.length, 1);
+  assert.equal(territory?.items[0].label, 'Missing');
+  assert.equal(story.insights.some(item => item.id === 'territory_unused'), true);
+  assert.equal(story.insights.some(item => item.id === 'no_won_accounts'), true);
+  assert.equal(actions.some(action => action.label === 'Set organization industries'), false);
+}
+
+// Both doctypes empty must not throw.
+{
+  const icp = mapping('sales_accounts_icp_segments', 'ICP segments', true);
+  const story = buildSalesMetricStory(icp, [read('CRM Organization', []), read('Customer', [])]);
+
+  assert.equal(card(story, 'organizations')?.value, 0);
+  assert.equal(story.breakdowns.find(item => item.id === 'icp_grid')?.items.length, 0);
+  assert.equal(story.evidence.length, 0);
+}
+
 // Regression guard for the silent-empty-dashboard failure mode.
 //
 // The story builders look rows up by doctype *string* (`rowsFor(reads, 'CRM
