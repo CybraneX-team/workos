@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import UniverseCanvas from '../three-universe/UniverseCanvas';
 import { useUniverseGraph } from '../data/universeGraph';
 import { useAuth } from '../lib/auth';
@@ -15,7 +15,6 @@ import CreateDepartmentPanel from '../components/CreateDepartmentPanel';
 import CompanyPlanet3DView from '../components/CompanyPlanet3DView';
 import { EXPAND_SETTLE_MS } from '../lib/planetRootAnimation';
 import { CompanyPlanetSidePanel } from '../components/CompanyPlanetSidePanel';
-import { AddReferenceNodePanel } from '../components/AddReferenceNodePanel';
 import {
   getRoleLabel,
   getPlanetPathLabels,
@@ -26,14 +25,12 @@ import {
 } from '../data/companyPlanetRoots';
 import {
   createReferenceCompany,
-  createReferenceCompanyNode,
   deleteReferenceCompany,
   getReferenceCompany,
   refreshReferenceCompany,
   referenceCompanyDetailToPlanetContext,
   pendingReferenceCompanyToPlanetContext,
   type ReferenceCompany,
-  type CreateReferenceCompanyNodeInput,
 } from '../lib/db/referenceCompanies';
 import type { ReferenceCompanyJob } from '../data/companyPlanetRoots';
 import { OpenWorkspaceCue } from '../components/OpenWorkspaceCue';
@@ -56,6 +53,7 @@ import { usePolytopeStore } from '../lib/usePolytopeStore';
 import type { UExternalNode, UInternalNode } from '../lib/usePolytopeStore';
 import { ActionNodeWorkspace } from '../components/workspace/ActionNodeWorkspace';
 import { DragWorkspaceOverlay } from '../components/workspace/DragWorkspaceOverlay';
+import { NodeChatPanel } from '../components/planet/NodeChatPanel';
 import { CompanyTagDropdown } from '../components/planet/CompanyTagDropdown';
 import type { CompanyTag } from '../lib/useSavedWorkflows';
 import { useVoice } from '../context/VoiceContext';
@@ -176,6 +174,8 @@ export default function Universe3DPage() {
   const openWorkspacePendingRef = useRef(false);
   const twinWorkspaceTimerRef = useRef<number | null>(null);
   const [workspaceEntryContext, setWorkspaceEntryContext] = useState<WorkspaceEntryContext | null>(null);
+  const [isNarrativeMode, setIsNarrativeMode] = useState(false);
+  const [exitNarrativeTrigger, setExitNarrativeTrigger] = useState(0);
 
   const clearTwinWorkspaceTimers = useCallback(() => {
     if (twinWorkspaceTimerRef.current != null) {
@@ -283,8 +283,6 @@ export default function Universe3DPage() {
   const polytopeDraftDeptScreenPosRef = useRef<{ x: number; y: number } | null>(null);
   const [polytopeDraftInternalNode, setPolytopeDraftInternalNode] = useState<{ deptId: string; node: UInternalNode } | null>(null);
   const polytopeDraftInternalNodeScreenPosRef = useRef<{ x: number; y: number } | null>(null);
-  // IDT manual-node add inside the root-polytope drill view (mirrors BDT's contextual add).
-  const [showRootPolytopeAddNode, setShowRootPolytopeAddNode] = useState(false);
   const [polytopeDraftMember] = useState<{ deptId: string; nodeId: string; member: any } | null>(null);
   const polytopeDraftMemberScreenPosRef = useRef<{ x: number; y: number } | null>(null);
   // Incremented on draft create/cancel to fly camera back to overview
@@ -410,6 +408,7 @@ export default function Universe3DPage() {
     setRootPolytopeInternalPath([]);
     setRootPolytopeBackStep(0);
     setActionWorkspace(null);
+    setBranchChatPanel(null);
   }, []);
 
   // ── Company planet root systems (Industry OS) ──
@@ -470,12 +469,6 @@ export default function Universe3DPage() {
     () => rootPolytopeDepts.find(d => d.id === rootPolytopeDeptId && d.domain !== 'inactive') ?? null,
     [rootPolytopeDepts, rootPolytopeDeptId],
   );
-
-  // Close the contextual add-node panel whenever the drill level or focused root
-  // changes, so it never lingers with a stale parent target.
-  useEffect(() => {
-    setShowRootPolytopeAddNode(false);
-  }, [rootPolytopeDeptId, rootPolytopeInternalPath.length]);
 
   const resolvePlanetRole = useCallback((): UserPlanetRole => {
     const role = localStorage.getItem('active_role');
@@ -565,6 +558,7 @@ export default function Universe3DPage() {
     setInsideRootPolytope(false);
     setRootPolytopeInternalPath([]);
     setRootPolytopeBackStep(0);
+    setBranchChatPanel(null);
     if (exitingRootId) {
       setZoomOutFromRootId(exitingRootId);
       setIsZoomingOut(true);
@@ -790,6 +784,33 @@ export default function Universe3DPage() {
     branchId: string;
     actionId: string;
   } | null>(null);
+
+  // ── IDT root-focus branch chat panel (opened by clicking a branch card) ────
+  const [branchChatPanel, setBranchChatPanel] = useState<{ rootId: string; branchId: string } | null>(null);
+  const [delayedBranchChatPanel, setDelayedBranchChatPanel] = useState(branchChatPanel);
+
+  useEffect(() => {
+    if (branchChatPanel) {
+      setDelayedBranchChatPanel(branchChatPanel);
+    } else {
+      const t = setTimeout(() => setDelayedBranchChatPanel(null), 550);
+      return () => clearTimeout(t);
+    }
+  }, [branchChatPanel]);
+
+  const handleBranchCardSelect = useCallback((branchId: string) => {
+    if (!activeRootDept) return;
+    setBranchChatPanel({ rootId: activeRootDept.id, branchId });
+  }, [activeRootDept]);
+
+  const resolvedChatNodes = useMemo(() => {
+    if (!delayedBranchChatPanel || !planetContext) return null;
+    const root = planetContext.roots.find(r => r.id === delayedBranchChatPanel.rootId);
+    if (!root) return null;
+    const branch = root.branches.find(b => b.id === delayedBranchChatPanel.branchId);
+    if (!branch) return null;
+    return { root, branch };
+  }, [delayedBranchChatPanel, planetContext]);
 
   const [delayedActionWorkspace, setDelayedActionWorkspace] = useState(actionWorkspace);
 
@@ -1072,19 +1093,6 @@ export default function Universe3DPage() {
         : prev);
     }
   }, [appendReferenceCompany, canManageReferenceCompanies, planetContext, refreshUniverse]);
-
-  const handleCreateReferenceNode = useCallback(async (input: CreateReferenceCompanyNodeInput) => {
-    const referenceCompanyId = planetContext?.referenceCompanyId;
-    if (!referenceCompanyId || !canManageReferenceCompanies) return;
-    await createReferenceCompanyNode(referenceCompanyId, input);
-    // Re-fetch the planet so the new node renders everywhere: side panel, 2D/3D,
-    // and the root-polytope drill view (which is derived from planetContext.roots).
-    const detail = await getReferenceCompany(referenceCompanyId);
-    const ctx = referenceCompanyDetailToPlanetContext(detail, planetContext.role);
-    setPlanetContext(ctx);
-    setRootPolytopeDepts(rootsToPolytopeDepartments(ctx.roots));
-    refreshUniverse();
-  }, [canManageReferenceCompanies, planetContext, refreshUniverse]);
 
   const handleDeleteReferenceCompany = useCallback(async () => {
     if (!planetContext?.referenceCompanyId || !canManageReferenceCompanies) return;
@@ -1610,22 +1618,18 @@ export default function Universe3DPage() {
             onDrillInto={() => { }}
             onDrillBack={() => { }}
             onActionNodeClick={handleActionNodeClick}
+            onCardSelect={handleBranchCardSelect}
+            userId={user?.id ?? profile?.id}
             industryColor={planetIndustryColor}
             zoomOutFromRootId={zoomOutFromRootId}
             onZoomOutComplete={handleZoomOutComplete}
-            
-            // Unified BDT internal nodes props
+            onNarrativeChange={setIsNarrativeMode}
+            exitNarrativeTrigger={exitNarrativeTrigger}
+
+            // IDT root-focus space props (independent from BDT)
             insideRootPolytope={insideRootPolytope}
             activeRootDept={activeRootDept}
             rootPolytopeInternalPath={rootPolytopeInternalPath}
-            onInternalPathChange={(path) => {
-              setRootPolytopeInternalPath(path);
-              if (path.length === 2) {
-                handleActionNodeClick(activeRootDept!.id, path[0], path[1]);
-              } else {
-                setActionWorkspace(null);
-              }
-            }}
             rootPolytopeBackStep={rootPolytopeBackStep}
             rootSwitchKey={rootPolytopeSwitchKey}
             polytopeEntryMode={polytopeEntryMode}
@@ -1656,76 +1660,44 @@ export default function Universe3DPage() {
         />
       )}
 
-      {/* Bottom-left column: hidden when create modal active, drafting, or action workspace open */}
+      {/* Overlay column: hidden when create modal active, drafting, or action workspace open */}
       {!createModal && !polytopeDraftDept && !polytopeDraftInternalNode && !actionWorkspace && (
         <>
           {insideRootPolytope && activeRootDept ? (
             <div
-              className="absolute bottom-6 left-4 z-20 flex flex-col items-start gap-3"
+              className="absolute top-20 left-6 z-20 flex flex-col items-start gap-3"
               style={{
                 opacity: isTwinWorkspaceActive(twinWorkspacePhase) ? 0 : 1,
                 pointerEvents: isTwinWorkspaceActive(twinWorkspacePhase) ? 'none' : 'auto',
-                transform: isTwinWorkspaceActive(twinWorkspacePhase) ? 'translateY(8px)' : 'translateY(0)',
+                transform: isTwinWorkspaceActive(twinWorkspacePhase) ? 'translateY(-8px)' : 'translateY(0)',
                 transition: 'opacity 0.4s ease, transform 0.4s ease',
               }}
             >
-              <PolytopeSidePanel
-                departments={[activeRootDept]}
-                selectedDeptId={activeRootDept.id}
-                onDeptSelect={() => handleExitRootPolytope()}
-                selectedInternalPath={rootPolytopeInternalPath}
-                onInternalBack={() => setRootPolytopeBackStep(c => c + 1)}
-                onExitToSubdomain={handleExitRootPolytope}
-                exitToSubdomainLabel="2D root map"
-                onNodeSelect={(path) => {
-                  setRootPolytopeInternalPath(path);
-                  if (path.length === 2) {
-                    handleActionNodeClick(activeRootDept.id, path[0], path[1]);
+              {/* IDT root-focus breadcrumb — cards are the navigation now, no BDT list panel here. */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isNarrativeMode) {
+                    setExitNarrativeTrigger(c => c + 1);
+                    setIsNarrativeMode(false);
+                  } else {
+                    handleExitRootPolytope();
                   }
                 }}
-                // Root polytope is a derived, read-only view of planet/BDT roots
-                // (no store or write path) — suppress edit affordances like "Add Node".
-                canEdit={false}
-                canCreateDepartment={false}
-              />
-
-              {/* IDT contextual add-node: only on reference-company planets, for admins,
-                  and only while drilled into a root (branch level) or branch (action level). */}
-              {canManageReferenceCompanies && planetContext?.referenceCompanyId && rootPolytopeInternalPath.length < 2 && (() => {
-                const atBranchLevel = rootPolytopeInternalPath.length === 0;
-                const parentBranch = atBranchLevel
-                  ? null
-                  : activeRootDept.internalNodes.find(n => n.id === rootPolytopeInternalPath[0]) ?? null;
-                const target = atBranchLevel
-                  ? { nodeKind: 'branch' as const, parentNodeId: activeRootDept.id, parentLabel: activeRootDept.label }
-                  : parentBranch
-                    ? { nodeKind: 'action' as const, parentNodeId: parentBranch.id, parentLabel: parentBranch.label }
-                    : null;
-                if (!target) return null;
-                return showRootPolytopeAddNode ? (
-                  <AddReferenceNodePanel
-                    key={`${target.nodeKind}-${target.parentNodeId}`}
-                    nodeKind={target.nodeKind}
-                    parentNodeId={target.parentNodeId}
-                    parentLabel={target.parentLabel}
-                    accentColor={planetIndustryColor}
-                    onClose={() => setShowRootPolytopeAddNode(false)}
-                    onCreate={async (input) => {
-                      await handleCreateReferenceNode(input);
-                    }}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowRootPolytopeAddNode(true)}
-                    className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-all"
-                    style={{ width: '196px', background: `${planetIndustryColor}1f`, border: `1px solid ${planetIndustryColor}44`, color: planetIndustryColor }}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add {target.nodeKind === 'branch' ? 'node' : 'action'}
-                  </button>
-                );
-              })()}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-all hover:brightness-110 shadow-lg"
+                style={{
+                  background: 'rgba(4,4,12,0.85)',
+                  border: `1px solid ${activeRootDept.color ?? planetIndustryColor}55`,
+                  color: '#fff',
+                  backdropFilter: 'blur(12px)',
+                }}
+              >
+                <ArrowLeft className="w-3.5 h-3.5" style={{ color: activeRootDept.color ?? planetIndustryColor }} />
+                <span style={{ color: activeRootDept.color ?? planetIndustryColor }}>{activeRootDept.label}</span>
+                <span className="text-white/30">
+                  {isNarrativeMode ? ' · back to branches' : ' · back to roots'}
+                </span>
+              </button>
             </div>
           ) : insidePlanetRoots && planetContext ? (
             <div
@@ -2016,6 +1988,21 @@ export default function Universe3DPage() {
           context={planetContext}
           isOpen={!!actionWorkspace}
           onClose={handleCloseActionWorkspace}
+        />
+      )}
+
+      {/* ── IDT Root-Focus Node Chat Panel — opened from a branch card ──
+          Keyed by root only: switching branches within the same root reuses
+          the panel's own internal conversation/notes state; opening a
+          different root's chat gets a fresh session. */}
+      {resolvedChatNodes && planetContext && (
+        <NodeChatPanel
+          key={delayedBranchChatPanel?.rootId}
+          rootNode={resolvedChatNodes.root}
+          initialBranchId={resolvedChatNodes.branch.id}
+          context={planetContext}
+          isOpen={!!branchChatPanel}
+          onClose={() => setBranchChatPanel(null)}
         />
       )}
 
