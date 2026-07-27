@@ -1,9 +1,9 @@
 # Meta Ads operating loop, Decision Inbox, and Campaign Studio
 
-Last verified: 2026-07-16. Start with the read architecture in
-[`docs/architecture/meta-ads-operating-loop.md`](../../../../docs/architecture/meta-ads-operating-loop.md)
+Last verified: 2026-07-22. Start with the read architecture in
+[`docs/architecture/meta-ads-operating-loop.md`](../../../../../docs/architecture/meta-ads-operating-loop.md)
 and the isolated writer architecture in
-[`docs/architecture/meta-ads-campaign-studio.md`](../../../../docs/architecture/meta-ads-campaign-studio.md).
+[`docs/architecture/meta-ads-campaign-studio.md`](../../../../../docs/architecture/meta-ads-campaign-studio.md).
 
 This backend-private domain owns read-only Meta history, resumable deep reports,
 deterministic findings, the durable Decision Inbox, experiment evaluation, and
@@ -90,10 +90,10 @@ and fixture-account operating data. The `disconnected` scenario deletes all
 Meta history, runs, and findings for that company. Fixtures are disabled when
 `NODE_ENV=production`.
 
-Follow [`docs/runbooks/meta-ads-decision-inbox.md`](../../../../docs/runbooks/meta-ads-decision-inbox.md)
+Follow [`docs/runbooks/meta-ads-decision-inbox.md`](../../../../../docs/runbooks/meta-ads-decision-inbox.md)
 for the continuous browser-to-result test.
 
-Follow [`docs/runbooks/meta-ads-campaign-studio.md`](../../../../docs/runbooks/meta-ads-campaign-studio.md)
+Follow [`docs/runbooks/meta-ads-campaign-studio.md`](../../../../../docs/runbooks/meta-ads-campaign-studio.md)
 for fake and live-sandbox authoring verification.
 
 ## Lead-form campaigns

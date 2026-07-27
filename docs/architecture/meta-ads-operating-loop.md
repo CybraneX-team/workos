@@ -1,6 +1,6 @@
 # Meta Ads operating loop and Decision Inbox
 
-Last verified: 2026-07-16.
+Last verified: 2026-07-22.
 
 This is the durable architecture map for the implemented Meta Ads product. It
 is a starting point for future agents, not permission to trust stale prose:
@@ -60,8 +60,10 @@ The active migrations are:
   recalculation after conversion-event changes.
 - `20260716120000_meta_ads_campaign_studio.sql` for the isolated authoring,
   approval, job, mapping, asset, and event model.
+- `20260722000000_meta_ads_lead_forms.sql` for Campaign Studio lead-form objects
+  and CRM lead-sync support.
 
-The matching numbered backend mirrors are `036`, `037`, `038`, and `039`. Keep
+The matching numbered backend mirrors are `036`, `037`, `038`, `039`, and `040`. Keep
 each pair byte identical.
 
 Core history:

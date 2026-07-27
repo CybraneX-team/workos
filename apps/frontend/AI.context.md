@@ -1,4 +1,9 @@
 Project Context: FounderOS — 3D Universe Integration
+
+> **Historical context note, not a current architecture or deployment runbook.**
+> Validate its implementation claims against `apps/frontend/AGENTS.md`, current source,
+> and `docs/runbooks/cloud-deploy.md` before acting on them.
+
 What is this project?
 FounderOS (now "WorkOS") is a SaaS platform for startup founders. The stack is React 19 + TypeScript + Vite + Tailwind CSS + Supabase (auth + Postgres DB).
 
@@ -118,4 +123,3 @@ How to run
 pnpm --filter frontend dev     # Vite dev server at localhost:5173
 pnpm --filter "frontend..." build   # production build (deps + tsc + vite)
 The /3d route is auth-guarded — you'll be redirected to /auth if not logged in.
-

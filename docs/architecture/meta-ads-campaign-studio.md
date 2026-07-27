@@ -123,6 +123,9 @@ adds brand kits, assets, versioned drafts, generation jobs, approvals, campaign
 jobs/steps, Meta mappings, and append-only events. Keep the two migration files
 byte-identical.
 
+Lead-form support additionally requires `20260722000000_meta_ads_lead_forms.sql`
+(backend mirror `040`); keep that pair byte-identical as well.
+
 Draft states are:
 
 ```text

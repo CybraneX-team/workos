@@ -1,5 +1,13 @@
 # Gemini Live API — Integration Reference
 
+> **Implementation status — security work required:** this document describes the
+> recommended ephemeral-token design. The current application Live hook instead
+> requests `/api/gemini/token`, whose backend implementation returns the configured
+> Gemini API key to an authenticated browser. That is not an ephemeral, constrained
+> token flow and must not be treated as compliant with the design below. Replace that
+> endpoint with real server-minted ephemeral tokens before relying on this guide as an
+> implementation reference. Do not put keys or token values in this document.
+
 A complete reference for building real-time bidirectional audio applications
 with the Google Gemini Live API. Distilled from production usage.
 

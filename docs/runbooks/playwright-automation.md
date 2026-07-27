@@ -34,6 +34,20 @@ Do not put every concern into one long browser test.
 
 A visual tour is not the primary correctness suite. It should reuse behavior already covered by narrower tests and prove that the complete presentation path remains navigable.
 
+## IDT Root Focus journey
+
+For the reference-company Root Focus UI, cover the boundaries rather than mocking a
+model response in the browser: create, edit, and delete a note; reload to confirm the
+same-browser local note persists; send a branch-chat question and render only the
+returned plain-text reply and allow-listed citation link; switch branches; then reload
+to confirm the chat session has cleared. Branch chat is chat-only, so this journey must
+not expect an action-workspace handoff or any IDT-data mutation.
+
+Use an authenticated disposable workspace with stored reference-company source data.
+The backend chat contract test owns authorization, source allow-listing, invalid IDs,
+and unavailable-model behavior; the browser test owns visible loading, error, retry,
+and safe-link behavior.
+
 ## Recommended workflow
 
 1. Read the nearest `AGENTS.md` and inspect existing Playwright configs and helpers.

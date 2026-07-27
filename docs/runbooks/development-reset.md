@@ -1,6 +1,6 @@
 # Guarded development reset runbook
 
-Last verified: 2026-07-13.
+Last verified: 2026-07-23.
 
 Scope: destructive reset of the configured shared Supabase development project and local `.localhost` Frappe sites only.
 

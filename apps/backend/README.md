@@ -79,6 +79,8 @@ pnpm --filter backend test:bdt
   `/api/integrations/meta/experiments/*`
 - Campaign Studio readiness, brand, asset, draft, approval, job, launch, and
   pause routes under `/api/integrations/meta/*`
+- `POST /api/reference-companies/:referenceCompanyId/chat` (authenticated,
+  source-grounded, read-only IDT branch chat)
 
 ## Local setup
 
@@ -104,6 +106,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f apps/frontend/supabase/migrations/20260715100000_meta_ads_configuration_recalculation.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f apps/frontend/supabase/migrations/20260716120000_meta_ads_campaign_studio.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f apps/frontend/supabase/migrations/20260722000000_meta_ads_lead_forms.sql
 ```
 
 4. Start the backend:

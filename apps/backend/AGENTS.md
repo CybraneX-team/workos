@@ -1,6 +1,6 @@
 # WorkOS backend guide
 
-Last verified: 2026-07-25.
+Last verified: 2026-07-27.
 
 This application is the WorkOS-side owner of the ERPNext integration. Read `../../docs/architecture/erpnext-control-plane.md` before changing ERP boundaries.
 
@@ -28,6 +28,8 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 - `src/routes/oidc.ts`: OIDC grant flow and idempotent clients keyed by company/environment/provider.
 - `src/lib/erpnextRoleMapping.ts`: WorkOS-to-Frappe role computation.
 - `src/domains/workos-erp/`: WorkOS projections and public ERP routes.
+- `src/routes/referenceCompanies.ts`: authenticated reference-company APIs,
+  including source-grounded, read-only IDT branch chat.
 - `src/domains/meta-ads/`: read-only Meta history, resumable deep reports,
   findings, Decision Inbox evaluation, and separately gated Campaign Studio
   drafts/approvals/jobs/browser APIs.
@@ -84,7 +86,9 @@ tree or any consumer of its stable keys.
 
 ## Gemini structured output: two traps
 
-`lib/gemini.ts` is the single place the backend calls Gemini. Both traps below were
+`lib/gemini.ts` is the shared helper for structured Gemini calls such as IDT chat and
+twin generation. Some domain-specific integrations currently call Gemini directly;
+do not infer from this guide that it is the only Gemini call path. Both traps below were
 live failures, not theory — they produced `reference_companies.status='failed'` with
 zero nodes, which the planet UI rendered as an empty "ROOT SYSTEMS" list.
 

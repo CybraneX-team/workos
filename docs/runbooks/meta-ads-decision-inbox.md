@@ -1,6 +1,6 @@
 # Local Meta Ads Decision Inbox verification
 
-Last verified: 2026-07-15.
+Last verified: 2026-07-22.
 
 Use this runbook to exercise one continuous experiment from deterministic
 finding through frozen result. It is development-only and deliberately uses a
@@ -22,7 +22,7 @@ pg_dump "$DATABASE_URL" --format=custom \
   --file="/tmp/cybranex-meta-ads-backups/pre-decision-inbox-$(date -u +%Y%m%dT%H%M%SZ).dump"
 ```
 
-Apply the active timestamped migrations in order:
+Apply the minimum timestamped migrations for the Decision Inbox in order:
 
 ```sh
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
@@ -43,6 +43,10 @@ cmp apps/backend/db/migrations/037_meta_ads_decision_inbox.sql \
 cmp apps/backend/db/migrations/038_meta_ads_configuration_recalculation.sql \
   apps/frontend/supabase/migrations/20260715100000_meta_ads_configuration_recalculation.sql
 ```
+
+Campaign Studio and lead-form support have later additive migrations (`039`/`040`).
+Apply them through `meta-ads-campaign-studio.md` when that surface is enabled; do not
+mistake this focused Decision Inbox sequence for the complete current migration set.
 
 ## 2. Prove the disposable automated path
 

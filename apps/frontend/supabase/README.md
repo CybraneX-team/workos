@@ -36,10 +36,11 @@ The current Meta Ads additions are:
 - `20260715090000_meta_ads_decision_inbox.sql`
 - `20260715100000_meta_ads_configuration_recalculation.sql`
 - `20260716120000_meta_ads_campaign_studio.sql`
+- `20260722000000_meta_ads_lead_forms.sql`
 
 Their backend mirrors are `036_meta_ads_operating_loop.sql` and
 `037_meta_ads_decision_inbox.sql`, `038_meta_ads_configuration_recalculation.sql`,
-and `039_meta_ads_campaign_studio.sql`; keep each pair byte-identical. These
+`039_meta_ads_campaign_studio.sql`, and `040_meta_ads_lead_forms.sql`; keep each pair byte-identical. These
 migrations are additive and safe to re-run, but a shared-database backup is
 still required before applying them.
 

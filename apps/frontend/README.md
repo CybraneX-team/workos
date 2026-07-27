@@ -1,6 +1,6 @@
 # WorkOS frontend
 
-Last verified: 2026-07-15.
+Last verified: 2026-07-27.
 
 React 19 and Vite browser application for WorkOS. It uses Supabase for
 authentication and calls the authenticated WorkOS backend for business APIs.
@@ -61,6 +61,16 @@ pnpm --filter frontend lint
 
 The frontend must not receive integration credentials, service-role keys, raw
 provider errors, or internal ERPNext control-plane URLs.
+
+## IDT Root Focus
+
+The 3D reference-company Root Focus UI is the active IDT exploration surface.
+Its notes are browser-local per user and root; branch-chat history lives only for
+the current page session. The authenticated backend supplies the model with the
+selected stored root, branch, actions, and attached sources, and returns only
+server-allow-listed citations. Branch chat is explanatory only: it does not modify
+IDT data or open an action workspace. See
+[`docs/architecture/idt-root-focus-chat.md`](../../docs/architecture/idt-root-focus-chat.md).
 
 ## Meta Ads operating loop
 

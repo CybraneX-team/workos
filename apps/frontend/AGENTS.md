@@ -1,52 +1,29 @@
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+# Frontend guide
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+Read the repository-root `AGENTS.md` first. It defines when CodeGraph is available:
+use it only when this repository has a `.codegraph/` directory and an available tool or
+CLI; otherwise use the normal source, test, and runbook workflow. Do not rely on the
+former environment-specific `code-review-graph` tool names.
 
-### When to use graph tools FIRST
+## Product boundaries
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+- The browser uses authenticated backend APIs and must never receive provider tokens,
+  service-role keys, raw provider errors, or ERPNext control-plane URLs.
+- IDT Root Focus notes are browser-local; branch chat is session-only, grounded in
+  stored server data, and cannot edit IDT data or open an action workspace. Read
+  `../../docs/architecture/idt-root-focus-chat.md` before changing it.
+- Meta Ads operating-loop and Campaign Studio behavior is documented in
+  `../../docs/architecture/meta-ads-operating-loop.md` and
+  `../../docs/architecture/meta-ads-campaign-studio.md`.
 
 ## Playwright and E2E automation
 
-Before adding or materially changing Playwright automation, read
-`../../docs/runbooks/playwright-automation.md`. It documents this repository's
-test safety gates, disposable fixture lifecycle, isolated server setup,
-deterministic state strategy, 3D navigation races, worker interference, and
-recordable-tour workflow.
+Before adding or materially changing browser automation, read
+`../../docs/runbooks/playwright-automation.md`. It documents fixture safety,
+isolated server setup, deterministic state, 3D navigation races, worker interference,
+and recordable-tour workflow.
 
-For Paid Acquisition campaign authoring, read
-`../../docs/architecture/meta-ads-campaign-studio.md` and
+For Paid Acquisition campaign authoring, also read
 `../../docs/runbooks/meta-ads-campaign-studio.md`. Keep approval/execute controls
-permission-derived and never expose Meta tokens, raw Graph errors, or private
-asset paths to the browser.
+permission-derived and never expose Meta tokens, raw Graph errors, or private asset
+paths to the browser.
