@@ -66,6 +66,22 @@ export interface ReferenceCompanyDetail {
   classifyJob: ReferenceCompanyJob | null;
 }
 
+export interface IdtChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export interface IdtChatCitation {
+  id: string;
+  title: string;
+  url: string;
+}
+
+export interface IdtChatReply {
+  reply: string;
+  citations: IdtChatCitation[];
+}
+
 export async function listReferenceCompanies(subdomainId?: string): Promise<ReferenceCompany[]> {
   const suffix = subdomainId ? `?subdomainId=${encodeURIComponent(subdomainId)}` : '';
   const { companies } = await api.get<{ companies: ReferenceCompany[] }>(`/api/reference-companies${suffix}`);
@@ -86,6 +102,13 @@ export async function createReferenceCompany(input: {
 
 export async function getReferenceCompany(id: string): Promise<ReferenceCompanyDetail> {
   return api.get<ReferenceCompanyDetail>(`/api/reference-companies/${id}`);
+}
+
+export async function chatWithReferenceCompany(
+  referenceCompanyId: string,
+  input: { rootId: string; branchId: string; messages: IdtChatMessage[] },
+): Promise<IdtChatReply> {
+  return api.post<IdtChatReply>(`/api/reference-companies/${referenceCompanyId}/chat`, input);
 }
 
 export async function refreshReferenceCompany(id: string): Promise<{ company: ReferenceCompany; job: ReferenceCompanyJob }> {

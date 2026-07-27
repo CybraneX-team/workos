@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import type { PointerEvent as RPointerEvent } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
+import type { ThreeEvent } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { gsap } from 'gsap';
@@ -8,6 +9,9 @@ import { BookOpen, BarChart2, Activity, Users, FileText, Target, SquarePen, Tras
 
 import type { PlanetRootNode, PlanetBranchNode, PlanetBranchNodeType } from '../../data/companyPlanetRoots';
 import { PLANET_BRANCH_TYPE_LABELS } from '../../data/companyPlanetRoots';
+
+/* React Three Fiber intentionally mutates Three.js objects inside useFrame. */
+/* eslint-disable react-hooks/immutability, react-hooks/set-state-in-effect */
 
 /**
  * IDT-only root-focus visualization: the selected root sits at the center like a
@@ -58,11 +62,11 @@ export interface UserRootNote {
   updatedAt: number;
 }
 
-export function getUserNotesStorageKey(userId: string, rootId: string): string {
+function getUserNotesStorageKey(userId: string, rootId: string): string {
   return `idt_user_root_notes_v3:${userId}:${rootId}`;
 }
 
-export function loadUserRootNotes(userId: string, rootId: string): UserRootNote[] {
+function loadUserRootNotes(userId: string, rootId: string): UserRootNote[] {
   try {
     const raw = localStorage.getItem(getUserNotesStorageKey(userId, rootId));
     return raw ? (JSON.parse(raw) as UserRootNote[]) : [];
@@ -71,7 +75,7 @@ export function loadUserRootNotes(userId: string, rootId: string): UserRootNote[
   }
 }
 
-export function saveUserRootNotes(userId: string, rootId: string, notes: UserRootNote[]): void {
+function saveUserRootNotes(userId: string, rootId: string, notes: UserRootNote[]): void {
   try {
     localStorage.setItem(getUserNotesStorageKey(userId, rootId), JSON.stringify(notes));
   } catch {
@@ -203,13 +207,13 @@ function WaveLine({ rootPos, cardPos, color, expandProgressRef, onClick, noteToo
       <primitive object={lineObj} />
       <mesh
         ref={hitMeshRef}
-        onPointerOver={(e: any) => {
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
           e.stopPropagation();
           setHovered(true);
           setCursorPos({ x: e.clientX, y: e.clientY });
           document.body.style.cursor = 'pointer';
         }}
-        onPointerMove={(e: any) => {
+        onPointerMove={(e: ThreeEvent<PointerEvent>) => {
           setCursorPos({ x: e.clientX, y: e.clientY });
         }}
         onPointerOut={() => {
@@ -217,7 +221,7 @@ function WaveLine({ rootPos, cardPos, color, expandProgressRef, onClick, noteToo
           setCursorPos(null);
           document.body.style.cursor = 'auto';
         }}
-        onClick={(e: any) => {
+        onClick={(e: ThreeEvent<MouseEvent>) => {
           e.stopPropagation();
           onClick?.();
         }}
@@ -1234,7 +1238,7 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
                     marginTop: 4,
                   }}
                 >
-                  Note · tap to edit · drag to move
+                  Note · saved on this device · tap to edit · drag to move
                 </div>
               </div>
             </>

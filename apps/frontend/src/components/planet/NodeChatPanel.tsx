@@ -7,14 +7,15 @@ import type {
   PlanetRootNode, PlanetBranchNode, CompanyPlanetContext, PlanetBranchNodeType, PlanetCitation,
 } from '../../data/companyPlanetRoots';
 import responseChatIconSvg from '../../assets/response-chat-icon.svg';
+import { chatWithReferenceCompany, type IdtChatCitation } from '../../lib/db/referenceCompanies';
 
 /**
  * IDT-only floating chat modal opened from a root-focus branch card. Independent
  * from ActionNodeWorkspace/WorkspaceAgentSurface (kept as small local copies of
  * the same visual language) so this panel can evolve without touching either.
  *
- * No backend calls: replies are generated locally from the branch/root JSON
- * already loaded on the client (summary, actions, hints, sources).
+ * Replies come from the authenticated, source-grounded reference-company API.
+ * Conversations stay in page memory only; they are not stored server-side.
  */
 
 const ACCENT_FALLBACK = '#c1aeff';
@@ -32,7 +33,7 @@ const NODE_TYPE_META: Record<PlanetBranchNodeType, { label: string; icon: React.
   decision: { label: 'Decision', icon: Target },
 };
 
-type ChatMsg = { id: string; role: 'user' | 'ai'; text: string; ts: number };
+type ChatMsg = { id: string; role: 'user' | 'ai'; text: string; ts: number; citations?: IdtChatCitation[] };
 type ContextHit = { source: string; label: string; text: string };
 
 function pct(value?: number | null): string | null {
@@ -43,61 +44,6 @@ function pct(value?: number | null): string | null {
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
-}
-
-function buildOpeningMessage(root: PlanetRootNode, branch: PlanetBranchNode, context: CompanyPlanetContext): string {
-  const parts: string[] = [];
-  parts.push(`Here's what I have on **${branch.label}** (part of ${root.label}) for ${context.companyName}.`);
-  if (branch.summary) {
-    parts.push(branch.summary);
-  } else {
-    parts.push(`No research has been captured for this node yet — ask me and I'll walk you through what's typically tracked here, or use the quick-ask chips to start.`);
-  }
-  if (branch.actions.length > 0) {
-    parts.push(`I can also help with: ${branch.actions.map(a => a.label).join(', ')}.`);
-  }
-  return parts.join('\n\n');
-}
-
-function generateNodeReply(userText: string, root: PlanetRootNode, branch: PlanetBranchNode, context: CompanyPlanetContext): string {
-  const q = userText.toLowerCase();
-  const sources = branch.sources ?? branch.actions.flatMap(a => a.sources ?? []);
-
-  if (q.includes('source') || q.includes('evidence') || q.includes('citation') || q.includes('where')) {
-    if (sources.length === 0) return `No sources are attached to this node yet for ${context.companyName}.`;
-    return `Sources for this node:\n\n${sources.map(s => `• ${s.title || hostOf(s.url)} — ${s.url}`).join('\n')}`;
-  }
-
-  if (q.includes('next step') || q.includes('action') || q.includes('do next') || q.includes('what should')) {
-    const withSteps = branch.actions.find(a => a.nextSteps && a.nextSteps.length > 0);
-    if (withSteps?.nextSteps) {
-      return `Suggested next steps for "${withSteps.label}":\n\n${withSteps.nextSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
-    }
-    if (branch.actions.length > 0) {
-      return `The tracked actions here are: ${branch.actions.map(a => a.label).join(', ')}. Ask me about any one of them for more detail.`;
-    }
-    return `There's no action queued for this node yet — you can export it to your workspace to start tracking it.`;
-  }
-
-  if (q.includes('confiden') || q.includes('relevan') || q.includes('how sure') || q.includes('trust')) {
-    const conf = pct(branch.confidence);
-    const rel = pct(branch.relevance);
-    if (!conf && !rel) return `No confidence or relevance score has been recorded for this node yet.`;
-    return `${conf ? `Confidence: ${conf}. ` : ''}${rel ? `Relevance: ${rel}.` : ''}`.trim();
-  }
-
-  const matchedAction = branch.actions.find(a => q.includes(a.label.toLowerCase().slice(0, 12)));
-  if (matchedAction) {
-    return matchedAction.hint
-      ? `${matchedAction.label}: ${matchedAction.hint}`
-      : `${matchedAction.label} — no further detail captured yet for ${context.companyName}.`;
-  }
-
-  if (branch.summary) {
-    return `On ${branch.label} (${root.label}): ${branch.summary}\n\nAsk me about sources, next steps, or confidence for more.`;
-  }
-
-  return `I don't have research captured for "${branch.label}" under ${root.label} for ${context.companyName} yet. Try asking about sources, next steps, or export this node to your workspace to start tracking it.`;
 }
 
 /** Special "contextualization" panel: surfaces the node data that matches whatever
@@ -153,19 +99,20 @@ function CollapsibleSection({ title, defaultOpen = false, children }: { title: s
 }
 
 /** Cheap CSS starfield for the modal's galaxy backdrop — no WebGL, self-contained. */
+const STARFIELD_STARS = Array.from({ length: 110 }, (_, index) => ({
+  left: (index * 37.19) % 100,
+  top: (index * 61.73) % 100,
+  size: 0.6 + ((index * 17) % 16) / 10,
+  duration: 3 + (index % 5),
+  delay: (index % 6),
+}));
+
 function Starfield() {
-  const stars = useMemo(() => Array.from({ length: 110 }, () => ({
-    left: Math.random() * 100,
-    top: Math.random() * 100,
-    size: Math.random() * 1.6 + 0.6,
-    duration: 3 + Math.random() * 5,
-    delay: Math.random() * 6,
-  })), []);
 
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
       <style>{`@keyframes idt-twinkle { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.9; } }`}</style>
-      {stars.map((s, i) => (
+      {STARFIELD_STARS.map((s, i) => (
         <div
           key={i}
           style={{
@@ -201,6 +148,7 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
   const [lastQueryByBranch, setLastQueryByBranch] = useState<Record<string, string>>({});
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
+  const [errorByBranch, setErrorByBranch] = useState<Record<string, string | null>>({});
   const [selectedText, setSelectedText] = useState<string>('');
   const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -208,19 +156,11 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
   const endRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const typingTimerRef = useRef<number | null>(null);
 
   const activeBranch = useMemo(
     () => rootNode.branches.find(b => b.id === activeBranchId) ?? rootNode.branches[0],
     [rootNode.branches, activeBranchId],
   );
-
-  // Clean up timer on unmount
-  useEffect(() => {
-    return () => {
-      if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
-    };
-  }, []);
 
   const handleCopyMessage = useCallback((msgId: string, text: string) => {
     try {
@@ -233,17 +173,7 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
   }, []);
 
   const handleEditUserMessage = useCallback((msgText: string) => {
-    // 1. Terminate mid-stream response immediately if AI is typing
-    if (typingTimerRef.current) {
-      window.clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = null;
-    }
-    setTyping(false);
-
-    // 2. Put message context back into input box
     setInput(msgText);
-
-    // 3. Focus input box
     window.setTimeout(() => {
       inputRef.current?.focus();
     }, 50);
@@ -313,19 +243,12 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
 
   // Reset to the branch that was clicked whenever the modal is (re)opened.
   useEffect(() => {
-    if (isOpen) setActiveBranchId(initialBranchId);
+    if (!isOpen) return;
+    const frame = window.requestAnimationFrame(() => setActiveBranchId(initialBranchId));
+    return () => window.cancelAnimationFrame(frame);
   }, [isOpen, initialBranchId]);
 
-  // Seed the opening AI message the first time a branch's conversation is opened.
-  useEffect(() => {
-    if (!activeBranch) return;
-    setMessagesByBranch(prev => {
-      if (prev[activeBranch.id]?.length) return prev;
-      return { ...prev, [activeBranch.id]: [{ id: 'open', role: 'ai', text: buildOpeningMessage(rootNode, activeBranch, context), ts: Date.now() }] };
-    });
-  }, [activeBranch, rootNode, context]);
-
-  const messages = activeBranch ? (messagesByBranch[activeBranch.id] ?? []) : [];
+  const messages = useMemo(() => activeBranch ? (messagesByBranch[activeBranch.id] ?? []) : [], [activeBranch, messagesByBranch]);
   const lastQuery = activeBranch ? (lastQueryByBranch[activeBranch.id] ?? '') : '';
 
   useEffect(() => {
@@ -344,23 +267,42 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
     [lastQuery, rootNode, activeBranch],
   );
 
-  const send = useCallback((text: string) => {
+  const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || !activeBranch) return;
+    if (!trimmed || !activeBranch || typing || !context.referenceCompanyId) return;
     const branchId = activeBranch.id;
-    setMessagesByBranch(prev => ({ ...prev, [branchId]: [...(prev[branchId] ?? []), { id: `u-${Date.now()}`, role: 'user', text: trimmed, ts: Date.now() }] }));
+    const userMessage: ChatMsg = { id: `u-${Date.now()}`, role: 'user', text: trimmed, ts: Date.now() };
+    const history = [...(messagesByBranch[branchId] ?? []), userMessage]
+      .map((message) => ({ role: message.role === 'ai' ? 'assistant' as const : 'user' as const, text: message.text }));
+    setMessagesByBranch(prev => ({ ...prev, [branchId]: [...(prev[branchId] ?? []), userMessage] }));
     setLastQueryByBranch(prev => ({ ...prev, [branchId]: trimmed }));
+    setErrorByBranch(prev => ({ ...prev, [branchId]: null }));
     setInput('');
     setTyping(true);
 
-    if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
-
-    typingTimerRef.current = window.setTimeout(() => {
-      typingTimerRef.current = null;
+    try {
+      const result = await chatWithReferenceCompany(context.referenceCompanyId, {
+        rootId: rootNode.id,
+        branchId,
+        messages: history,
+      });
+      setMessagesByBranch(prev => ({
+        ...prev,
+        [branchId]: [...(prev[branchId] ?? []), {
+          id: `a-${Date.now()}`,
+          role: 'ai',
+          text: result.reply,
+          citations: result.citations,
+          ts: Date.now(),
+        }],
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message.replace(/^\d+:\s*/, '') : '';
+      setErrorByBranch(prev => ({ ...prev, [branchId]: message || 'IDT chat is temporarily unavailable. Please try again.' }));
+    } finally {
       setTyping(false);
-      setMessagesByBranch(prev => ({ ...prev, [branchId]: [...(prev[branchId] ?? []), { id: `a-${Date.now()}`, role: 'ai', text: generateNodeReply(trimmed, rootNode, activeBranch, context), ts: Date.now() }] }));
-    }, 500 + Math.random() * 500);
-  }, [rootNode, activeBranch, context]);
+    }
+  }, [activeBranch, context.referenceCompanyId, messagesByBranch, rootNode.id, typing]);
 
   const filteredBranches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -543,6 +485,11 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3">
+              {messages.length === 0 && (
+                <div className="rounded-2xl px-4 py-3 text-[13px] leading-relaxed text-white/70" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  Ask about this branch’s captured research, sources, confidence, or next steps. Answers are grounded only in this IDT data.
+                </div>
+              )}
               {messages.map(msg => (
                 <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.role === 'ai' && <ResponseChatIcon className="w-6 h-6 mt-1 shrink-0 object-contain" />}
@@ -554,6 +501,24 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
                     }
                   >
                     <p className="text-[13px] leading-relaxed text-white/90">{msg.text}</p>
+
+                    {msg.role === 'ai' && msg.citations && msg.citations.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-white/30">Citations</div>
+                        {msg.citations.map((citation) => (
+                          <a
+                            key={citation.id}
+                            href={citation.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{citation.title}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Clean Icon Action Bar below AI Response (matching reference) */}
                     {msg.role === 'ai' && (
@@ -607,6 +572,11 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
                   </div>
                 </div>
               )}
+              {errorByBranch[activeBranch.id] && (
+                <div className="rounded-xl px-3 py-2 text-[11px] text-rose-200" style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.28)' }}>
+                  {errorByBranch[activeBranch.id]}
+                </div>
+              )}
               <div ref={endRef} />
             </div>
 
@@ -622,7 +592,7 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
                 />
                 <button
                   type="submit"
-                  disabled={!input.trim() || typing}
+                  disabled={!input.trim() || typing || !context.referenceCompanyId}
                   className="p-2.5 rounded-full disabled:opacity-30 transition-colors shrink-0"
                   style={{ background: `${color}25`, color }}
                 >
@@ -676,16 +646,15 @@ export function NodeChatPanel({ rootNode, initialBranchId, context, isOpen, onCl
             <div className="px-5">
               <CollapsibleSection title="Quick ask">
                 <div className="flex flex-wrap gap-1.5">
-                  {activeBranch.actions.length === 0 && <p className="text-[11px] text-white/25">No actions tracked yet.</p>}
-                  {activeBranch.actions.map(action => (
+                  {['Summarize this branch', 'What evidence supports this?', 'What are the next steps?'].map(question => (
                     <button
-                      key={action.id}
+                      key={question}
                       type="button"
-                      onClick={() => send(`Tell me about: ${action.label}`)}
+                      onClick={() => { void send(question); }}
                       className="text-[11px] px-2.5 py-1.5 rounded-full text-white/60 hover:text-white transition-colors"
                       style={{ background: 'rgba(255,255,255,0.05)' }}
                     >
-                      {action.label}
+                      {question}
                     </button>
                   ))}
                 </div>
