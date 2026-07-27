@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import type { UInternalNode } from '../../lib/universalPolytopeData';
 import { isActionLeafNode, isBdtWorkspaceLeafNode } from '../../lib/universalPolytopeData';
-import { isBdtNodeActive } from '../../lib/bdtPolytopeData';
+import { isBdtNodeActive, isVirtualErpNextNodeLocked } from '../../lib/bdtPolytopeData';
 import { PlasmaSphere } from '../PolytopeShared';
 import { useDragWorkspaceStore } from '../../lib/useDragWorkspaceStore';
 import { usePolytopeStore } from '../../lib/usePolytopeStore';
@@ -56,9 +56,9 @@ interface InternalNodeProps {
   /** BDT active/inactive gating — omitted by callers outside the BDT department tree (e.g.
    * the reference-company planet view), in which case gating is a no-op (fully active). */
   departmentSourceKey?: string;
-  /** This node's level1 ancestor's label — set by the level1 node itself for its children. */
+  /** Retained for breadcrumb rendering; activation uses branchSourceKey only. */
   level1Label?: string;
-  /** Nearest branch ancestor label for this subtree; used for active/inactive gating. */
+  /** Retained for breadcrumb rendering; activation uses branchSourceKey only. */
   branchLabel?: string;
   /** Nearest branch ancestor's stable source key for activation matching. */
   branchSourceKey?: string;
@@ -105,14 +105,16 @@ export function InternalNode({
   const radius = isLevel1 ? radii[0] * 1.4 : (radii[depth] || 0.05);
   const childLevel1Label = isLevel1 ? node.label : level1Label;
   const childBranchLabel = isBranch ? node.label : branchLabel;
-  // Prefer the content-derived stableSourceKey (survives tree reorders) over the
-  // positional sourceKey — see genBdtSeed.ts's buildMetadata / departments.ts's stableSourceKey.
+  // V2 taxonomy source keys are immutable and shared by branch/action/metric siblings.
   const childBranchSourceKey = isBranch ? (node.stableSourceKey ?? node.sourceKey) : branchSourceKey;
 
   const { activeKeys } = usePolytopeStore('bdt');
-  const isInactive = !isDraft
-    && isBdtWorkspaceLeafNode(node)
-    && !isBdtNodeActive(branchSourceKey, branchLabel, level1Label, departmentSourceKey, activeKeys);
+  const isInactive = !isDraft && (
+    node.virtualErpNext
+      ? isVirtualErpNextNodeLocked(node)
+      : isBdtWorkspaceLeafNode(node)
+        && !isBdtNodeActive(branchSourceKey, departmentSourceKey, activeKeys)
+  );
 
   const isMeActiveCenter = selectedPath.length > 0 && selectedPath[selectedPath.length - 1] === node.id;
   const isMeAncestor = selectedPath.includes(node.id) && !isMeActiveCenter;
@@ -428,7 +430,9 @@ export function InternalNode({
                 border: '1px solid rgba(255,255,255,0.15)',
                 pointerEvents: 'none',
               }}>
-                Not connected yet
+                {node.virtualErpNext?.disabled
+                  ? 'Inactive in ERPNext'
+                  : node.availability === 'planned' ? 'Planned integration' : 'Not connected yet'}
               </div>
             </Html>
           </Billboard>

@@ -1,6 +1,6 @@
 # WorkOS backend guide
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-25.
 
 This application is the WorkOS-side owner of the ERPNext integration. Read `../../docs/architecture/erpnext-control-plane.md` before changing ERP boundaries.
 
@@ -44,6 +44,31 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
   one browser-applied experiment through deterministic evaluation.
 - `test/metaAdsAuthoring.db.test.ts`: disposable fake-Meta/Gemini lifecycle using
   real durable database and private Storage state.
+
+## BDT taxonomy and onboarding seed
+
+The canonical default BDT tree is the typed source at
+`src/data/bdtTaxonomy.ts`. It contains 13 departments, 54 ordered Level-1
+capabilities, and 212 ordered branches, including immutable source keys,
+ownership meanings, concept keys, and availability. `src/data/bdtCatalog.ts` derives the catalog
+Level-1 definitions from it, while `src/data/bdtSeed.ts` combines it with
+`DEPT_META` to build the new-company import payload.
+
+The active pipeline has no DOCX input, generated spec tree, or generated seed
+file. `routes/companies.ts` selects framework departments from
+`BDT_SEED_DEPARTMENTS`, adds custom department shells, and passes the result to
+`public.import_bdt_departments_from_json`. Existing companies are not migrated
+when this source changes.
+
+The builder preserves the import payload shape but emits V3 source keys,
+taxonomy version, meanings, concept keys, planned status, presentation mode, and
+action/metric metadata for new rows. Product Lines is the sole live ERPNext
+catalog branch: it deliberately emits no generic action/metric descendants; the
+frontend renders top-level Item Groups and descendant Items as read-only virtual
+nodes. Existing company trees are intentionally untouched and V2 Product Lines
+are not compatibility-supported. Read
+`../../docs/architecture/bdt-taxonomy-and-seeding.md` before editing this
+tree or any consumer of its stable keys.
 
 ## Implementation rules
 
@@ -166,10 +191,10 @@ Marketing **hardcodes** them — `MARKETING_PAID_ACQUISITION_KEYS` in
 (`BdtActionWorkspace.tsx:71,77`), with literal-label fallbacks
 (`'ad performance health'`, `'spend & reach health'`).
 
-Those keys are **content-derived**: `genBdtSeed.ts`'s `buildMetadata()` computes
+Those keys are **content-derived**: `data/bdtSeed.ts`'s `branchMetadata()` computes
 `sourceKey: \`${level1SourceKey}_${slug(branchItem)}\``. The key is stable across tree
 *reorders* — its stated purpose — but **not across renames**. Renaming a branch item in
-`data/bdtSpecTree.ts` (e.g. "Ad Performance" → "Ad Health") changes the derived key, which
+`data/bdtTaxonomy.ts` (e.g. "Ad Performance" → "Ad Health") changes the derived key, which
 silently unbinds *both* the backend activation array and the frontend gate at once, and the
 label fallback misses too.
 
@@ -184,6 +209,7 @@ branch item requires updating `bdtNodeActivation.ts` and `BdtActionWorkspace.tsx
 pnpm --filter backend typecheck
 pnpm --filter backend test:erpnext-architecture
 pnpm --filter backend test:sales-stories
+pnpm --filter backend test:bdt
 pnpm --filter backend test:metrics
 pnpm --filter backend test:meta-ads
 pnpm --filter backend test:meta-ads-db

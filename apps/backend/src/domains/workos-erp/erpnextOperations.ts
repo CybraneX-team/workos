@@ -930,11 +930,31 @@ async function listDescendantLeaves(companyId: string, nodeId: string): Promise<
 function slug(value: string): string {
   return value.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
+const V2_NODE_TO_MAPPING_KEY: Record<string, string> = {
+  ops_service_fulfillment_service_requests: 'ops_delivery_service_requests',
+  ops_service_fulfillment_service_level_execution: 'ops_delivery_slas',
+  ops_service_fulfillment_fulfillment_flow: 'ops_delivery_fulfillment',
+  ops_service_fulfillment_field_delivery: 'ops_delivery_field_operations',
+  ops_supply_chain_execution_inventory_control: 'ops_supply_chain_inventory',
+  ops_supply_chain_execution_logistics_routing: 'ops_supply_chain_logistics',
+  ops_supply_chain_execution_shipping: 'ops_supply_chain_shipping',
+  ops_supply_chain_execution_warehouse_operations: 'ops_supply_chain_warehousing',
+  ops_supplier_operations_supplier_onboarding: 'ops_vendors_vendor_onboarding',
+  ops_supplier_operations_supplier_ordering: 'ops_vendors_pos',
+  ops_supplier_operations_supplier_quality: 'ops_vendors_quality',
+  ops_supplier_operations_supplier_renewals: 'ops_vendors_renewals',
+  ops_process_capacity_operating_procedures: 'ops_process_sops',
+  ops_process_capacity_workflow_automation: 'ops_process_automation',
+  ops_process_capacity_bottleneck_management: 'ops_process_bottlenecks',
+  ops_process_capacity_asset_capacity: 'ops_resources_operating_capacity',
+};
 
 function mappingKeyFromPath(path: NodePathRow[]): string | null {
   const leaf = path[path.length - 1];
   if (!leaf) return null;
   if (leaf.metric_key && MAPPING_BY_METRIC_KEY.has(leaf.metric_key)) return MAPPING_BY_METRIC_KEY.get(leaf.metric_key)!.key;
+  const stableKey = typeof leaf.metadata?.sourceKey === 'string' ? leaf.metadata.sourceKey : undefined;
+  if (stableKey && V2_NODE_TO_MAPPING_KEY[stableKey]) return V2_NODE_TO_MAPPING_KEY[stableKey];
   const level1 = [...path].reverse().find(row => row.node_level === 'level1' || row.metadata?.level1Label);
   const branch = [...path].reverse().find(row => row.node_level === 'branch' || row.metadata?.branchItem);
   const level1Label = typeof leaf.metadata?.level1Label === 'string' ? leaf.metadata.level1Label : level1?.label;

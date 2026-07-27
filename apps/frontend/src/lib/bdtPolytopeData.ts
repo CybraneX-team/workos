@@ -123,6 +123,13 @@ export interface UInternalNode {
   sourceKey?: string;
   /** Content-derived key from department_bdt_nodes.metadata.sourceKey — stable across reorders. */
   stableSourceKey?: string;
+  /** Taxonomy availability for a seeded node; planned nodes remain visible but locked. */
+  availability?: 'active' | 'planned';
+  /** Taxonomy version and rendering mode for seeded branches. */
+  taxonomyVersion?: string;
+  presentation?: 'erpnext_catalog';
+  /** Ephemeral catalog node supplied by ERPNext; it must never be edited as BDT data. */
+  virtualErpNext?: { entity: 'line' | 'product'; identity: string; subtitle?: string; disabled?: boolean; unclassified?: boolean };
   label: string;
   type: 'team' | 'process' | 'project' | 'resource' | 'decision' | 'risk' | 'metric' | 'branch' | 'action' | 'signal';
   score: number;
@@ -171,9 +178,19 @@ export function isProjectLeafNode(node: Pick<UInternalNode, 'type' | 'projectDet
 }
 
 /** Opens BDT action / project workspace — Level-1 container nodes never open the workspace. */
-export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'type' | 'nodeLevel' | 'projectDetails' | 'children'> | null | undefined): boolean {
+export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'type' | 'nodeLevel' | 'projectDetails' | 'children' | 'virtualErpNext'> | null | undefined): boolean {
   if (!node || node.nodeLevel === 'level1') return false;
+  if (node.virtualErpNext?.entity === 'product') return true;
   return isActionLeafNode(node) || isProjectLeafNode(node);
+}
+
+/**
+ * Live ERPNext catalog entities have their own authenticated API and must not be
+ * evaluated through the persisted BDT activation map. Disabled Items are the
+ * sole read-only exception: they remain visible but cannot open a workspace.
+ */
+export function isVirtualErpNextNodeLocked(node: Pick<UInternalNode, 'virtualErpNext'> | null | undefined): boolean {
+  return node?.virtualErpNext?.entity === 'product' && node.virtualErpNext.disabled === true;
 }
 
 /**
@@ -193,8 +210,6 @@ export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'type' | 'nodeL
  */
 export function isBdtNodeActive(
   branchSourceKey: string | undefined,
-  branchLabel: string | undefined,
-  level1Label: string | undefined,
   departmentSourceKey: string | undefined,
   activeKeys: Set<string> | undefined,
 ): boolean {
@@ -204,9 +219,7 @@ export function isBdtNodeActive(
   if (!departmentSourceKey) return true;
   // Active-nodes not loaded yet (e.g. still fetching) — don't block prematurely.
   if (!activeKeys) return true;
-  if (branchSourceKey && activeKeys.has(`${departmentSourceKey}::${branchSourceKey}`)) return true;
-  if (!level1Label || !branchLabel) return false;
-  return activeKeys.has(`${departmentSourceKey}::${level1Label}::${branchLabel}`);
+  return Boolean(branchSourceKey && activeKeys.has(`${departmentSourceKey}::${branchSourceKey}`));
 }
 
 export interface UExternalNode {

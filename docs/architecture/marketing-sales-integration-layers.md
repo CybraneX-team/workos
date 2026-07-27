@@ -50,7 +50,7 @@ at **ad** granularity. `meta_ads_delivery_daily` holds ad-level spend keyed
 
 **Both sides exist. Nothing joins them.** `workos_meta_ad_id` has no readers — only the
 field creation, the write, and the "not yet stamped" filter. No CPL/CAC exists anywhere in
-the backend; `bdtSpecTree.ts` *declares* `"ROAS, CAC, Ad Leads"` as Paid Acquisition's
+the backend; `bdtTaxonomy.ts` *declares* `"ROAS, CAC, Ad Leads"` as Paid Acquisition's
 metric impact and nothing computes it.
 
 ### Remaining
@@ -61,7 +61,7 @@ metric impact and nothing computes it.
 2. **Metrics** — CPL, cost per qualified lead (via `CRM Lead.status`), cost per won deal
    and CAC (via `CRM Deal.status` + `deal_value`), velocity by ad.
 3. **Surface** — `Demand & Attribution → Pipeline Attribution` is still
-   `"Awaiting CRM integration"` in the spec tree. Marketing has no `node-summary` endpoint,
+   `"Awaiting CRM integration"` in the code-owned BDT taxonomy. Marketing has no `node-summary` endpoint,
    so lighting it up means either a fourth hardcoded activation key or doing Layer 5 first.
 
 ### Cost-per-revenue is a query, not a schema change
@@ -129,7 +129,7 @@ been collecting consent for a while.
 Sales is declarative: a `MAPPINGS` table, a `node-summary` endpoint, and
 `listActiveBranchKeys()` *derived* by filtering `unsupported`. Marketing is a hardcoded
 3-key array in `routes/bdtNodeActivation.ts` plus two frontend special-cases — one of which
-matches the literal string `'ad performance health'`, so **renaming a node in the spec tree
+matches the literal string `'ad performance health'`, so **renaming a node in the code-owned taxonomy
 silently unbinds the dashboard**.
 
 Giving Marketing the Sales shape makes Organic Growth (GA4) and Brand & Intelligence

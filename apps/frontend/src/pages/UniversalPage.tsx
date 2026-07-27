@@ -20,6 +20,7 @@ import { canReadDept, canWriteDept as canWriteDeptHelper, canDeleteDept as canDe
 import { useWorkflowTrail } from '../lib/useWorkflowTrail';
 import { useBdtSavedTrails } from '../lib/useBdtSavedTrails';
 import type { UserPlanetRole } from '../data/companyPlanetRoots';
+import { fetchErpNextProductPortfolio, type ErpNextCatalogPortfolio } from '../lib/db/erpnextProducts';
 
 export default function UniversalPage() {
   const navigate = useNavigate();
@@ -32,6 +33,7 @@ export default function UniversalPage() {
   const { company } = useCompany(profile?.company_id);
   const { members: workspaceMembers } = useTeamMembers(profile?.company_id);
   const store = usePolytopeStore('bdt');
+  const [productPortfolio, setProductPortfolio] = useState<ErpNextCatalogPortfolio | null>(null);
   const { sendContextUpdate, voiceState, toggle, intensityRef } = useVoice();
 
   const {
@@ -250,9 +252,25 @@ export default function UniversalPage() {
   const resolvedSelectedDeptId = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.department.id
     : selectedDeptId;
+  const displayDepartments = useMemo(() => {
+    if (!productPortfolio || !['ready', 'partial'].includes(productPortfolio.status)) return store.departments;
+    const virtualLines = productPortfolio.lines.map(line => ({
+      id: line.stableKey, label: line.label, type: 'branch' as const, score: 75, nodeLevel: 'branch' as const,
+      virtualErpNext: { entity: 'line' as const, identity: line.identity, unclassified: line.unclassified },
+      children: line.products.map(product => ({
+        id: product.stableKey, label: product.label, type: 'resource' as const, score: product.disabled ? 0 : 75, nodeLevel: 'internal' as const,
+        virtualErpNext: { entity: 'product' as const, identity: product.identity, subtitle: product.subtitle, disabled: product.disabled }, children: [],
+      })),
+    }));
+    const replace = (nodes: UInternalNode[]): UInternalNode[] => nodes.map(node => {
+      if (node.stableSourceKey === 'prod_product_portfolio_product_lines' && node.presentation === 'erpnext_catalog' && node.taxonomyVersion === 'v3') return { ...node, children: virtualLines };
+      return node.children?.length ? { ...node, children: replace(node.children) } : node;
+    });
+    return store.departments.map(department => ({ ...department, internalNodes: replace(department.internalNodes) }));
+  }, [productPortfolio, store.departments]);
   const selectedDept = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.department
-    : selectedDeptId ? store.departments.find(d => d.id === selectedDeptId) : null;
+    : selectedDeptId ? displayDepartments.find(d => d.id === selectedDeptId) : null;
   const resolvedInternalPath = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.path
     : internalPath;
@@ -267,6 +285,14 @@ export default function UniversalPage() {
     return targetNode;
   };
   const selectedNode = getSelectedInternalNode();
+  const isLiveProductLines = Boolean(selectedNode && selectedNode.stableSourceKey === 'prod_product_portfolio_product_lines' && selectedNode.presentation === 'erpnext_catalog' && selectedNode.taxonomyVersion === 'v3');
+  const refreshProductPortfolio = useCallback(() => {
+    void fetchErpNextProductPortfolio().then(setProductPortfolio).catch(() => setProductPortfolio({ status: 'not_configured', generatedAt: new Date().toISOString(), lines: [], warnings: [], message: 'Connect ERPNext to load Product Lines.' }));
+  }, []);
+  useEffect(() => {
+    if (!isLiveProductLines) return;
+    refreshProductPortfolio();
+  }, [isLiveProductLines, refreshProductPortfolio]);
   const isLeafNode = !!selectedNode && isBdtWorkspaceLeafNode(selectedNode);
   const isPaidAcquisitionNode = Boolean(selectedNode && (selectedNode.stableSourceKey === 'mkt_paid_acquisition' || selectedNode.sourceKey === 'mkt_paid_acquisition'));
   const isWorkspaceOpen = isLeafNode || ((openPaidAcquisitionHub || urlOwnsPaidAcquisitionHub) && isPaidAcquisitionNode);
@@ -675,7 +701,7 @@ export default function UniversalPage() {
             draftMember={draftMember}
             draftMemberScreenPosRef={draftMemberScreenPosRef}
             cameraResetTrigger={polytopeResetTrigger}
-            departments={store.departments}
+            departments={displayDepartments}
             selectedInternalPath={resolvedInternalPath}
             enableCoreWorkspace={hasWritableDepartment}
             readOnly={!hasWritableDepartment}
@@ -707,12 +733,13 @@ export default function UniversalPage() {
       {isPolytopeInteractive && !isWorkspaceOpen && !draftDept && !draftInternalNode && !draftMember && (
         <div className="fixed bottom-6 left-4 z-[60] pointer-events-auto">
           <PolytopeSidePanel
-            departments={store.departments}
+            departments={displayDepartments}
             selectedDeptId={resolvedSelectedDeptId}
             onDeptSelect={(id) => handleSidebarDeptSelect(id)}
             selectedInternalPath={resolvedInternalPath}
             onAddDepartment={handleAddDepartment}
             onAddNode={handleAddNode}
+            onRefreshProductPortfolio={refreshProductPortfolio}
             onAddMember={handleAddMember}
             onInternalBack={() => setInternalBackStep(c => c + 1)}
             onUpdateDepartment={store.updateDepartment}
@@ -822,7 +849,7 @@ export default function UniversalPage() {
           containerMode={(openPaidAcquisitionHub || urlOwnsPaidAcquisitionHub) && isPaidAcquisitionNode ? 'meta-paid-acquisition' : undefined}
           node={selectedNode}
           department={selectedDept}
-          allDepartments={store.departments}
+          allDepartments={displayDepartments}
           canEdit={canWriteDept(selectedDept)}
           onAddMember={handleAddMember}
           onDeleteMember={handleDeleteMemberClick}

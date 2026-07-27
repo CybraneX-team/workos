@@ -302,10 +302,13 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
     const node = {
       id: row.id,
       sourceKey: row.source_key ?? undefined,
-      // Content-derived (see genBdtSeed.ts's buildMetadata), unlike sourceKey above which is
+      // Content-derived (see bdtSeed.ts's branchMetadata), unlike sourceKey above which is
       // positional and shifts if the tree is reordered — prefer this for any matching that
       // needs to survive a future restructure (e.g. Meta panel routing).
       stableSourceKey: (row.metadata?.sourceKey as string | undefined) ?? undefined,
+      taxonomyVersion: (row.metadata?.taxonomyVersion as string | undefined) ?? undefined,
+      presentation: (row.metadata?.presentation as string | undefined) ?? undefined,
+      availability: row.metadata?.availability === 'planned' ? 'planned' : 'active',
       label: row.label,
       type: row.node_type,
       manualScore: row.score,

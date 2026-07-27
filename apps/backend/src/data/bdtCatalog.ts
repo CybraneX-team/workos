@@ -19,6 +19,7 @@ import type {
   Domain, NodeType, BranchKind, NodeLevel, CompanySize,
   DeptLevel1Def as SharedDeptLevel1Def, DeptMeta as SharedDeptMeta, SizeConfig,
 } from '@cybranex/shared-types';
+import { BDT_TAXONOMY } from './bdtTaxonomy.js';
 export type { Domain, NodeType, BranchKind, NodeLevel, CompanySize };
 
 export const DOMAINS = new Set<Domain>(['direction', 'build', 'delivery', 'market', 'control', 'people']);
@@ -102,114 +103,17 @@ export const BDT_DEPARTMENT_COLORS: Record<string, string> = {
 };
 
 export type DeptLevel1Def = SharedDeptLevel1Def;
-
-/** Spec-sourced Level-1 node definitions (max 6 per dept) for all 13 framework departments. */
-export const DEPT_LEVEL1_NODES: Record<string, DeptLevel1Def[]> = {
-  dept_engineering: [
-    { sourceKey: 'eng_products_platforms',   label: 'Products & Platforms',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'eng_development',          label: 'Development',             mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'eng_architecture_quality', label: 'Architecture & Quality',  mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'eng_delivery_operations',  label: 'Delivery & Operations',   mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'eng_performance',          label: 'Engineering Performance', mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'eng_resources',            label: 'Engineering Resources',   mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_product: [
-    { sourceKey: 'prod_portfolio',   label: 'Product Portfolio',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'prod_discovery',   label: 'Discovery & Research', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'prod_roadmaps',    label: 'Roadmaps & Releases',  mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'prod_insights',    label: 'Customer Insights',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'prod_performance', label: 'Product Performance',  mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'prod_resources',   label: 'Product Resources',    mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_sales: [
-    { sourceKey: 'sales_accounts',    label: 'Customers & Accounts',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sales_pipeline',    label: 'Pipeline & Opportunities', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sales_revops',      label: 'Revenue Operations',       mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sales_partners',    label: 'Partnerships & Channels',  mappedUniversalCategory: 'dependencies' },
-    { sourceKey: 'sales_performance', label: 'Sales Performance',        mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'sales_resources',   label: 'Sales Resources',          mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_marketing: [
-    { sourceKey: 'mkt_paid_acquisition',   label: 'Paid Acquisition',     mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'mkt_organic_growth',     label: 'Organic Growth',       mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'mkt_demand_attribution', label: 'Demand & Attribution', mappedUniversalCategory: 'dependencies' },
-    { sourceKey: 'mkt_brand_intelligence', label: 'Brand & Intelligence', mappedUniversalCategory: 'core_workstreams' },
-  ],
-  dept_hr: [
-    { sourceKey: 'hr_talent_acquisition', label: 'Talent Acquisition',   mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'hr_people_ops',  label: 'People Operations',      mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'hr_learning',    label: 'Learning & Development', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'hr_culture',     label: 'Culture & Engagement',   mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'hr_performance', label: 'Workforce Performance',  mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'hr_resources',   label: 'HR Resources',           mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_finance: [
-    { sourceKey: 'fin_ops',         label: 'Financial Operations',  mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'fin_planning',    label: 'Planning & Forecasting', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'fin_treasury_capital', label: 'Treasury & Capital',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'fin_procurement', label: 'Procurement & Spend',   mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'fin_compliance',  label: 'Compliance & Audit',    mappedUniversalCategory: 'risks_controls' },
-    { sourceKey: 'fin_performance', label: 'Financial Performance', mappedUniversalCategory: 'metrics_health' },
-  ],
-  dept_operations: [
-    { sourceKey: 'ops_delivery',     label: 'Service Delivery',          mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'ops_supply_chain', label: 'Supply Chain & Logistics',  mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'ops_vendors',      label: 'Vendors & Procurement',     mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'ops_process',      label: 'Process Excellence',        mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'ops_performance',  label: 'Operational Performance',   mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'ops_resources',    label: 'Operational Resources',     mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_data: [
-    { sourceKey: 'data_engineering', label: 'Data Engineering',      mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'data_bi',          label: 'Business Intelligence', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'data_analytics',   label: 'Analytics & Insights',  mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'data_ai_models',   label: 'AI & Models',           mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'data_governance',  label: 'Data Governance',       mappedUniversalCategory: 'risks_controls' },
-    { sourceKey: 'data_performance', label: 'Data Performance',      mappedUniversalCategory: 'metrics_health' },
-  ],
-  dept_design: [
-    { sourceKey: 'des_systems',        label: 'Design Systems',        mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'des_ux_research',    label: 'UX Research',           mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'des_product_design', label: 'Product Design',        mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'des_brand',          label: 'Brand & Visual Design', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'des_performance',    label: 'Design Performance',    mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'des_resources',      label: 'Design Resources',      mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_security: [
-    { sourceKey: 'sec_identity',    label: 'Identity & Access',              mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sec_infra',       label: 'Infrastructure Security',        mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sec_appsec',      label: 'Application Security',           mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sec_monitoring',  label: 'Monitoring & Incident Response', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'sec_governance',  label: 'Governance & Compliance',        mappedUniversalCategory: 'risks_controls' },
-    { sourceKey: 'sec_performance', label: 'Security Performance',           mappedUniversalCategory: 'metrics_health' },
-  ],
-  dept_customer_success: [
-    { sourceKey: 'cs_accounts',    label: 'Customer Accounts',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'cs_onboarding',  label: 'Onboarding & Adoption', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'cs_support',     label: 'Support & Service',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'cs_retention',   label: 'Retention & Expansion', mappedUniversalCategory: 'dependencies' },
-    { sourceKey: 'cs_customer_performance', label: 'Customer Performance', mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'cs_resources',   label: 'CS Resources',         mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_legal: [
-    { sourceKey: 'leg_contracts',   label: 'Contracts & Agreements',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'leg_regulatory',  label: 'Regulatory Compliance',     mappedUniversalCategory: 'risks_controls' },
-    { sourceKey: 'leg_ip',          label: 'IP & Data Rights',          mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'leg_advisory',    label: 'Legal Advisory & Disputes', mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'leg_performance', label: 'Legal Performance & Risk',  mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'leg_resources',   label: 'Legal Resources',           mappedUniversalCategory: 'resources_capacity' },
-  ],
-  dept_strategy: [
-    { sourceKey: 'str_corporate',    label: 'Corporate Strategy',    mappedUniversalCategory: 'purpose_scope' },
-    { sourceKey: 'str_growth',       label: 'Growth Initiatives',    mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'str_intelligence', label: 'Market Intelligence',   mappedUniversalCategory: 'core_workstreams' },
-    { sourceKey: 'str_partnerships', label: 'Partnerships & M&A',    mappedUniversalCategory: 'dependencies' },
-    { sourceKey: 'str_performance',  label: 'Strategic Performance', mappedUniversalCategory: 'metrics_health' },
-    { sourceKey: 'str_resources',    label: 'Strategic Resources',   mappedUniversalCategory: 'resources_capacity' },
-  ],
-};
-
 export type DeptMeta = SharedDeptMeta;
+
+/** Per-department Level-1 definitions derived from the code-native BDT taxonomy. */
+export const DEPT_LEVEL1_NODES: Record<string, DeptLevel1Def[]> = Object.fromEntries(
+  BDT_TAXONOMY.map((department) => [
+    department.sourceKey,
+    department.capabilities.map(({ sourceKey, label, mappedUniversalCategory }) => ({
+      sourceKey, label, mappedUniversalCategory,
+    })),
+  ]),
+);
 
 /** 13 framework departments as metadata shells; internal nodes come from the seed / real data. */
 export const DEPT_META: DeptMeta[] = [

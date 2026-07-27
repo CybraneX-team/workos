@@ -6,7 +6,7 @@ import { env } from '../src/config.js';
 import { pool } from '../src/db.js';
 
 const execFileAsync = promisify(execFile);
-type SeedKind = 'sales' | 'operations';
+type SeedKind = 'sales' | 'operations' | 'products';
 
 function argument(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -27,7 +27,9 @@ async function main() {
   if (env.ERPNEXT_ENV !== 'local') throw new Error('Seed scripts are local-only.');
   if (!env.FRAPPE_DOCKER_DIR) throw new Error('FRAPPE_DOCKER_DIR is not configured.');
   const kind = argument('kind') as SeedKind | undefined;
-  if (kind !== 'sales' && kind !== 'operations') throw new Error('--kind=sales or --kind=operations is required.');
+  if (kind !== 'sales' && kind !== 'operations' && kind !== 'products') {
+    throw new Error('--kind=sales, --kind=operations, or --kind=products is required.');
+  }
   const siteName = await resolveSite(argument('company-id'), argument('site-name'));
   const filename = `erpnext_${kind}_seed.py`;
   const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), filename);

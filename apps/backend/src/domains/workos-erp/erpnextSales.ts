@@ -190,7 +190,7 @@ function unsupported(key: string, label: string, level1Label: string, branchLabe
   return { key, label, level1Label, branchLabel, sourceDoctypes: [], reads: [], status: 'unsupported', unsupportedReason };
 }
 
-// One mapping entry per branch item under each Sales Level-1 node (bdtSpecTree.ts, dept_sales).
+// One mapping entry per branch item under each Sales Level-1 node (bdtTaxonomy.ts, dept_sales).
 const MAPPINGS: MappingDefinition[] = [
   // Customers & Accounts
   mapping('sales_accounts_accounts', 'Accounts', 'Customers & Accounts', 'Accounts', ['Customer'], [
@@ -605,11 +605,23 @@ const LEVEL1_PREFIX: Record<string, string> = {
   'Sales Performance': 'performance',
   'Sales Resources': 'resources',
 };
+const V2_NODE_TO_MAPPING_KEY: Record<string, string> = {
+  sales_prospect_development_target_accounts: 'sales_accounts_accounts',
+  sales_prospect_development_buyer_contacts: 'sales_accounts_contacts',
+  sales_prospect_development_icp_qualification: 'sales_accounts_icp_segments',
+  sales_deal_execution_leads: 'sales_pipeline_leads',
+  sales_deal_execution_opportunities: 'sales_pipeline_opportunities',
+  sales_deal_execution_deal_progression: 'sales_pipeline_deal_stages',
+  sales_deal_execution_proposals: 'sales_pipeline_proposals',
+  sales_commercial_operations_territory_design: 'sales_revops_territories',
+};
 
 function mappingKeyFromPath(path: NodePathRow[]): string | null {
   const leaf = path[path.length - 1];
   if (!leaf) return null;
   if (leaf.metric_key && MAPPING_BY_METRIC_KEY.has(leaf.metric_key)) return MAPPING_BY_METRIC_KEY.get(leaf.metric_key)!.key;
+  const stableKey = typeof leaf.metadata?.sourceKey === 'string' ? leaf.metadata.sourceKey : undefined;
+  if (stableKey && V2_NODE_TO_MAPPING_KEY[stableKey]) return V2_NODE_TO_MAPPING_KEY[stableKey];
   const level1 = [...path].reverse().find(row => row.node_level === 'level1' || row.metadata?.level1Label);
   const branch = [...path].reverse().find(row => row.node_level === 'branch' || row.metadata?.branchItem);
   const level1Label = typeof leaf.metadata?.level1Label === 'string' ? leaf.metadata.level1Label : level1?.label;

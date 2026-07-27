@@ -3,7 +3,7 @@ import { Search, Command, ArrowLeft, Plus, ChevronRight, Pencil, Trash2, Target,
 import { useNavigate } from 'react-router-dom';
 import type { UExternalNode, UInternalNode } from '../lib/universalPolytopeData';
 import { getExternalNodeColor, isActionLeafNode, isBdtWorkspaceLeafNode } from '../lib/universalPolytopeData';
-import { resolveDepartmentDelete, resolveDepartmentWrite, isBdtNodeActive } from '../lib/bdtPolytopeData';
+import { resolveDepartmentDelete, resolveDepartmentWrite, isBdtNodeActive, isVirtualErpNextNodeLocked } from '../lib/bdtPolytopeData';
 import { usePolytopeStore } from '../lib/usePolytopeStore';
 
 export interface PolytopeSidePanelProps {
@@ -37,6 +37,8 @@ export interface PolytopeSidePanelProps {
   /** When true, project leaves are treated as workspace leaves (BDT route). */
   bdtWorkspaceLeaves?: boolean;
   onOpenPaidAcquisition?: (path: string[]) => void;
+  /** Refreshes the read-only ERPNext Product Lines projection. */
+  onRefreshProductPortfolio?: () => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -73,8 +75,7 @@ function resolveAncestorLabels(dept: UExternalNode, path: string[]): { level1Lab
     if (!level1Label && node.nodeLevel === 'level1') level1Label = node.label;
     if (node.nodeLevel === 'branch') {
       branchLabel = node.label;
-      // Prefer the content-derived stableSourceKey over the positional sourceKey —
-      // see genBdtSeed.ts's buildMetadata / departments.ts's stableSourceKey.
+      // V2 taxonomy source keys are immutable and shared by branch descendants.
       branchSourceKey = node.stableSourceKey ?? node.sourceKey;
     }
     nodes = node.children ?? [];
@@ -152,6 +153,7 @@ export function PolytopeSidePanel({
   canCreateDepartment = canEdit,
   bdtWorkspaceLeaves = false,
   onOpenPaidAcquisition,
+  onRefreshProductPortfolio,
 }: PolytopeSidePanelProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'departments' | 'information'>('departments');
@@ -253,8 +255,9 @@ export function PolytopeSidePanel({
         .map(x => x.node)
     : allVisibleNodes;
   const deptColor = effectiveDept ? getExternalNodeColor(effectiveDept) : '#C1AEFF';
-  const canWriteEffectiveDept = effectiveDept ? canWriteDept(effectiveDept) : false;
-  const canDeleteEffectiveDept = effectiveDept ? canDeleteDept(effectiveDept) : false;
+  const isLiveCatalogNode = Boolean(activeNode?.virtualErpNext || activeNode?.presentation === 'erpnext_catalog');
+  const canWriteEffectiveDept = effectiveDept ? canWriteDept(effectiveDept) && !isLiveCatalogNode : false;
+  const canDeleteEffectiveDept = effectiveDept ? canDeleteDept(effectiveDept) && !isLiveCatalogNode : false;
   const isLeafInternalNode = (node: UInternalNode) =>
     bdtWorkspaceLeaves ? isBdtWorkspaceLeafNode(node) : isActionLeafNode(node);
   const selectInternalNode = (node: UInternalNode) => {
@@ -265,13 +268,16 @@ export function PolytopeSidePanel({
   // point used in the 3D graph (InternalNode.tsx) so the sidebar can't be used to route
   // around dimmed/blocked leaves.
   const { activeKeys: bdtActiveKeys } = usePolytopeStore('bdt');
-  const { level1Label: ancestorLevel1Label, branchLabel: ancestorBranchLabel, branchSourceKey: ancestorBranchSourceKey } = effectiveDept
+  const { branchSourceKey: ancestorBranchSourceKey } = effectiveDept
     ? resolveAncestorLabels(effectiveDept, selectedInternalPath)
     : {};
   const isNodeInactive = (node: UInternalNode) =>
+    node.virtualErpNext
+      ? isVirtualErpNextNodeLocked(node)
+      :
     bdtWorkspaceLeaves
     && isLeafInternalNode(node)
-    && !isBdtNodeActive(ancestorBranchSourceKey, ancestorBranchLabel, ancestorLevel1Label, effectiveDept?.sourceKey, bdtActiveKeys);
+    && !isBdtNodeActive(ancestorBranchSourceKey, effectiveDept?.sourceKey, bdtActiveKeys);
 
   // Dynamic back button logic based on drill-down level
   let backLabel: string | null = null;
@@ -722,7 +728,9 @@ export function PolytopeSidePanel({
             <div className="px-4 py-8 flex flex-col items-center text-center gap-3">
               <Plug className="w-6 h-6" style={{ color: deptColor }} />
               <p className="text-[11px] text-gray-400">
-                No connected data for {effectiveDept?.label ?? 'this department'} yet.
+                {isLiveCatalogNode
+                  ? 'Connect ERPNext, then create top-level Item Groups and Items to load Product Lines.'
+                  : `No connected data for ${effectiveDept?.label ?? 'this department'} yet.`}
               </p>
               {effectiveDept && canWriteEffectiveDept && (
                 <button
@@ -765,7 +773,7 @@ export function PolytopeSidePanel({
                     borderLeft: isActiveNode ? `2px solid ${deptColor}` : '2px solid transparent',
                     opacity: isInactive ? 0.4 : 1,
                   }}
-                  title={isInactive ? 'Not connected yet' : undefined}
+                  title={isInactive ? (node.virtualErpNext?.disabled ? 'Inactive in ERPNext' : node.availability === 'planned' ? 'Planned integration' : 'Not connected yet') : undefined}
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0 transition-transform group-hover/row:scale-125"
@@ -789,7 +797,7 @@ export function PolytopeSidePanel({
                       </span>
                       <span className="text-[9px] truncate" style={{ color: '#4b5563' }}>
                         {isInactive
-                          ? 'not connected'
+                          ? (node.virtualErpNext?.disabled ? 'inactive in ERPNext' : node.availability === 'planned' ? 'planned' : 'not connected')
                           : isLeaf ? (node.type === 'team' ? `${memberCount} teammate${memberCount === 1 ? '' : 's'}` : 'dashboard') : `${childCount} node${childCount === 1 ? '' : 's'}`}
                       </span>
                     </span>
@@ -928,6 +936,13 @@ export function PolytopeSidePanel({
             Add Node
           </button>
         </div>
+        )}
+        {activeTab === 'departments' && showingNodes && isLiveCatalogNode && onRefreshProductPortfolio && (
+          <div className="px-3 pb-3 pt-2 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <button type="button" onClick={onRefreshProductPortfolio} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-cyan-200 border border-cyan-300/25 bg-cyan-300/10 hover:bg-cyan-300/15">
+              Refresh ERPNext catalog
+            </button>
+          </div>
         )}
       </div>
 

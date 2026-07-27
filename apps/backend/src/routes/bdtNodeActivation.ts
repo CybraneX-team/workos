@@ -1,10 +1,8 @@
 import { Router } from 'express';
 import { authJwt } from '../middleware/authJwt.js';
 import { resolveErpNextCreds } from '../lib/erpnextConnection.js';
-import { listActiveBranchKeys as listOperationsActiveBranchKeys } from '../domains/workos-erp/erpnextOperations.js';
-import { listActiveBranchKeys as listSalesActiveBranchKeys } from '../domains/workos-erp/erpnextSales.js';
-import { listActiveBranchKeys as listProductsActiveBranchKeys } from '../domains/workos-erp/erpnextProducts.js';
 import { supabaseAdmin } from '../db.js';
+import { BDT_TAXONOMY } from '../data/bdtTaxonomy.js';
 
 // Returns the set of active BDT branches for a company. New bindings use the stable branch
 // source key (rather than display labels); legacy ERP/demo bindings retain their label pair
@@ -19,16 +17,13 @@ export const bdtNodeActivationRouter = Router();
 
 interface ActiveKey {
   departmentSourceKey: string;
-  nodeSourceKey?: string;
-  level1Label?: string;
-  branchLabel?: string;
+  nodeSourceKey: string;
 }
 
 // Marketing's Meta-fed branches under Paid Acquisition — active only once int-meta is
 // connected (mirrors the ERPNext departments' erpConnected gate below). Keyed by the
-// content-derived metadata.sourceKey (see genBdtSeed.ts's buildMetadata), which every node
-// under a branch shares, not the positional department_bdt_nodes.source_key column — stable
-// across future tree reorders, unlike the old mkt_l1_4_b2/b3/b4 positional keys this replaces.
+// immutable metadata.sourceKey, which every node under a branch shares. It is explicit
+// in the V2 taxonomy and is not derived from a display label or positional DB key.
 // Organic Growth, Demand & Attribution, and Brand & Intelligence are deliberately not listed
 // here: they have no live data source yet, so their placeholder branches render locked/dimmed
 // until a real integration exists for them.
@@ -37,6 +32,16 @@ const MARKETING_PAID_ACQUISITION_KEYS = [
   'mkt_paid_acquisition_spend_reach',
   'mkt_paid_acquisition_campaigns',
 ];
+
+function activeBranchesForDepartments(departmentKeys: readonly string[]): ActiveKey[] {
+  return BDT_TAXONOMY
+    .filter(department => departmentKeys.includes(department.sourceKey))
+    .flatMap(department => department.capabilities.flatMap(capability =>
+      capability.branches
+        .filter(branch => branch.availability === 'active')
+        .map(branch => ({ departmentSourceKey: department.sourceKey, nodeSourceKey: branch.sourceKey })),
+    ));
+}
 
 bdtNodeActivationRouter.get('/active-nodes', authJwt, async (req, res) => {
   const companyId = req.auth?.companyId;
@@ -56,9 +61,7 @@ bdtNodeActivationRouter.get('/active-nodes', authJwt, async (req, res) => {
 
   const active: ActiveKey[] = [];
   if (erpConnected) {
-    active.push(...listOperationsActiveBranchKeys().map(k => ({ departmentSourceKey: 'dept_operations', ...k })));
-    active.push(...listSalesActiveBranchKeys().map(k => ({ departmentSourceKey: 'dept_sales', ...k })));
-    active.push(...listProductsActiveBranchKeys().map(k => ({ departmentSourceKey: 'dept_product', ...k })));
+    active.push(...activeBranchesForDepartments(['dept_operations', 'dept_sales', 'dept_product']));
   }
 
   const { data: metaConnection } = await supabaseAdmin.from('integration_connections')

@@ -11,6 +11,7 @@
     "db:migrate": "node --env-file-if-exists=../backend/.env --env-file-if-exists=.env --import tsx scripts/migrate.ts",
     "seed:sales": "node --env-file-if-exists=../backend/.env --env-file-if-exists=.env --import tsx scripts/seed.ts --kind=sales",
     "seed:operations": "node --env-file-if-exists=../backend/.env --env-file-if-exists=.env --import tsx scripts/seed.ts --kind=operations",
+    "seed:products": "node --env-file-if-exists=../backend/.env --env-file-if-exists=.env --import tsx scripts/seed.ts --kind=products",
     "test": "node --env-file-if-exists=../backend/.env --env-file-if-exists=.env --import tsx --test test/*.test.ts"
   },
   "dependencies": {

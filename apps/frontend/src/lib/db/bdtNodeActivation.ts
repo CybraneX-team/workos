@@ -2,11 +2,8 @@ import { api } from '../api';
 
 export interface ActiveNodeKey {
   departmentSourceKey: string;
-  /** Stable department_bdt_nodes.source_key for new bindings. */
-  nodeSourceKey?: string;
-  /** Temporary compatibility fields for ERP/demo adapters not yet source-keyed. */
-  level1Label?: string;
-  branchLabel?: string;
+  /** Immutable V2 taxonomy branch source key. */
+  nodeSourceKey: string;
 }
 
 export interface ActiveNodesResponse {
@@ -19,9 +16,7 @@ export function fetchActiveBdtNodeKeys() {
 }
 
 export function activeNodeKeyId(key: ActiveNodeKey): string {
-  if (key.nodeSourceKey) return `${key.departmentSourceKey}::${key.nodeSourceKey}`;
-  if (!key.level1Label || !key.branchLabel) return '';
-  return `${key.departmentSourceKey}::${key.level1Label}::${key.branchLabel}`;
+  return `${key.departmentSourceKey}::${key.nodeSourceKey}`;
 }
 
 export function buildActiveKeySet(response: ActiveNodesResponse | null | undefined): Set<string> {

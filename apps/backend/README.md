@@ -36,6 +36,21 @@ from synchronization. See
 [`docs/architecture/meta-ads-campaign-studio.md`](../../docs/architecture/meta-ads-campaign-studio.md)
 and [`docs/runbooks/meta-ads-campaign-studio.md`](../../docs/runbooks/meta-ads-campaign-studio.md).
 
+## BDT taxonomy and onboarding seed
+
+The default Business Digital Twin tree is owned by the typed taxonomy in
+`src/data/bdtTaxonomy.ts`. The catalog and new-company seed are derived from it;
+no DOCX or generated specification file is required. Existing companies are
+not migrated when the taxonomy changes. Read
+[`docs/architecture/bdt-taxonomy-and-seeding.md`](../../docs/architecture/bdt-taxonomy-and-seeding.md)
+before changing BDT labels, stable keys, or onboarding behavior.
+
+Verify BDT changes with:
+
+~~~bash
+pnpm --filter backend test:bdt
+~~~
+
 ## Endpoints
 
 - `GET /healthz`

@@ -319,8 +319,8 @@ export async function configureMetaMetric(companyId: string, userId: string, key
     await client.query('BEGIN');
     const [{ rows: owners }, { rows: nodes }] = await Promise.all([
       client.query(`SELECT 1 FROM public.company_members WHERE id = $1 AND company_id = $2 AND status = 'active'`, [input.ownerMemberId, companyId]),
-      // Matched on the content-derived metadata.sourceKey, not the positional source_key column
-      // (see genBdtSeed.ts's buildMetadata) — stable across tree reorders. Branch/action/metric
+      // Matched on the immutable V2 metadata.sourceKey, not the positional source_key column.
+      // Branch/action/metric
       // siblings share the same metadata object, so node_type='metric' disambiguates to the one
       // leaf that actually opens in the workspace.
       client.query(
