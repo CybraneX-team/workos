@@ -9,7 +9,7 @@ import type { CompanyPlanetContext } from '../data/companyPlanetRoots';
 import { getPlanetNodesAtPath, canDrillInto } from '../data/companyPlanetRoots';
 import { PlasmaSphere } from './PolytopeShared';
 import { useSavedWorkflows, COMPANY_TAG_COLORS } from '../lib/useSavedWorkflows';
-import { InternalNode } from './polytope/InternalNode';
+import { RootFocusSpace } from './planet/RootFocusSpace';
 import { computeInternalNodePosition, computeCameraFraming } from './polytope/internalNodeLayout';
 import type { UExternalNode } from '../lib/universalPolytopeData';
 import { getExternalNodeColor } from '../lib/universalPolytopeData';
@@ -30,6 +30,8 @@ export interface CompanyPlanet3DViewProps {
   onDrillInto: (nodeId: string) => void;
   onDrillBack: () => void;
   onActionNodeClick?: (rootId: string, branchId: string, actionId: string) => void;
+  /** Fired when a branch card is clicked in the root-focus space (opens the node chat panel). */
+  onCardSelect?: (branchId: string) => void;
   industryColor?: string;
   /** When set, the scene animates zooming OUT from this root node position */
   zoomOutFromRootId?: string | null;
@@ -57,6 +59,13 @@ export interface CompanyPlanet3DViewProps {
   onRestoreFocusMiss?: () => void;
   /** When the workspace panel is open: hide orbit nodes, keep only the core orb */
   isWorkspaceOpen?: boolean;
+  /** Current user id for namespacing root-focus notes in localStorage. Resolved
+   *  via useAuth() outside the Canvas — RootFocusSpace must not call useAuth()
+   *  itself, since it renders inside a separate R3F reconciler tree where DOM
+   *  React context does not reliably bridge. */
+  userId?: string;
+  onNarrativeChange?: (isNarrative: boolean) => void;
+  exitNarrativeTrigger?: number;
 }
 
 const RING_RADIUS = 7.5;
@@ -71,6 +80,10 @@ function SceneContent({
   requestFocusRootId,
   onFocusTransitionComplete,
   onDrillInto,
+  onCardSelect,
+  userId,
+  onNarrativeChange,
+  exitNarrativeTrigger,
   industryColor = '#C1AEFF',
   zoomOutFromRootId,
   onZoomOutComplete,
@@ -99,13 +112,13 @@ function SceneContent({
   const [focusRootId, setFocusRootId] = useState<string | null>(null);
   const [internalNodesVisible, setInternalNodesVisible] = useState(false);
   const [isZoomingIn, setIsZoomingIn] = useState(false);
+  const [isNarrativeMode, setIsNarrativeMode] = useState(false);
 
   // Animated values for smooth fade of non-focused nodes
   const fadeProgress = useRef(0);
   const scaleProgress = useRef(1);
   const expandProgress = useRef(0);
   const isFirstMountRef = useRef(true);
-  const rootEdgesMatRef = useRef<THREE.LineBasicMaterial>(null);
   const cameraAnimTokenRef = useRef(0);
   const focusZoomActiveRef = useRef(false);
   const focusCompleteTimerRef = useRef<number | null>(null);
@@ -698,17 +711,6 @@ function SceneContent({
         group.visible = group.scale.x > 0.01;
       }
     });
-
-    // Animate root edges opacity
-    if (rootEdgesMatRef.current) {
-      const isDeepDrillDown = rootPolytopeInternalPath.length > 0;
-      const targetOpacity = isDeepDrillDown ? 0 : 0.35;
-      rootEdgesMatRef.current.opacity = THREE.MathUtils.lerp(
-        rootEdgesMatRef.current.opacity,
-        targetOpacity * expandProgress.current,
-        0.06,
-      );
-    }
   });
 
   return (
@@ -795,9 +797,9 @@ function SceneContent({
                   <PlasmaSphere
                     color={node.color || industryColor}
                     radius={NODE_RADIUS}
-                    opacity={0.7}
-                    glowIntensity={0.7}
-                    halo={true}
+                    opacity={(isNarrativeMode && isFocus) ? 0 : 0.7}
+                    glowIntensity={(isNarrativeMode && isFocus) ? 0 : 0.7}
+                    halo={!(isNarrativeMode && isFocus)}
                   />
 
                   {/* HTML Label */}
@@ -805,7 +807,7 @@ function SceneContent({
                     <div
                       className="flex flex-col items-center pointer-events-none"
                       style={{
-                        opacity: (isOther || (isFocus && isDeepDrillDown) || isWorkspaceOpen) ? 0 : 1,
+                        opacity: (isOther || (isFocus && isDeepDrillDown) || isWorkspaceOpen || (isNarrativeMode && isFocus)) ? 0 : 1,
                         transition: 'opacity 0.35s ease',
                       }}
                     >
@@ -829,77 +831,32 @@ function SceneContent({
           })}
         </group>
 
-        {/* Unified BDT internal nodes */}
+        {/* IDT root-focus space: core + glowing wave lines + branch cards.
+            Deliberately independent from BDT's InternalNode/internalNodeLayout
+            rendering — only reuses the raw PlanetRootNode data. */}
         {insideRootPolytope && activeRootDept && internalNodesVisible && (() => {
           const deptNode = layout.find(n => n.id === activeRootDept.id);
           if (!deptNode) return null;
           const ROOT_POS = deptNode.pos;
           const color = getExternalNodeColor(activeRootDept);
-
-
-          // Calculate positions for the active root's internal nodes
-          const n = activeRootDept.internalNodes.length;
-          const internalPositions = activeRootDept.internalNodes.map((_, i) =>
-            computeInternalNodePosition(ROOT_POS, i, n, 'flat')
-          );
-
-          const edgesGeo = (() => {
-            if (internalPositions.length === 0) return null;
-            const pts: THREE.Vector3[] = [];
-            for (let i = 0; i < internalPositions.length; i++) {
-              pts.push(internalPositions[i].clone());
-              pts.push(internalPositions[(i + 1) % internalPositions.length].clone());
-              pts.push(internalPositions[i].clone());
-              pts.push(ROOT_POS.clone());
-            }
-            return new THREE.BufferGeometry().setFromPoints(pts);
-          })();
+          const fullRoot = context.roots.find(r => r.id === activeRootDept.id);
+          if (!fullRoot) return null;
 
           return (
-            <group key={`${activeRootDept.id}:${rootSwitchKey}`}>
-              {edgesGeo && (
-                <lineSegments geometry={edgesGeo}>
-                  <lineBasicMaterial
-                    ref={rootEdgesMatRef}
-                    color={color}
-                    transparent
-                    opacity={0.35 * expandProgress.current}
-                    depthWrite={false}
-                  />
-                </lineSegments>
-              )}
-              {activeRootDept.internalNodes.map((intNode, i) => {
-                const isChildVisible =
-                  rootPolytopeInternalPath.length === 0 ||
-                  rootPolytopeInternalPath[rootPolytopeInternalPath.length - 1] === intNode.id ||
-                  rootPolytopeInternalPath.includes(intNode.id);
-                return (
-                  <InternalNode
-                    key={intNode.id}
-                    node={intNode}
-                    targetPos={internalPositions[i]}
-                    startPos={ROOT_POS}
-                    color={color}
-                    depth={1}
-                    selectedPath={rootPolytopeInternalPath}
-                    onSelectPath={(path) => {
-                      onInternalPathChange?.(path);
-                    }}
-                    pathContext={[]}
-                    parentPos={ROOT_POS}
-                    isVisible={isChildVisible}
-                    parentLabel={activeRootDept.label}
-                    setBackInfo={() => { }}
-                    onNodeFocus={() => { }}
-                    rootPos={ROOT_POS}
-                    revealDelayMs={PLANET_ANIM.internalNodeRevealDelayMs + i * 70}
-                    entryDuration={polytopeEntryMode === 'snap' ? 0 : PLANET_ANIM.internalNodeDuration}
-                    entryEase={PLANET_ANIM.nodeEase}
-                    skipEntryAnimation={polytopeEntryMode === 'snap'}
-                  />
-                );
-              })}
-            </group>
+            <RootFocusSpace
+              key={`${activeRootDept.id}:${rootSwitchKey}`}
+              root={fullRoot}
+              rootPos={ROOT_POS}
+              color={color}
+              expandProgressRef={expandProgress}
+              onCardSelect={(branchId) => onCardSelect?.(branchId)}
+              userId={userId}
+              onNarrativeChange={(isNav) => {
+                setIsNarrativeMode(isNav);
+                onNarrativeChange?.(isNav);
+              }}
+              exitNarrativeTrigger={exitNarrativeTrigger}
+            />
           );
         })()}
       </group>

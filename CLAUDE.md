@@ -26,3 +26,18 @@ For how marketing connects to sales (attribution, CPL/CAC, what is built vs rema
 - `docs/architecture/marketing-sales-integration-layers.md`
 
 Then read the nearest app-specific `AGENTS.md`. Do not store secrets or transient environment/test identifiers in memory files.
+
+## IDT Root Focus
+
+The IDT root-focus UI is the active exploration surface. Narrative branch isolation
+and browser-local note cards are intentional. Notes are keyed by user and root in
+`localStorage`, so they are saved on the current device only and are not shared or
+backed up.
+
+`NodeChatPanel` uses the authenticated reference-company chat API. It is a
+read-only, session-only conversation: the backend loads the selected root, branch,
+actions, and attached sources from the caller's workspace before calling Gemini.
+Responses are constrained to this supplied evidence and return only allow-listed
+citations. The chat does not open an action workspace or modify IDT data.
+
+See `docs/architecture/idt-root-focus-chat.md` before changing this boundary.
