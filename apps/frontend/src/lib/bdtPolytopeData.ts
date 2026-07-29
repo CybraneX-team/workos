@@ -6,7 +6,7 @@ export type UDomain = 'direction' | 'build' | 'delivery' | 'market' | 'control' 
 
 // ── BDT structural types (Company Department spec) ────────────────────────────
 
-/** The 8 universal branch types every department must have. */
+/** Categories used to classify the five V4 workspace nodes. */
 export type UBranchKind =
   | 'purpose_scope'
   | 'objectives_okrs'
@@ -38,6 +38,7 @@ export type UNodeLevel = 'level1' | 'department' | 'branch' | 'internal' | 'acti
 
 /** Sub-kind for internal nodes (the 4th level, between branch and action). */
 export type UInternalKind = 'team' | 'process' | 'tool' | 'system' | 'resource' | 'person';
+export type BdtWorkspaceKind = 'team' | 'systems' | 'metrics' | 'projects' | 'focus';
 
 /** Company size variant — controls how many department roots are visible. */
 export type UCompanySize = 'micro' | 'msme' | 'standard' | 'enterprise';
@@ -123,11 +124,12 @@ export interface UInternalNode {
   sourceKey?: string;
   /** Content-derived key from department_bdt_nodes.metadata.sourceKey — stable across reorders. */
   stableSourceKey?: string;
-  /** Taxonomy availability for a seeded node; planned nodes remain visible but locked. */
-  availability?: 'active' | 'planned';
   /** Taxonomy version and rendering mode for seeded branches. */
   taxonomyVersion?: string;
-  presentation?: 'erpnext_catalog';
+  presentation?: 'erpnext_catalog' | 'erpnext_sales_hub' | 'erpnext_operations_hub' | 'meta_ads_hub';
+  /** V4 workspace contract. Unlike node type/level, this decides what opens. */
+  workspaceKind?: BdtWorkspaceKind;
+  providerCapabilities?: string[];
   /** Ephemeral catalog node supplied by ERPNext; it must never be edited as BDT data. */
   virtualErpNext?: { entity: 'line' | 'product'; identity: string; subtitle?: string; disabled?: boolean; unclassified?: boolean };
   label: string;
@@ -177,11 +179,12 @@ export function isProjectLeafNode(node: Pick<UInternalNode, 'type' | 'projectDet
   return node.type === 'project' && !!node.projectDetails && (!node.children || node.children.length === 0);
 }
 
-/** Opens BDT action / project workspace — Level-1 container nodes never open the workspace. */
-export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'type' | 'nodeLevel' | 'projectDetails' | 'children' | 'virtualErpNext'> | null | undefined): boolean {
-  if (!node || node.nodeLevel === 'level1') return false;
+/** A V4 workspace node, or a read-only ERPNext product opened from Product Portfolio. */
+export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'virtualErpNext' | 'workspaceKind'> | null | undefined): boolean {
+  if (!node) return false;
+  if (node.workspaceKind) return true;
   if (node.virtualErpNext?.entity === 'product') return true;
-  return isActionLeafNode(node) || isProjectLeafNode(node);
+  return false;
 }
 
 /**
@@ -191,35 +194,6 @@ export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'type' | 'nodeL
  */
 export function isVirtualErpNextNodeLocked(node: Pick<UInternalNode, 'virtualErpNext'> | null | undefined): boolean {
   return node?.virtualErpNext?.entity === 'product' && node.virtualErpNext.disabled === true;
-}
-
-/**
- * Whether a leaf has any wired-up data panel (real ERPNext data or intentional Marketing demo
- * data) — used to dim/block unwired leaves in the 3D graph and the sidebar node list.
- *
- * Matching happens against the nearest BRANCH ancestor's label, not the leaf's own label — the
- * BDT tree is Level-1 → branch (e.g. "contracts") → optional team/process/project nodes →
- * action/metric leaves (e.g. "review vendor performance", "contracts health"), and the backend's
- * mapping keys are branch-level (`ops_vendors_contracts`), not per-individual-leaf. Callers must
- * therefore thread the nearest known branch ancestor label down to the leaf; for a path-walking
- * consumer (e.g. the sidebar) that's the nearest node with `nodeLevel === 'branch'`.
- *
- * When `activeKeys`/`departmentSourceKey` aren't passed (e.g. the unrelated reference-company
- * planet view, or the Twin route whose legacy departments never set `sourceKey`), this returns
- * true — "fully active" — so unrelated callers keep working unchanged.
- */
-export function isBdtNodeActive(
-  branchSourceKey: string | undefined,
-  departmentSourceKey: string | undefined,
-  activeKeys: Set<string> | undefined,
-): boolean {
-  // No departmentSourceKey means this caller never opted into gating (e.g. the Twin/
-  // reference-company planet view) — always active there, regardless of whether the
-  // separate BDT store happens to have activeKeys loaded elsewhere in the session.
-  if (!departmentSourceKey) return true;
-  // Active-nodes not loaded yet (e.g. still fetching) — don't block prematurely.
-  if (!activeKeys) return true;
-  return Boolean(branchSourceKey && activeKeys.has(`${departmentSourceKey}::${branchSourceKey}`));
 }
 
 export interface UExternalNode {

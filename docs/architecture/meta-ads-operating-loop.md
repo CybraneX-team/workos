@@ -191,7 +191,7 @@ The legacy Meta sync and generic metrics responses remain compatible.
 The container hub opens at:
 
 ```text
-/universal?focus=mkt_paid_acquisition&openHub=1&tab=inbox
+/universal?focus=mkt_paid_acquisition&tab=inbox
 ```
 
 The existing three Paid Acquisition leaf panels use the same operating-brief

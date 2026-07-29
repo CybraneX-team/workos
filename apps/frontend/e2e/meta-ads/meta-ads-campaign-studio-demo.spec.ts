@@ -132,7 +132,7 @@ test('guided Campaign Studio lifecycle with review, approvals, and safe fake exe
     await controls.clear(page);
     await signInViaUi(page, fixture.users.founder);
 
-    await page.goto('/universal?focus=mkt_paid_acquisition&openHub=1&tab=campaigns');
+    await page.goto('/universal?focus=mkt_paid_acquisition&tab=campaigns');
     await expect(page.getByText('Campaign Studio', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('WorkOS Meta sandbox · ready', { exact: true })).toBeVisible();
     await controls.showScene(

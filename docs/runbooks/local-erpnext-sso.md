@@ -1,6 +1,6 @@
 # Local WorkOS-to-ERPNext SSO runbook
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-29 (fresh local tenant provisioning, setup verification, SSO, and user reconciliation).
 
 Scope: local development only. A separate **deployed** control-plane
 (`ERPNEXT_ENV=remote`) runs in Azure against the ERPNext VM — this runbook does not
@@ -66,6 +66,10 @@ pnpm --filter erpnext-control-plane db:migrate
 
 Both migrations are idempotent for repeated local setup.
 
+Migration `003_provision_lifecycle.sql` adds the stage and heartbeat fields used by the
+provisioning diagnostics below. Always run the control-plane migration command after pulling
+provisioning changes.
+
 ## 3. Start the runtime
 
 From the repository root:
@@ -86,6 +90,32 @@ curl -fsS http://localhost:8090/healthz
 curl -fsS http://localhost:8081/api/method/ping
 ```
 
+### One-process rule and clean restart
+
+Run `pnpm dev:workos-erpnext` only once. Multiple `tsx --watch` control-plane processes can
+race to bind port `8090`; an old process may remain reachable while the intended worker never
+owns the port. Before restarting, inspect the listeners and stop the parent development commands
+in their original terminals:
+
+```bash
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+lsof -nP -iTCP:8080 -sTCP:LISTEN
+lsof -nP -iTCP:8090 -sTCP:LISTEN
+```
+
+After the three ports are clear, this scoped restart preserves Frappe volumes and sites:
+
+```bash
+pnpm frappe:down
+pnpm frappe:up
+pnpm dev:workos-erpnext
+```
+
+Do not use `docker compose down -v`: it deletes local Frappe volumes. If a listener survives
+after its parent terminal exits, identify its exact PID with `lsof`, inspect the parent with
+`ps -o pid,ppid,command -p <pid>`, then stop that verified process before starting another
+watcher.
+
 Startup notes learned the hard way (2026-07-21):
 
 - `pnpm frappe:up` prints almost nothing while pulling the ~4.6GB image. A silent
@@ -99,10 +129,9 @@ Startup notes learned the hard way (2026-07-21):
   background shell instead; `preview_start {url: ...}` against an already-running server
   works fine.
 - `tsx watch` does **not** restart a process that crashed at runtime — it waits for the
-  next file save. If the backend or control-plane dies, `pnpm dev:workos-erpnext` keeps
-  running with a hole in it and provisioning silently stops. Verify with the `/healthz`
-  curls above, not by checking that the dev command is still in the terminal. See
-  "Provisioning stalls with no retries" below.
+  next file save. `/healthz` proves an HTTP listener only, not that the backend outbox worker
+  is claiming rows. Verify durable outbox and job state below; do not infer worker health from
+  a terminal that merely remains open.
 
 ## 4. Provision a company
 
@@ -112,14 +141,22 @@ Startup notes learned the hard way (2026-07-21):
 4. Optionally inspect safe state without reading secrets:
 
 ```sql
-select target_env, company_id, command_kind, status, attempts, last_error
+select target_env, company_id, command_kind, status, attempts, next_attempt_at,
+       locked_by, locked_until, last_error
 from public.erpnext_command_outbox
 order by updated_at desc;
 
-select environment, company_id, status, site_name, desk_url, last_error
-from erpnext.tenants
-order by updated_at desc;
+select status, attempts, current_stage, stage_started_at, heartbeat_at,
+       locked_by, locked_until, last_error
+from erpnext.provision_jobs
+where company_id = '<company-uuid>' and environment = 'local'
+order by created_at desc;
 ```
+
+Expected lifecycle: `provision_tenant` becomes `complete` after the control-plane accepts the
+job; the provision job advances through `claimed`, `create_site`, `complete_setup`,
+`apply_branding`, and `complete`. `configure_sso` and `reconcile_users` can initially report
+retryable `tenant_not_ready`; they complete automatically after the tenant is `ready`.
 
 ## 5. Verify browser SSO
 
@@ -160,8 +197,11 @@ Then exercise the existing Operations, Supply Chain, Sales, Products, and Copilo
 | Symptom | Check |
 |---|---|
 | Control-plane returns `environment_mismatch` | `ERPNEXT_TARGET_ENV` and `ERPNEXT_ENV` must both be `local`. |
-| Provisioning remains pending | Control-plane health, `RUN_PROVISION_WORKER`, Docker availability, `erpnext.provision_jobs.last_error`. |
-| SSO/users remain pending | Tenant must be `ready`; inspect WorkOS outbox attempts/error and confirm the two service tokens match. |
+| Provisioning remains pending with no attempts | Inspect the backend `provision_tenant` outbox row. If it is eligible (`next_attempt_at <= now()` and no lease) while port `8080` is live, the backend outbox worker is not running; use the one-process clean restart above. |
+| Provision job remains pending with no attempts | The backend reached the control-plane but its worker did not claim the row. Confirm `RUN_PROVISION_WORKER=true`, inspect port `8090` for duplicate watchers, then use the one-process clean restart. |
+| Provisioning is running | Read `current_stage` and `heartbeat_at`. A recent heartbeat means it is live; `create_site` can take several minutes on arm64 hosts emulating the current amd64 ERPNext image. A busy site lock retries without consuming an attempt. |
+| Provisioning fails | Inspect the redacted `last_error`. It includes a stage (for example `create_site` or `complete_setup`), and local command failures include safe exit/signal/stderr context. It never contains generated credentials or configured secrets. |
+| SSO/users remain pending | Tenant must be `ready`; retryable `tenant_not_ready` is expected before then. After readiness, inspect WorkOS outbox attempts/error and confirm the two service tokens match. |
 | Site returns the wrong tenant or 404 | Compose frontend must use `FRAPPE_SITE_NAME_HEADER: $host`; retain host port `8081`. |
 | Token exchange cannot reach WorkOS | Frappe backend needs `host.docker.internal:host-gateway`; backend must listen on port `8080`. |
 | Browser bridge sends user to `/auth` | No active Supabase session exists on `localhost:5173`; sign in and start a fresh ERPNext login flow. |
@@ -170,7 +210,7 @@ Then exercise the existing Operations, Supply Chain, Sales, Products, and Copilo
 | Outbox rows stuck `pending` with `TypeError: fetch failed` | The backend and/or control-plane process is dead. `curl` both `/healthz` endpoints — a running `pnpm dev:workos-erpnext` does **not** imply both are alive. See below. |
 | Newly provisioned site lacks `crm` | The stack is running the stock `frappe/erpnext` image instead of the custom `erpnext-crm` one. Check `docker compose -f ../infra/erpnext/pwd.yml exec -T backend ls apps`. |
 | `bench --site <site> install-app crm` fails `App crm not in apps.txt` | `sites/apps.txt` (in the shared `sites` volume) predates the image swap. Regenerate: `docker compose -f ../infra/erpnext/pwd.yml exec -T backend bash -c 'ls -1 apps > sites/apps.txt'`. Locally the `configurator` service usually fixes this itself on `up`; on the production VM it does not (see `cloud-deploy.md`). |
-| Fresh site opens `/app/setup-wizard` or `/desk/setup-wizard/0` | Provisioning should have completed setup. Check the tenant reached `status='ready'` (it is only set *after* setup) and look for `setup_args_missing` or a `setup_complete` failure in `erpnext.provision_jobs.last_error`. |
+| Fresh site opens `/app/setup-wizard` or `/desk/setup-wizard/0` | Provisioning now verifies both `System Settings.setup_complete` and the expected Company before status becomes `ready`. Inspect `erpnext.provision_jobs.current_stage`, `heartbeat_at`, and `last_error`; a failed job is safe to diagnose, but do not treat a 2xx setup call as proof of completion. |
 | Provision job fails `setup_args_missing` | The job predates migration `002`, or the backend sent a pre-`companyName`/`country` payload. Redeploy the backend and re-enqueue; the worker refuses to provision a site it cannot configure. |
 | Setup wizard fails: `Failed to install presets` / `AttributeError: 'NoneType' object has no attribute 'replace'` | Setup ran with no country. `install_fixtures.get_preset_records()` calls `country.replace(...)` unguarded (`install_fixtures.py:152`), still unguarded upstream on `version-16`. `companies.country` is `NOT NULL DEFAULT 'India'`, so this means the value was lost in transit — check `erpnext.provision_jobs.country` for that job. |
 | Sales/Operations/Products dashboards unlock but render empty | The site has no `Company`. Check `bench --site <site> execute frappe.client.get_value --kwargs '{"doctype":"System Settings","fieldname":"setup_complete"}'`. |
@@ -208,7 +248,7 @@ otherwise re-fails identically.
 A useful side effect: `update_system_settings()` sets `enable_scheduler: 1`, which Frappe
 CRM's Facebook lead syncing needs.
 
-## Provisioning stalls with no retries
+## Historical: provisioning stalls with no retries
 
 Observed 2026-07-21: three outbox commands sat `pending` for hours at 7/20 attempts with
 `TypeError: fetch failed`, and no site was ever created.
@@ -223,14 +263,17 @@ then waited for a file change instead of restarting.
 
 To recover:
 
-1. `curl -fsS http://localhost:8080/healthz` and `:8090/healthz`. `HTTP 000` means dead.
-2. Restart the dead service(s) (`pnpm --filter backend dev`, `pnpm --filter erpnext-control-plane dev`).
+1. `curl -fsS http://localhost:8080/healthz` and `:8090/healthz`. `HTTP 000` means dead,
+   but HTTP `200` alone does not prove the intended watcher owns the port or that its worker
+   loop is claiming rows.
+2. Use the one-process clean restart above rather than starting another watcher beside a live one.
 3. The outbox resumes on its own, but backs off up to ~5 minutes between attempts. To
    retry immediately, set `next_attempt_at = now()` for that company's `pending` rows.
-4. `provision_tenant` completing only means the job was durably enqueued. The control-plane
-   worker then runs `bench new-site` as a **host** process — watch for it with
-   `ps aux | grep 'bench new-site'`, not with `ps` inside the container (that exec session
-   does not show it). It takes several minutes under emulation, and logs nothing on success.
+4. `provision_tenant` completing only means the control-plane accepted the job. The control-plane
+   worker runs `bench new-site` inside the backend container under a per-site `flock` and inner
+   25-minute timeout — inspect it inside that container, not as a host process. A job with a
+   recent `heartbeat_at` is live; a busy lock is retried without consuming an attempt. On an
+   arm64 host running an amd64 image through emulation, creation can still take several minutes.
 5. `configure_sso` and `reconcile_users` legitimately report retryable `tenant_not_ready`
    until the tenant flips to `ready`.
 

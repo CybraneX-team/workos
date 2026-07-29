@@ -59,7 +59,10 @@ app.get('/internal/v1/tenants/:companyId/status', async (req, res) => {
   if (!ensureEnvironment(environment, res)) return;
   const row = await tenantRow(req.params.companyId, environment);
   if (!row) return res.json({ companyId: req.params.companyId, environment, status: 'not_configured' });
-  return res.json(toStatus(row));
+  const { rows } = await pool.query<{ current_stage: string | null }>(`select current_stage from erpnext.provision_jobs
+    where environment=$1 and company_id=$2 and status in ('pending','running') order by created_at desc limit 1`, [environment, req.params.companyId]);
+  const status = toStatus(row);
+  return res.json(rows[0]?.current_stage ? { ...status, provisioningStage: rows[0].current_stage } : status);
 });
 
 app.get('/internal/v1/tenants', async (req, res) => {
@@ -73,12 +76,24 @@ app.post('/internal/v1/tenants/:companyId/records/query-batch', async (req, res)
   const parsed = RecordQueryBatchRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(serviceError('invalid_request', parsed.error.message, false));
   if (!ensureEnvironment(parsed.data.environment, res)) return;
+  const traceId = req.header('x-workos-trace-id') || 'none';
+  const startedAt = Date.now();
+  console.info('[erpnext-control-plane] records_batch_start', { traceId, companyId: req.params.companyId, queryCount: parsed.data.queries.length });
   const creds = await credentials(req.params.companyId, parsed.data.environment);
   if (!creds) return res.status(409).json(serviceError('tenant_not_ready', 'ERPNext tenant is not ready.', true));
   const results = await Promise.all(parsed.data.queries.map(async query => {
-    try { return { id: query.id, ok: true as const, rows: await getRecords(creds, query.doctype, query.fields, query.filters, query.limit, query.pageSize) }; }
-    catch (error) { return { id: query.id, ok: false as const, rows: [] as [], error: serviceError('frappe_read_failed', error instanceof Error ? error.message : String(error), true) }; }
+    const queryStartedAt = Date.now();
+    try {
+      const rows = await getRecords(creds, query.doctype, query.fields, query.filters, query.limit, query.pageSize);
+      console.info('[erpnext-control-plane] records_query_complete', { traceId, queryId: query.id, doctype: query.doctype, rowCount: rows.length, elapsedMs: Date.now() - queryStartedAt });
+      return { id: query.id, ok: true as const, rows };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[erpnext-control-plane] records_query_failed', { traceId, queryId: query.id, doctype: query.doctype, elapsedMs: Date.now() - queryStartedAt, error: message.slice(0, 300) });
+      return { id: query.id, ok: false as const, rows: [] as [], error: serviceError('frappe_read_failed', message, true) };
+    }
   }));
+  console.info('[erpnext-control-plane] records_batch_complete', { traceId, companyId: req.params.companyId, elapsedMs: Date.now() - startedAt, failedQueryCount: results.filter(result => !result.ok).length });
   return res.json({ results });
 });
 
@@ -151,4 +166,18 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   res.status(500).json(serviceError('internal_error', error instanceof Error ? error.message : 'Internal error.', true));
 });
 
-app.listen(env.PORT, () => { console.log(`[erpnext-control-plane] listening on :${env.PORT} (${env.ERPNEXT_ENV})`); if (env.RUN_PROVISION_WORKER) startProvisionWorker(); });
+const server = app.listen(env.PORT, () => {
+  console.log(`[erpnext-control-plane] listening on :${env.PORT} (${env.ERPNEXT_ENV})`);
+  const worker = env.RUN_PROVISION_WORKER ? startProvisionWorker() : null;
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.info('[erpnext-control-plane] shutting down', { signal });
+    worker?.stop();
+    server.close(() => void pool.end().finally(() => process.exit(0)));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+});

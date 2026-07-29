@@ -44,7 +44,7 @@ test.describe('Meta Ads Paid Acquisition UX', () => {
 
   async function openPaidAcquisition(page: Page, tab?: 'inbox' | 'campaigns' | 'experiments' | 'results') {
     const suffix = tab ? `&tab=${tab}` : '';
-    await page.goto(`/universal?focus=mkt_paid_acquisition&openHub=1${suffix}`);
+    await page.goto(`/universal?focus=mkt_paid_acquisition${suffix}`);
     await expect(page.getByText('Paid Acquisition operating brief')).toBeVisible({ timeout: 30_000 });
   }
 
@@ -218,14 +218,14 @@ test.describe('Meta Ads Paid Acquisition UX', () => {
           id: 'finding-e2e', fingerprint: 'stale-e2e', severity: 'warning', scope: 'integration', kind: 'stale_data',
           title: 'Meta Ads data is stale', explanation: 'Fixture evidence', affectedPeriod: { start: null, end: null },
           evidence: { dataAgeHours: 40 }, estimatedSpendExposure: 0,
-          action: { kind: 'review_paid_acquisition', label: 'Review refresh status', href: '/universal?focus=mkt_paid_acquisition&openHub=1' },
+          action: { kind: 'review_paid_acquisition', label: 'Review refresh status', href: '/universal?focus=mkt_paid_acquisition' },
           firstDetectedAt: '2026-07-14T00:00:00.000Z', lastDetectedAt: '2026-07-14T01:00:00.000Z',
         },
       }),
     }));
     await page.goto('/overview');
     await page.getByRole('button', { name: 'Review in Paid Acquisition' }).click();
-    await expect(page).toHaveURL(/focus=mkt_paid_acquisition.*openHub=1.*tab=inbox/);
+    await expect(page).toHaveURL(/focus=mkt_paid_acquisition.*tab=inbox/);
     await expect(page.getByText('Paid Acquisition operating brief')).toBeVisible({ timeout: 30_000 });
   });
 

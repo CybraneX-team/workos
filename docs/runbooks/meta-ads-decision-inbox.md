@@ -104,7 +104,7 @@ pnpm --filter frontend dev
 Open:
 
 ```text
-http://localhost:5173/universal?focus=mkt_paid_acquisition&openHub=1&tab=inbox
+http://localhost:5173/universal?focus=mkt_paid_acquisition&tab=inbox
 ```
 
 In the browser:

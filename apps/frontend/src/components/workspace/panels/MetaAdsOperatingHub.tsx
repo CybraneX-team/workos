@@ -2,6 +2,10 @@ import { ArrowRight, Clock3, ExternalLink, Loader2, RefreshCw, Target } from 'lu
 import { useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useMetaAdsBrief } from '../../../lib/integrations/useMetaAdsBrief';
+import { useAuth } from '../../../lib/auth';
+import { useTeamMembers } from '../../../lib/db/team';
+import { isMetricAdmin } from '../../../lib/db/canonicalMetrics';
+import { MetaMetricPanel } from './MetaMetricPanel';
 import { MetaAdsDecisionWorkspace } from './MetaAdsDecisionWorkspace';
 import { GlassCard, SectionTitle } from './PanelShell';
 
@@ -31,6 +35,9 @@ function sevenDayRollup(points: Array<{ spend: number; purchaseRoas: number; sel
 
 export function MetaAdsOperatingHub() {
   const navigate = useNavigate();
+  const { profile, role } = useAuth();
+  const companyId = profile?.company_id ?? null;
+  const { members } = useTeamMembers(companyId);
   const { brief, loading, error, refreshRun, refresh } = useMetaAdsBrief();
 
   if (loading && !brief) {
@@ -121,6 +128,13 @@ export function MetaAdsOperatingHub() {
               </div>
             )}
           </GlassCard>
+
+          {companyId && <MetaMetricPanel
+            companyId={companyId}
+            nodeStableSourceKey="mkt_paid_acquisition"
+            canConfigure={isMetricAdmin(role)}
+            members={members}
+          />}
 
           <GlassCard>
             <div className="flex items-center justify-between"><SectionTitle icon={Clock3}>Thirty-day trend</SectionTitle><span className="text-[10px] text-white/30">Latest and preceding 7-day findings use complete account days</span></div>

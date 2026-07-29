@@ -1,187 +1,98 @@
 import { api } from '../api';
+import type { CanonicalMetric } from '@cybranex/metrics';
 
-export type SupplyChainStatus = 'ready' | 'provisioning' | 'failed' | 'not_configured';
-export type SupplyChainBranchKey =
-  | 'inventory'
-  | 'logistics'
-  | 'shipping'
-  | 'warehousing'
-  | 'routing'
-  | 'procurement_flow';
+/** Server-validated read-only evidence for the Operations V4 control tower. */
+export type ErpNextOperationsSnapshotStatus = 'ready' | 'partial' | 'not_configured';
+export type ErpNextOperationsDomainKey =
+  | 'supply_procurement'
+  | 'fulfilment_logistics'
+  | 'production_capacity'
+  | 'service_quality';
+export type ErpNextOperationsSeverity = 'info' | 'warning' | 'critical';
 
-export interface SupplyChainCard {
-  id: string;
-  title: string;
-  subtitle?: string;
-  value?: string;
-  status?: string;
-  sourceDoctype: string;
-  sourceId?: string;
-}
-
-export interface SupplyChainMetric {
-  label: string;
-  value: number | string;
-  unit?: string;
-}
-
-export interface SupplyChainRecommendation {
-  label: string;
-  reason: string;
-  severity: 'info' | 'warning' | 'critical';
-}
-
-export interface SupplyChainBranch {
-  key: SupplyChainBranchKey;
-  label: string;
-  connected: boolean;
-  sourceDoctypes: string[];
-  cards: SupplyChainCard[];
-  metrics: SupplyChainMetric[];
-  recommendedActions: SupplyChainRecommendation[];
-}
-
-export interface SupplyChainSummary {
-  status: SupplyChainStatus;
-  generatedAt: string;
-  siteName?: string;
-  warnings: string[];
-  branches: SupplyChainBranch[];
-}
-
-export type ErpNextOpsStatus = 'ready' | 'not_configured' | 'unsupported' | 'partial';
-export type ErpNextOpsTemplateKey =
-  | 'procurement'
-  | 'inventory_warehousing'
-  | 'logistics_shipping'
-  | 'service_delivery'
-  | 'quality'
-  | 'manufacturing_lean'
-  | 'assets_resources'
-  | 'rollup'
-  | 'unsupported';
-export type ErpNextOpsTone = 'good' | 'neutral' | 'warning' | 'critical';
-
-export interface ErpNextOpsMetric {
-  label: string;
-  value: number | string;
-  unit?: string;
-}
-
-export interface ErpNextOpsCard {
-  id: string;
-  title: string;
-  subtitle?: string;
-  value?: string;
-  status?: string;
-  sourceDoctype: string;
-  sourceId?: string;
-}
-
-export interface ErpNextOpsMetricCard {
-  id: string;
-  label: string;
-  value: number | string;
-  unit?: string;
-  description: string;
-  tone: ErpNextOpsTone;
-}
-
-export interface ErpNextOpsBreakdown {
-  id: string;
-  title: string;
-  items: Array<{
-    label: string;
-    value: number | string;
-    unit?: string;
-    tone?: ErpNextOpsTone;
-  }>;
-}
-
-export interface ErpNextOpsInsight {
-  id: string;
-  label: string;
-  detail: string;
-  severity: 'info' | 'warning' | 'critical';
-}
-
-export interface ErpNextOpsEvidence {
+export interface ErpNextOperationsDeskLink {
   id: string;
   label: string;
   sourceDoctype: string;
-  sourceId: string;
+  href: string;
+}
+
+export interface ErpNextOperationsQueue extends ErpNextOperationsDeskLink {
+  value: number;
+}
+
+export interface ErpNextOperationsEvidence {
+  id: string;
+  label: string;
+  sourceDoctype: string;
+  href?: string;
   detail?: string;
+  sourceId?: string;
   status?: string;
-  attributes?: Array<{
-    label: string;
-    value: string | number;
-    tone?: ErpNextOpsTone;
-  }>;
 }
 
-export interface ErpNextOpsChildRollup {
-  nodeId: string;
-  nodeLabel: string;
-  mappingLabel: string;
-  status: ErpNextOpsStatus;
-  templateKey: ErpNextOpsTemplateKey;
-  healthScore: number | null;
-  headline: string;
+export interface ErpNextOperationsException extends ErpNextOperationsEvidence {
+  severity: ErpNextOperationsSeverity;
 }
 
-export interface ErpNextOpsRecommendation {
+export interface ErpNextOperationsRecommendation {
+  id: string;
   label: string;
   reason: string;
-  severity: 'info' | 'warning' | 'critical';
+  severity: ErpNextOperationsSeverity;
 }
 
-export interface ErpNextOpsNodeSummary {
-  status: ErpNextOpsStatus;
+export interface ErpNextOperationsSnapshotGroup {
+  key: ErpNextOperationsDomainKey;
+  label: string;
+  status: 'ready' | 'partial';
+  queues: ErpNextOperationsQueue[];
+  exceptions: ErpNextOperationsException[];
+  evidence: ErpNextOperationsEvidence[];
+  recommendations: ErpNextOperationsRecommendation[];
+  actions: ErpNextOperationsDeskLink[];
+}
+
+export interface ErpNextOperationsSnapshot {
+  status: ErpNextOperationsSnapshotStatus;
   generatedAt: string;
   siteName?: string;
-  department: 'Operations';
   nodeId: string;
   nodeLabel: string;
-  path: string[];
-  mappingKey: string;
-  mappingLabel: string;
-  templateKey: ErpNextOpsTemplateKey;
-  headline: string;
-  healthScore: number | null;
-  sourceDoctypes: string[];
-  metrics: ErpNextOpsMetric[];
-  metricCards: ErpNextOpsMetricCard[];
-  breakdowns: ErpNextOpsBreakdown[];
-  insights: ErpNextOpsInsight[];
-  cards: ErpNextOpsCard[];
-  evidence: ErpNextOpsEvidence[];
-  childRollups?: ErpNextOpsChildRollup[];
-  recommendedActions: ErpNextOpsRecommendation[];
+  groups: ErpNextOperationsSnapshotGroup[];
   warnings: string[];
-  unsupportedReason?: string;
+  message?: string;
 }
 
-export function fetchSupplyChainSummary(options?: {
+export function fetchErpNextOperationsSnapshot(nodeId: string) {
+  return api.get<ErpNextOperationsSnapshot>(`/api/erpnext/operations/snapshot?${new URLSearchParams({ nodeId })}`);
+}
+
+export type ErpNextOperationsMetricKey =
+  | 'open_material_requests'
+  | 'open_purchase_orders'
+  | 'low_stock_positions'
+  | 'open_work_orders'
+  | 'work_order_completion_percent'
+  | 'failed_quality_checks';
+
+export function fetchErpNextOperationsMetrics(companyId: string) {
+  return api.get<CanonicalMetric[]>(`/api/metrics/${encodeURIComponent(companyId)}/integrations/erpnext-operations`);
+}
+
+export function bootstrapErpNextOperationsMetrics(companyId: string) {
+  return api.post<CanonicalMetric[]>(`/api/metrics/${encodeURIComponent(companyId)}/integrations/erpnext-operations`, {});
+}
+
+export function refreshErpNextOperationsMetrics(companyId: string) {
+  return api.post<CanonicalMetric[]>(`/api/metrics/${encodeURIComponent(companyId)}/integrations/erpnext-operations/refresh`, {});
+}
+
+export function configureErpNextOperationsMetric(companyId: string, metricKey: ErpNextOperationsMetricKey, input: {
+  target: number;
+  ownerMemberId: string;
+  weight?: number;
   lowStockThreshold?: number;
-  limit?: number;
 }) {
-  const params = new URLSearchParams();
-  if (options?.lowStockThreshold !== undefined) {
-    params.set('low_stock_threshold', String(options.lowStockThreshold));
-  }
-  if (options?.limit !== undefined) {
-    params.set('limit', String(options.limit));
-  }
-  const suffix = params.toString() ? `?${params.toString()}` : '';
-  return api.get<SupplyChainSummary>(`/api/erpnext/supply-chain/summary${suffix}`);
-}
-
-export function fetchErpNextOperationsNodeSummary(nodeId: string, options?: {
-  limit?: number;
-}) {
-  const params = new URLSearchParams({ nodeId });
-  if (options?.limit !== undefined) {
-    params.set('limit', String(options.limit));
-  }
-  return api.get<ErpNextOpsNodeSummary>(`/api/erpnext/operations/node-summary?${params.toString()}`);
+  return api.put<CanonicalMetric[]>(`/api/metrics/${encodeURIComponent(companyId)}/integrations/erpnext-operations/${encodeURIComponent(metricKey)}`, input);
 }

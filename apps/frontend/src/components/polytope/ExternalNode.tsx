@@ -53,8 +53,7 @@ export function ExternalNode({
   const fullLabel = node.label;
   const shortLabel = fullLabel.split(/[\s_\-]/)[0] || fullLabel;
 
-  const level1Nodes = node.internalNodes.filter(n => n.nodeLevel === 'level1');
-  const ringNodes = level1Nodes.length > 0 ? level1Nodes : node.internalNodes;
+  const ringNodes = node.internalNodes;
 
   const internalPositions = useMemo(() => {
     const isDraftAtRoot = selectedInternalPath.length === 0;
@@ -203,11 +202,6 @@ export function ExternalNode({
             draftChildNode={draftChildNode}
             draftMember={draftMember}
             draftMemberScreenPosRef={draftMemberScreenPosRef}
-            // Real BDT departments (loaded via /api/departments) always set sourceKey; the
-            // legacy Twin-scope seed (universalPolytopeData.ts) never does — leaving this
-            // undefined there is what correctly excludes Twin from gating (see isBdtNodeActive).
-            departmentSourceKey={node.sourceKey}
-            branchLabel={undefined}
           />
         );
       })}

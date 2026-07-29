@@ -130,26 +130,12 @@ const DEFAULT_DEPT_METRICS = { performance: 75, efficiency: 75, capacity: 75, al
  * plus a bare shell per custom label. Falls back to all 13 framework departments
  * when nothing was selected, preserving the "company always has departments" rule.
  */
-function buildSeedPayload(sourceKeys: string[], customLabels: string[]): BdtSeedDepartment[] {
+function buildSeedPayload(sourceKeys: string[]): BdtSeedDepartment[] {
   const selected = BDT_SEED_DEPARTMENTS.filter(
     (d) => typeof d.source_key === 'string' && sourceKeys.includes(d.source_key),
   );
 
-  const customs: BdtSeedDepartment[] = customLabels
-    .map((raw) => stringOrNull(raw))
-    .filter((label): label is string => Boolean(label))
-    .map((label, i) => ({
-      label,
-      domain: 'delivery',
-      cluster: 'Custom',
-      color: CUSTOM_DEPT_PALETTE[i % CUSTOM_DEPT_PALETTE.length],
-      score: 75,
-      metrics: { ...DEFAULT_DEPT_METRICS },
-      internalNodes: [],
-    }));
-
-  const payload = [...selected, ...customs];
-  return payload.length > 0 ? payload : [...BDT_SEED_DEPARTMENTS];
+  return selected.length > 0 ? selected : [...BDT_SEED_DEPARTMENTS];
 }
 
 companiesRouter.post('/', async (req: any, res: any) => {
@@ -158,6 +144,9 @@ companiesRouter.post('/', async (req: any, res: any) => {
   }
 
   const body = req.body ?? {};
+  if (Array.isArray(body.bdt_custom_departments) && body.bdt_custom_departments.some((value: unknown) => typeof value === 'string' && value.trim())) {
+    return res.status(400).json({ error: 'custom_departments_disabled' });
+  }
   const name = stringOrNull(body.name);
   const industryId = stringOrNull(body.industry_id);
   const stage = stringOrNull(body.stage) ?? 'Seed';
@@ -265,7 +254,7 @@ companiesRouter.post('/', async (req: any, res: any) => {
       const customLabels = Array.isArray(body.bdt_custom_departments)
         ? body.bdt_custom_departments.filter((l: unknown): l is string => typeof l === 'string')
         : [];
-      const seedDepartments = buildSeedPayload(sourceKeys, customLabels);
+      const seedDepartments = buildSeedPayload(sourceKeys);
       const selection = {
         source_keys: sourceKeys,
         custom_labels: customLabels,

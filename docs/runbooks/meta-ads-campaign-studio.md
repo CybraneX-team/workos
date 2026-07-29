@@ -142,7 +142,7 @@ Seed a disposable company with the existing Meta fixture, then start backend and
 frontend. Sign in as a founder/admin and open:
 
 ```text
-http://localhost:5173/universal?focus=mkt_paid_acquisition&openHub=1&tab=campaigns
+http://localhost:5173/universal?focus=mkt_paid_acquisition&tab=campaigns
 ```
 
 Verify:

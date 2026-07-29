@@ -78,7 +78,7 @@ The Meta Ads operating and authoring experience lives under Marketing → Paid
 Acquisition. The container workspace opens directly at:
 
 ```text
-/universal?focus=mkt_paid_acquisition&openHub=1&tab=inbox
+/universal?focus=mkt_paid_acquisition&tab=inbox
 ```
 
 The hub consumes the backend operating brief and Decision Inbox. It presents
@@ -124,6 +124,10 @@ read:
 
 - `../../docs/architecture/erpnext-control-plane.md`
 - `../../docs/runbooks/local-erpnext-sso.md`
+
+During tenant provisioning, Settings polls the backend's safe ERPNext status response and
+may display a coarse provisioning stage. It must never derive a host name, call the
+control-plane, or render a raw provisioning diagnostic.
 
 ## Keeping this document current
 

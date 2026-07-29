@@ -178,7 +178,7 @@ All routes derive company and current account from authentication:
 The UI is the `Campaigns` tab at:
 
 ```text
-/universal?focus=mkt_paid_acquisition&openHub=1&tab=campaigns
+/universal?focus=mkt_paid_acquisition&tab=campaigns
 ```
 
 Overview attention includes drafts awaiting approval and failed authoring jobs,

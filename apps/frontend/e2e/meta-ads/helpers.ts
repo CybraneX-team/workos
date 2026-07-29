@@ -15,36 +15,13 @@ export async function seedMinimalPaidAcquisitionBdt(admin: SupabaseClient, compa
   const departments = [{
     id: 'dept_marketing', source_key: 'dept_marketing', label: 'Marketing', domain: 'market', cluster: 'Market', color: '#EB5757', score: 72,
     metrics: { performance: 75, efficiency: 68, capacity: 74, alignment: 72, risk: 26 },
-    internalNodes: [{
-      id: 'mkt_paid_acquisition_e2e', label: 'Paid Acquisition', type: 'branch', score: 72, nodeLevel: 'level1',
-      mappedUniversalCategory: 'metrics_health', metadata: { sourceKey: 'mkt_paid_acquisition' },
-      children: [
-        {
-          id: 'mkt_ad_performance_e2e', label: 'Ad Performance', type: 'branch', score: 72, nodeLevel: 'branch',
-          metadata: { sourceKey: 'mkt_paid_acquisition_ad_performance' },
-          children: [{
-            id: 'mkt_ad_performance_health_e2e', label: 'Ad Performance health', type: 'metric', score: 72, nodeLevel: 'action',
-            metadata: { sourceKey: 'mkt_paid_acquisition_ad_performance' }, children: [],
-          }],
-        },
-        {
-          id: 'mkt_spend_reach_e2e', label: 'Spend & Reach', type: 'branch', score: 72, nodeLevel: 'branch',
-          metadata: { sourceKey: 'mkt_paid_acquisition_spend_reach' },
-          children: [{
-            id: 'mkt_spend_reach_health_e2e', label: 'Spend & Reach health', type: 'metric', score: 72, nodeLevel: 'action',
-            metadata: { sourceKey: 'mkt_paid_acquisition_spend_reach' }, children: [],
-          }],
-        },
-        {
-          id: 'mkt_campaigns_e2e', label: 'Campaigns', type: 'branch', score: 72, nodeLevel: 'branch',
-          metadata: { sourceKey: 'mkt_paid_acquisition_campaigns' },
-          children: [{
-            id: 'mkt_campaigns_health_e2e', label: 'Campaigns health', type: 'metric', score: 72, nodeLevel: 'action',
-            metadata: { sourceKey: 'mkt_paid_acquisition_campaigns' }, children: [],
-          }],
-        },
-      ],
-    }],
+    internalNodes: [
+      { id: 'mkt_team_e2e', label: 'Team', type: 'team', score: 72, nodeLevel: 'level1', mappedUniversalCategory: 'resources_capacity', metadata: { sourceKey: 'marketing_workspace_team', taxonomyVersion: 'v4', workspaceKind: 'team' }, children: [] },
+      { id: 'mkt_systems_e2e', label: 'Systems', type: 'resource', score: 72, nodeLevel: 'level1', mappedUniversalCategory: 'dependencies', metadata: { sourceKey: 'marketing_workspace_systems', taxonomyVersion: 'v4', workspaceKind: 'systems', providerCapabilities: ['meta_ads'] }, children: [] },
+      { id: 'mkt_metrics_e2e', label: 'Metrics', type: 'metric', score: 72, nodeLevel: 'level1', mappedUniversalCategory: 'metrics_health', metadata: { sourceKey: 'marketing_workspace_metrics', taxonomyVersion: 'v4', workspaceKind: 'metrics' }, children: [] },
+      { id: 'mkt_projects_e2e', label: 'Projects', type: 'project', score: 72, nodeLevel: 'level1', mappedUniversalCategory: 'core_workstreams', metadata: { sourceKey: 'marketing_workspace_projects', taxonomyVersion: 'v4', workspaceKind: 'projects' }, children: [] },
+      { id: 'mkt_paid_acquisition_e2e', label: 'Paid Acquisition', type: 'branch', score: 72, nodeLevel: 'level1', mappedUniversalCategory: 'purpose_scope', metadata: { sourceKey: 'mkt_paid_acquisition', taxonomyVersion: 'v4', workspaceKind: 'focus', providerCapabilities: ['meta_ads'], presentation: 'meta_ads_hub' }, children: [] },
+    ],
   }];
   const { error } = await admin.rpc('import_bdt_departments_from_json', {
     p_company_id: companyId,

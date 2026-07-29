@@ -15,19 +15,17 @@ const GAUGES: Array<{ key: MetaMetricKey; title: string; needsConversionEvent: b
   { key: 'selected_conversions_30d', title: 'Selected conversions', needsConversionEvent: true },
 ];
 
-const STABLE_KEY = 'mkt_paid_acquisition_ad_performance';
-const LABEL = 'ad performance health';
+const PAID_ACQUISITION_FOCUS_KEY = 'mkt_paid_acquisition';
 
-export function MetaMetricPanel({ companyId, nodeLabel, nodeStableSourceKey, canConfigure, members }: {
+export function MetaMetricPanel({ companyId, nodeStableSourceKey, canConfigure, members }: {
   companyId: string;
-  nodeLabel: string;
   nodeStableSourceKey?: string;
   canConfigure: boolean;
   members: TeamMember[];
 }) {
-  const isAdPerformanceNode = nodeStableSourceKey === STABLE_KEY || nodeLabel.trim().toLowerCase() === LABEL;
+  const isPaidAcquisition = nodeStableSourceKey === PAID_ACQUISITION_FOCUS_KEY;
   const { goals } = useBdtGoals(companyId);
-  const { brief, loading, error, reload } = useMetaAdsBrief(isAdPerformanceNode);
+  const { brief, loading, error, reload } = useMetaAdsBrief(isPaidAcquisition);
   const [localError, setLocalError] = useState<string | null>(null);
   const [eventSaving, setEventSaving] = useState(false);
   const [openConfig, setOpenConfig] = useState<MetaMetricKey | null>(null);
@@ -36,7 +34,7 @@ export function MetaMetricPanel({ companyId, nodeLabel, nodeStableSourceKey, can
     [brief],
   );
 
-  if (!isAdPerformanceNode) return null;
+  if (!isPaidAcquisition) return null;
 
   async function chooseEvent(actionType: string) {
     if (!actionType) return;

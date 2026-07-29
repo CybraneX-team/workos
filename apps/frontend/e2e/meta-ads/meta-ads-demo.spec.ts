@@ -132,7 +132,7 @@ async function ensurePaidAcquisitionCta(page: Page) {
 }
 
 async function openHub(page: Page) {
-  await page.goto('/universal?focus=mkt_paid_acquisition&openHub=1');
+  await page.goto('/universal?focus=mkt_paid_acquisition');
   const brief = page.getByText('Paid Acquisition operating brief', { exact: true });
   await expect(brief).toBeVisible({ timeout: 30_000 });
 }

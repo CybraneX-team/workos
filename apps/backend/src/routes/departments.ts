@@ -29,15 +29,6 @@ import { syncErpNextRolesForMember } from '../lib/erpnextRoleSync.js';
 export const departmentsRouter = Router();
 departmentsRouter.use(authJwt);
 
-type TeamNodeMember = {
-  assignmentId: string;
-  companyMemberId: string;
-  userId: string;
-  name: string;
-  role: string;
-  avatarUrl: string | null;
-};
-
 function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'department';
 }
@@ -66,20 +57,6 @@ function metricsOrDefault(value: any, fallback = 75) {
 
 function toArray(value: unknown): any[] {
   return Array.isArray(value) ? value : [];
-}
-
-function formatRoleLabel(role: string | null | undefined) {
-  if (!role) return 'Member';
-  return role
-    .split('_')
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function buildMemberName(profile: { first_name?: string | null; last_name?: string | null }, fallbackRole: string) {
-  const name = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
-  return name || fallbackRole;
 }
 
 function normalizeDepartmentInput(body: any) {
@@ -222,6 +199,7 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
        FROM public.department_bdt_nodes n
        LEFT JOIN public.department_metric_links ml ON ml.node_id = n.id
       WHERE n.company_id = $1
+        AND n.metadata->>'taxonomyVersion' = 'v4'
       ORDER BY n.department_id, n.parent_node_id NULLS FIRST, n.sort_order ASC, n.label ASC`,
     [companyId],
   );
@@ -247,56 +225,9 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
   );
   const memberCounts = new Map(memberRows.map((row: any) => [row.department_id, Number(row.member_count) || 0]));
 
-  const { rows: nodeMemberRows } = await pool.query<{
-    node_id: string;
-    assignment_id: string;
-    company_member_id: string;
-    user_id: string;
-    role: string;
-    first_name: string | null;
-    last_name: string | null;
-    title: string | null;
-    avatar_url: string | null;
-  }>(
-    `SELECT dnm.node_id,
-            dnm.id AS assignment_id,
-            cm.id AS company_member_id,
-            cm.user_id,
-            cm.role,
-            up.first_name,
-            up.last_name,
-            up.title,
-            up.avatar_url
-       FROM public.department_node_members dnm
-       JOIN public.company_members cm
-         ON cm.id = dnm.company_member_id
-        AND cm.company_id = dnm.company_id
-       LEFT JOIN public.user_profiles up
-         ON up.id = cm.user_id
-      WHERE dnm.company_id = $1
-        AND cm.status = 'active'
-      ORDER BY dnm.created_at ASC`,
-    [companyId],
-  );
-  const nodeMembers = new Map<string, TeamNodeMember[]>();
-  for (const row of nodeMemberRows) {
-    if (!nodeMembers.has(row.node_id)) nodeMembers.set(row.node_id, []);
-    const fallbackRole = formatRoleLabel(row.role);
-    nodeMembers.get(row.node_id)!.push({
-      assignmentId: row.assignment_id,
-      companyMemberId: row.company_member_id,
-      userId: row.user_id,
-      name: buildMemberName(row, fallbackRole),
-      role: row.title?.trim() || fallbackRole,
-      avatarUrl: row.avatar_url,
-    });
-  }
-
   const nodesByDepartment = new Map<string, any[]>();
   const nodeMap = new Map<string, any>();
   for (const row of nodeRows as any[]) {
-    const assignedMembers = nodeMembers.get(row.id) ?? [];
-    const fallbackMembers = row.node_type === 'team' ? toArray(row.metadata?.members) : undefined;
     const projectMeta = row.node_type === 'project' ? (row.metadata?.projectDetails ?? {}) : undefined;
     const rollup = nodeRollups.get(row.id);
     const node = {
@@ -308,7 +239,8 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
       stableSourceKey: (row.metadata?.sourceKey as string | undefined) ?? undefined,
       taxonomyVersion: (row.metadata?.taxonomyVersion as string | undefined) ?? undefined,
       presentation: (row.metadata?.presentation as string | undefined) ?? undefined,
-      availability: row.metadata?.availability === 'planned' ? 'planned' : 'active',
+      workspaceKind: (row.metadata?.workspaceKind as string | undefined) ?? undefined,
+      providerCapabilities: Array.isArray(row.metadata?.providerCapabilities) ? row.metadata.providerCapabilities : undefined,
       label: row.label,
       type: row.node_type,
       manualScore: row.score,
@@ -322,12 +254,8 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
         calculatedAt: rollup.calculated_at,
       } : null,
       children: [],
-      memberCount: row.node_type === 'team'
-        ? (assignedMembers.length > 0 ? assignedMembers.length : Number(row.metadata?.memberCount ?? fallbackMembers?.length ?? 0))
-        : undefined,
-      members: row.node_type === 'team'
-        ? (assignedMembers.length > 0 ? assignedMembers : fallbackMembers)
-        : undefined,
+      memberCount: row.node_type === 'team' ? (memberCounts.get(row.department_id) ?? 0) : undefined,
+      members: undefined,
       projectDetails: projectMeta
         ? {
             description: projectMeta.description ?? undefined,
@@ -359,8 +287,20 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
     }
   }
 
+  // V4 Systems reports the connection state for the provider that powers its
+  // department Focus. Existing development rows predate that metadata copy, so
+  // derive it from the same persisted V4 department tree at read time.
+  for (const nodes of nodesByDepartment.values()) {
+    const focus = nodes.find(node => node.workspaceKind === 'focus');
+    const systems = nodes.find(node => node.workspaceKind === 'systems');
+    if (systems && focus && (!systems.providerCapabilities || systems.providerCapabilities.length === 0)) {
+      systems.providerCapabilities = focus.providerCapabilities;
+    }
+  }
+
   return departmentRows
     .filter((department: any) => accessMap ? accessAllows(accessMap.get(department.id) ?? { read: false, write: false, delete: false, manage: false }, 'read') : true)
+    .filter((department: any) => (nodesByDepartment.get(department.id) ?? []).length > 0)
     .map((department: any) => {
     const access = accessMap?.get(department.id) ?? { read: true, write: true, delete: true, manage: true };
     const allNodes = nodesByDepartment.get(department.id) ?? [];
@@ -445,86 +385,6 @@ departmentsRouter.post('/', requireTwinAndTeamWrite(), async (req: any, res) => 
     const status = err.message === 'label_required' ? 400 : 500;
     console.error('[departments] create failed', err);
     return res.status(status).json({ error: 'department_create_failed', details: err.message });
-  } finally {
-    client.release();
-  }
-});
-
-departmentsRouter.post('/nodes/:nodeId/members', requirePermission('team', 'write'), requireDepartmentAccess('write', (req) => getNodeDepartmentId(req.auth.companyId, req.params.nodeId)), async (req: any, res) => {
-  const companyId = req.auth.companyId;
-  if (!companyId) return res.status(403).json({ error: 'no_company' });
-
-  const companyMemberId = stringOrNull(req.body?.memberId);
-  if (!companyMemberId) return res.status(400).json({ error: 'member_id_required' });
-
-  const client = await pool.connect();
-  let began = false;
-  try {
-    const node = await assertNode(companyId, req.params.nodeId);
-    if (!node) return res.status(404).json({ error: 'node_not_found' });
-    if (node.node_type !== 'team') return res.status(400).json({ error: 'node_not_team' });
-
-    const { rows: memberRows } = await client.query<{ id: string; department_id: string | null }>(
-      `SELECT id, department_id
-         FROM public.company_members
-        WHERE id = $1
-          AND company_id = $2
-          AND status = 'active'`,
-      [companyMemberId, companyId],
-    );
-    const member = memberRows[0];
-    if (!member) return res.status(404).json({ error: 'member_not_found' });
-
-    await client.query('BEGIN');
-    began = true;
-    await client.query(
-      `INSERT INTO public.department_node_members
-         (company_id, department_id, node_id, company_member_id, created_by)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (node_id, company_member_id) DO NOTHING`,
-      [companyId, node.department_id, node.id, member.id, req.auth.userId],
-    );
-    await client.query('COMMIT');
-
-    const accessMap = await getDepartmentAccessMap(req.auth);
-    return res.status(201).json({ success: true, departments: await listDepartments(companyId, accessMap) });
-  } catch (err: any) {
-    if (began) await client.query('ROLLBACK');
-    console.error('[departments] node member assign failed', err);
-    return res.status(500).json({ error: 'node_member_assign_failed', details: err.message });
-  } finally {
-    client.release();
-  }
-});
-
-departmentsRouter.delete('/nodes/:nodeId/members/:memberId', requirePermission('team', 'write'), requireDepartmentAccess('write', (req) => getNodeDepartmentId(req.auth.companyId, req.params.nodeId)), async (req: any, res) => {
-  const companyId = req.auth.companyId;
-  if (!companyId) return res.status(403).json({ error: 'no_company' });
-
-  const client = await pool.connect();
-  let began = false;
-  try {
-    const node = await assertNode(companyId, req.params.nodeId);
-    if (!node) return res.status(404).json({ error: 'node_not_found' });
-    if (node.node_type !== 'team') return res.status(400).json({ error: 'node_not_team' });
-
-    await client.query('BEGIN');
-    began = true;
-    await client.query(
-      `DELETE FROM public.department_node_members
-        WHERE company_id = $1
-          AND node_id = $2
-          AND company_member_id = $3`,
-      [companyId, node.id, req.params.memberId],
-    );
-    await client.query('COMMIT');
-
-    const accessMap = await getDepartmentAccessMap(req.auth);
-    return res.json({ success: true, departments: await listDepartments(companyId, accessMap) });
-  } catch (err: any) {
-    if (began) await client.query('ROLLBACK');
-    console.error('[departments] node member remove failed', err);
-    return res.status(500).json({ error: 'node_member_remove_failed', details: err.message });
   } finally {
     client.release();
   }

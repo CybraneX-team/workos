@@ -38,7 +38,7 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - `packages/erpnext-contracts`: runtime Zod contracts shared by the backend and control-plane.
 - `packages/*`: add a shared package only when at least two applications consume it.
 - `infra/erpnext-image`: build inputs (`apps.json`, `Containerfile`) for the custom Frappe image that bakes in both `erpnext` and `crm` (Frappe CRM). Frappe apps live in the image layer, so they cannot be added to a running container.
-- `infra/erpnext-remote-shim`: version-controlled **mirror** of the provisioning shim running on the `erpnext-vm` Azure VM. Nothing deploys from it; the VM is the live source of truth. Its `bench new-site` call duplicates `localProvision()` and must be kept in sync by hand.
+- `infra/erpnext-remote-shim`: version-controlled source mirror of the provisioning shim on the `erpnext-vm` Azure VM. Nothing deploys from it; the live VM may differ until a reviewed manual rollout verifies it. Its bounded, lock-protected site-creation behavior must remain aligned with `localProvision()`.
 - `../infra/erpnext/pwd.yml`: sibling Docker Compose stack used for local Frappe/ERPNext. It is a `frappe_docker` clone with its own git remote — changes there are **not** tracked by this repo.
 
 ## ERPNext non-negotiable boundaries

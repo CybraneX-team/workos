@@ -11,7 +11,7 @@ This application is the WorkOS-side owner of the ERPNext integration. Read `../.
 - OIDC `/authorize`, `/token`, and `/userinfo` endpoints and encrypted OIDC client secrets.
 - The environment-scoped `public.erpnext_command_outbox` and its local/remote dispatcher.
 - WorkOS-specific ERP projections, recommendations, stories, rollups, and ERP-backed Copilot behavior.
-- Browser-facing `/api/erpnext/*` routes, including `/api/erpnext/status`.
+- Browser-facing `/api/erpnext/*` routes, including `/api/erpnext/status`. While a tenant is provisioning, status forwards only the safe `provisioningStage`; it never exposes control-plane diagnostics or credentials.
 
 ## This app does not own
 
@@ -23,7 +23,7 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 ## Entry points
 
 - `src/server.ts`: route registration and worker startup.
-- `src/lib/erpnextOutbox.ts`: coalesced provisioning, SSO, and user-reconciliation commands; 30-minute safety reconciliation.
+- `src/lib/erpnextOutbox.ts`: coalesced provisioning, SSO, and user-reconciliation commands; 30-minute safety reconciliation. `provision_tenant` completing means the control-plane accepted the durable job; SSO/user commands retry with `tenant_not_ready` until the tenant becomes ready.
 - `src/lib/erpnextControlPlane.ts`: authenticated internal client.
 - `src/routes/oidc.ts`: OIDC grant flow and idempotent clients keyed by company/environment/provider.
 - `src/lib/erpnextRoleMapping.ts`: WorkOS-to-Frappe role computation.
@@ -49,28 +49,20 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 
 ## BDT taxonomy and onboarding seed
 
-The canonical default BDT tree is the typed source at
-`src/data/bdtTaxonomy.ts`. It contains 13 departments, 54 ordered Level-1
-capabilities, and 212 ordered branches, including immutable source keys,
-ownership meanings, concept keys, and availability. `src/data/bdtCatalog.ts` derives the catalog
-Level-1 definitions from it, while `src/data/bdtSeed.ts` combines it with
-`DEPT_META` to build the new-company import payload.
+The canonical V4 BDT tree is the typed source at `src/data/bdtTaxonomy.ts`.
+It contains 13 canonical departments and exactly five Level-1 nodes per
+department: Team, Systems, Metrics, Projects, and one Focus area. There are no
+generated branch, action, or metric children. `metadata.workspaceKind` and
+`metadata.sourceKey` are the routing contracts; provider availability changes a
+workspace's content but never locks its node. Custom departments are disabled.
 
-The active pipeline has no DOCX input, generated spec tree, or generated seed
-file. `routes/companies.ts` selects framework departments from
-`BDT_SEED_DEPARTMENTS`, adds custom department shells, and passes the result to
-`public.import_bdt_departments_from_json`. Existing companies are not migrated
-when this source changes.
-
-The builder preserves the import payload shape but emits V3 source keys,
-taxonomy version, meanings, concept keys, planned status, presentation mode, and
-action/metric metadata for new rows. Product Lines is the sole live ERPNext
-catalog branch: it deliberately emits no generic action/metric descendants; the
-frontend renders top-level Item Groups and descendant Items as read-only virtual
-nodes. Existing company trees are intentionally untouched and V2 Product Lines
-are not compatibility-supported. Read
-`../../docs/architecture/bdt-taxonomy-and-seeding.md` before editing this
-tree or any consumer of its stable keys.
+`routes/companies.ts` selects canonical V4 departments and passes the preserved
+import payload shape to `public.import_bdt_departments_from_json`. Existing
+development trees are not migrated. Product Portfolio is the sole focus that
+can project read-only virtual ERPNext catalogue children. Read
+`../../docs/architecture/bdt-taxonomy-and-seeding.md` and
+`../../docs/architecture/operations-v4.md` before changing the taxonomy or an
+Operations ERPNext projection.
 
 ## Implementation rules
 
@@ -174,10 +166,9 @@ and 22 `unsupported()`:
 | Sales Performance | 6 | 1 |
 | **Sales Resources** | **0** | **6** |
 
-`listActiveBranchKeys()` filters out `unsupported`, so those two nodes contribute **zero**
-active branches — 11 branch items that can never activate under any configuration. They
-render permanently locked. Either bind them or hide them at the catalog level; a node that
-can never activate is worse than an absent one.
+BDT V4 no longer uses integration activation to lock navigation. Each canonical department
+has visible Team, Systems, Metrics, Projects, and Focus nodes; provider availability changes
+workspace content rather than the existence of a node.
 
 **Segment dimensions are available but unread.** `industry` appears **zero** times in
 `erpnextSales.ts`. `territory` is read only from `Customer` (lines 192, 200) — never from
@@ -186,26 +177,13 @@ can never activate is worse than an absent one.
 tree, so rollups are available. This is why `sales_accounts_icp_segments` is marked
 `unsupported` ("not represented as a WorkOS doctype") when the underlying fields exist.
 
-## 🔴 Known broken: Marketing node binding is rename-fragile
+## BDT V4 focus routing
 
-Sales **derives** its active branches (`listActiveBranchKeys()`, `erpnextSales.ts:342`).
-Marketing **hardcodes** them — `MARKETING_PAID_ACQUISITION_KEYS` in
-`routes/bdtNodeActivation.ts:35`, and again in the frontend as
-`META_METRIC_NODE_STABLE_KEYS` / `META_SPEND_REACH_STABLE_KEYS`
-(`BdtActionWorkspace.tsx:71,77`), with literal-label fallbacks
-(`'ad performance health'`, `'spend & reach health'`).
-
-Those keys are **content-derived**: `data/bdtSeed.ts`'s `branchMetadata()` computes
-`sourceKey: \`${level1SourceKey}_${slug(branchItem)}\``. The key is stable across tree
-*reorders* — its stated purpose — but **not across renames**. Renaming a branch item in
-`data/bdtTaxonomy.ts` (e.g. "Ad Performance" → "Ad Health") changes the derived key, which
-silently unbinds *both* the backend activation array and the frontend gate at once, and the
-label fallback misses too.
-
-This is the same failure class as the doctype trap above, triggered by an **editorial**
-change rather than a schema one — and unlike Sales, **no test guards it**;
-`test:sales-stories` covers Sales doctypes only. Renaming any `mkt_paid_acquisition_*`
-branch item requires updating `bdtNodeActivation.ts` and `BdtActionWorkspace.tsx` together.
+Provider-backed BDT workspaces use immutable V4 focus keys: `mkt_paid_acquisition`,
+`sales_deal_execution`, `ops_process_capacity`, and `prod_product_portfolio`. Do not add
+generated branch/action descendants or use connection state as a graph lock. Add a provider
+capability and focus presentation to `data/bdtTaxonomy.ts`, then supply the corresponding
+server-side focus summary or hub.
 
 ## Verification
 

@@ -204,7 +204,7 @@ export default function Overview() {
               {metaAttention.dataAgeHours != null ? ` · data age ${Math.floor(metaAttention.dataAgeHours)}h` : ''}
             </div>
           </div>
-          <button type="button" onClick={() => navigate(`/universal?focus=mkt_paid_acquisition&openHub=1&tab=${(metaAttention.authoringApprovalCount ?? 0) > 0 || (metaAttention.authoringFailureCount ?? 0) > 0 ? 'campaigns' : 'inbox'}`)} style={{ flexShrink:0, padding:'8px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+          <button type="button" onClick={() => navigate(`/universal?focus=mkt_paid_acquisition&tab=${(metaAttention.authoringApprovalCount ?? 0) > 0 || (metaAttention.authoringFailureCount ?? 0) > 0 ? 'campaigns' : 'inbox'}`)} style={{ flexShrink:0, padding:'8px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.06)', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer' }}>
             Review in Paid Acquisition
           </button>
         </div>

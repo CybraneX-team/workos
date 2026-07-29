@@ -1,38 +1,44 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import { PlasmaSphere } from '../PolytopeShared';
-import { X, ChevronRight, Zap, Briefcase, Activity, Bookmark, BookmarkCheck, ExternalLink, Users, UserPlus, Trash2, Radio, GitBranch, BarChart3, HelpCircle } from 'lucide-react';
+import { X, ChevronRight, Zap, Briefcase, Activity, Bookmark, BookmarkCheck, ExternalLink, Users, UserPlus, Radio, GitBranch, BarChart3, HelpCircle, CheckCircle2, CircleX, Database, FolderPlus, LoaderCircle, RefreshCw, Settings2 } from 'lucide-react';
 import type { UInternalNode, UExternalNode } from '../../lib/usePolytopeStore';
 import { U_DOMAIN_COLOR } from '../../lib/usePolytopeStore';
 import { useSavedWorkflows } from '../../lib/useSavedWorkflows';
+import type { UserPlanetRole } from '../../data/companyPlanetRoots';
 import { BdtTypePanel } from './bdtWorkspacePanels';
-import { isProjectLeafNode } from '../../lib/bdtPolytopeData';
 import { filterReadableDepartments } from '../../lib/bdtTrailRbac';
 import type { BdtWorkflowTrailSession } from '../../lib/useWorkflowTrail';
 import WorkflowTrailRibbon from './WorkflowTrailRibbon';
 import { useAuth } from '../../lib/auth';
 import { useCanonicalMetrics, isMetricAdmin } from '../../lib/db/canonicalMetrics';
 import { useTeamMembers } from '../../lib/db/team';
+import { useProjectsStore } from '../../lib/useProjectsStore';
+import { api } from '../../lib/api';
+import { fetchConnections } from '../../lib/integrations/service';
 import {
-  fetchErpNextOperationsNodeSummary,
-  type ErpNextOpsNodeSummary,
+  fetchErpNextOperationsSnapshot,
+  fetchErpNextOperationsMetrics,
+  bootstrapErpNextOperationsMetrics,
+  refreshErpNextOperationsMetrics,
+  configureErpNextOperationsMetric,
+  type ErpNextOperationsSnapshot,
+  type ErpNextOperationsMetricKey,
+  type ErpNextOperationsSeverity,
 } from '../../lib/db/erpnextSupplyChain';
+import type { CanonicalMetric } from '@cybranex/metrics';
 import {
-  fetchErpNextSalesNodeSummary,
+  fetchErpNextSalesFocusSummary,
   type ErpNextSalesNodeSummary,
 } from '../../lib/db/erpnextSales';
-import { fetchErpNextCatalogReadiness, type ErpNextCatalogReadiness } from '../../lib/db/erpnextProducts';
-import { MetaMetricPanel } from './panels/MetaMetricPanel';
-import { SpendReachPanel } from './panels/SpendReachPanel';
-import { CampaignsPanel } from './panels/CampaignsPanel';
+import { fetchErpNextCatalogReadiness, fetchErpNextProductPortfolio, type ErpNextCatalogPortfolio, type ErpNextCatalogReadiness } from '../../lib/db/erpnextProducts';
 import { MetaAdsOperatingHub } from './panels/MetaAdsOperatingHub';
 import { GlassCard, SectionTitle } from './panels/PanelShell';
 import {
   EmptyMetricsState,
   MetricCard,
   MetricCreateWizard,
-  MetricRollupHealthPanel,
 } from './metrics/MetricSystem';
 
 export interface BdtActionWorkspaceProps {
@@ -44,8 +50,6 @@ export interface BdtActionWorkspaceProps {
   isOpen?: boolean;
   containerMode?: 'meta-paid-acquisition';
   canEdit?: boolean;
-  onAddMember?: (deptId: string, nodeId: string) => void;
-  onDeleteMember?: (dept: UExternalNode, node: UInternalNode, memberIndex: number) => void;
 
   // BDT workflow trails props
   onInterrelatedDepartmentClick?: (deptId: string) => void;
@@ -62,22 +66,6 @@ export interface BdtActionWorkspaceProps {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-// Paid Acquisition's three immutable taxonomy branch keys.
-const META_METRIC_NODE_STABLE_KEYS = new Set(['mkt_paid_acquisition_ad_performance']);
-const isMetaMetricNode = (node: UInternalNode) =>
-  META_METRIC_NODE_STABLE_KEYS.has(node.stableSourceKey ?? '');
-
-const META_SPEND_REACH_STABLE_KEYS = new Set(['mkt_paid_acquisition_spend_reach']);
-const isMetaSpendReachNode = (node: UInternalNode) =>
-  META_SPEND_REACH_STABLE_KEYS.has(node.stableSourceKey ?? '');
-
-const META_CAMPAIGNS_STABLE_KEYS = new Set(['mkt_paid_acquisition_campaigns']);
-const isMetaCampaignsNode = (node: UInternalNode) =>
-  META_CAMPAIGNS_STABLE_KEYS.has(node.stableSourceKey ?? '');
-
-const isAnyMetaPanelNode = (node: UInternalNode) =>
-  isMetaMetricNode(node) || isMetaSpendReachNode(node) || isMetaCampaignsNode(node);
 
 function parseApiErrorMessage(err: unknown): string {
   if (!(err instanceof Error)) return 'WorkOS Operations data could not be loaded.';
@@ -97,7 +85,16 @@ function opsToneClass(tone?: 'good' | 'neutral' | 'warning' | 'critical') {
   return 'border-white/10 bg-black/20 text-white/80';
 }
 
-function OperationsMetricCard({ metric }: { metric: ErpNextOpsNodeSummary['metricCards'][number] }) {
+interface SummaryMetricCard {
+  id: string;
+  label: string;
+  value: number | string;
+  unit?: string;
+  description: string;
+  tone: 'good' | 'neutral' | 'warning' | 'critical';
+}
+
+function OperationsMetricCard({ metric }: { metric: SummaryMetricCard }) {
   return (
     <div className={`rounded-xl border p-3 ${opsToneClass(metric.tone)}`}>
       <p className="text-[10px] uppercase tracking-[0.16em] opacity-55">{metric.label}</p>
@@ -110,7 +107,13 @@ function OperationsMetricCard({ metric }: { metric: ErpNextOpsNodeSummary['metri
   );
 }
 
-function OperationsBreakdown({ breakdown }: { breakdown: ErpNextOpsNodeSummary['breakdowns'][number] }) {
+interface SummaryBreakdown {
+  id: string;
+  title: string;
+  items: Array<{ label: string; value: number | string; unit?: string; tone?: 'good' | 'neutral' | 'warning' | 'critical' }>;
+}
+
+function OperationsBreakdown({ breakdown }: { breakdown: SummaryBreakdown }) {
   const max = Math.max(1, ...breakdown.items.map(item => Number(item.value) || 0));
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -138,7 +141,9 @@ function OperationsBreakdown({ breakdown }: { breakdown: ErpNextOpsNodeSummary['
   );
 }
 
-function OperationsInsightList({ insights }: { insights: ErpNextOpsNodeSummary['insights'] }) {
+interface SummaryInsight { id: string; label: string; detail: string; severity: 'info' | 'warning' | 'critical' }
+
+function OperationsInsightList({ insights }: { insights: SummaryInsight[] }) {
   if (insights.length === 0) return null;
   return (
     <div className="space-y-2">
@@ -185,101 +190,186 @@ function OperationsChildRollups({ children }: { children: GenericChildRollup[] }
   );
 }
 
-function OperationsErpNextPanel({ summary, loading, error, onRefresh }: {
-  summary: ErpNextOpsNodeSummary | null;
+function severityClass(severity: ErpNextOperationsSeverity) {
+  if (severity === 'critical') return 'border-rose-300/25 bg-rose-400/10';
+  if (severity === 'warning') return 'border-amber-300/25 bg-amber-300/10';
+  return 'border-cyan-300/20 bg-cyan-300/[0.07]';
+}
+
+function OperationsControlTower({ snapshot, loading, error, onRefresh, onCreateProject }: {
+  snapshot: ErpNextOperationsSnapshot | null;
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  onCreateProject: (title: string, detail?: string) => void;
 }) {
-  return (
-    <GlassCard>
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div>
-          <SectionTitle icon={Activity}>WORKOS OPERATIONS</SectionTitle>
-          {summary && (
-            <div className="text-[10px] text-white/30 -mt-2 space-y-0.5">
-              <p>{summary.mappingLabel} · {summary.status.replace('_', ' ')}</p>
-              {summary.siteName && <p>Site: {summary.siteName}</p>}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="px-3 py-1.5 rounded-lg border border-white/10 text-xs text-white/70 hover:bg-white/5 disabled:opacity-50"
-        >
-          {loading ? 'Loading' : 'Refresh'}
-        </button>
+  const [created, setCreated] = useState<string | null>(null);
+  const createFromException = (label: string, detail?: string) => {
+    onCreateProject(label, detail);
+    setCreated(label);
+  };
+  return <GlassCard>
+    <div className="flex items-start justify-between gap-4 mb-4">
+      <div>
+        <SectionTitle icon={Activity}>OPERATIONS CONTROL TOWER</SectionTitle>
+        <p className="-mt-2 text-xs text-white/40">ERPNext evidence, queues, and exceptions. WorkOS is read-only.</p>
       </div>
+      <button type="button" onClick={onRefresh} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5 disabled:opacity-50">
+        <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Refreshing' : 'Refresh'}
+      </button>
+    </div>
+    {error && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100/80">{error}</div>}
+    {!error && !snapshot && <p className="text-sm text-white/45">Loading ERPNext Operations evidence…</p>}
+    {created && <p className="mb-3 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs text-emerald-100">Created local project: {created}. Saved on this device.</p>}
+    {snapshot && <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-white/35">
+        <span>{snapshot.siteName ? `Site: ${snapshot.siteName}` : 'ERPNext connected'}</span><span>•</span><span>Checked just now</span>
+        {snapshot.status === 'partial' && <><span>•</span><span className="text-amber-200/80">Some evidence is partial</span></>}
+      </div>
+      {snapshot.message && <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/55">{snapshot.message}</p>}
+      {snapshot.warnings.length > 0 && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3"><p className="text-xs font-semibold text-amber-100/85">Partial data warnings</p>{snapshot.warnings.map(warning => <p key={warning} className="mt-1 text-[11px] text-amber-100/65">{warning}</p>)}</div>}
+      {snapshot.groups.map(group => <section key={group.key} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-white/90">{group.label}</h3><span className={`rounded-full px-2 py-0.5 text-[10px] ${group.status === 'partial' ? 'bg-amber-300/10 text-amber-100/75' : 'bg-emerald-300/10 text-emerald-100/75'}`}>{group.status === 'partial' ? 'Partial' : 'Available'}</span></div>
+        {group.queues.length > 0 && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">{group.queues.map(queue => <a key={queue.id} href={queue.href} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.07]"><div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold text-white/80">{queue.label}</p><p className="text-lg font-semibold text-white">{queue.value}</p></div><p className="mt-1 text-[10px] text-white/35">{queue.sourceDoctype} <ExternalLink className="ml-1 inline h-2.5 w-2.5" /></p></a>)}</div>}
+        {group.exceptions.length > 0 && <div className="mt-3 space-y-2">{group.exceptions.map(item => <div key={item.id} className={`rounded-xl border p-3 ${severityClass(item.severity)}`}><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold text-white/85">{item.label}</p>{item.detail && <p className="mt-1 text-[11px] leading-relaxed text-white/55">{item.detail}</p>}<p className="mt-1 text-[10px] text-white/35">{item.sourceDoctype}{item.status ? ` · ${item.status}` : ''}</p></div><div className="flex shrink-0 gap-2">{item.href && <a href={item.href} target="_blank" rel="noopener noreferrer" className="rounded-md border border-white/15 px-2 py-1 text-[10px] text-white/75 hover:bg-white/10">Open <ExternalLink className="ml-1 inline h-2.5 w-2.5" /></a>}<button type="button" onClick={() => createFromException(item.label, item.detail)} className="rounded-md border border-white/15 px-2 py-1 text-[10px] text-white/75 hover:bg-white/10"><FolderPlus className="mr-1 inline h-2.5 w-2.5" />Project</button></div></div></div>)}</div>}
+        {group.evidence.length > 0 && <div className="mt-3 border-t border-white/10 pt-3"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Recent evidence</p><div className="flex flex-wrap gap-2">{group.evidence.map(item => item.href ? <a key={item.id} href={item.href} target="_blank" rel="noopener noreferrer" className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5">{item.label} <ExternalLink className="ml-1 inline h-2.5 w-2.5" /></a> : <span key={item.id} className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-white/50">{item.label}</span>)}</div></div>}
+        {group.recommendations.length > 0 && <div className="mt-3 border-t border-white/10 pt-3">{group.recommendations.map(item => <div key={item.id} className="mb-2 last:mb-0"><p className="text-xs font-medium text-white/75">{item.label}</p><p className="text-[11px] text-white/45">{item.reason}</p></div>)}</div>}
+        {group.actions.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{group.actions.map(action => <a key={action.id} href={action.href} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-100/85 hover:bg-cyan-300/15">{action.label} <ExternalLink className="ml-1 inline h-3 w-3" /></a>)}</div>}
+      </section>)}
+    </div>}
+  </GlassCard>;
+}
 
-      {error && (
-        <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100/80">
-          {error}
-        </div>
-      )}
+interface ErpNextTenantStatus {
+  status?: 'ready' | 'provisioning' | 'failed' | 'not_configured' | string;
+  siteName?: string;
+  deskUrl?: string;
+  provisioningStage?: string;
+  error?: { message?: string } | string;
+}
 
-      {!error && !summary && (
-        <p className="text-sm text-white/45">Loading WorkOS Operations data...</p>
-      )}
+const OPERATIONS_DESK_AREAS = [
+  { label: 'Procurement', doctypes: 'Material Request · Purchase Order · Purchase Receipt', route: 'material-request' },
+  { label: 'Inventory', doctypes: 'Item · Bin · Stock Entry', route: 'item' },
+  { label: 'Warehouse', doctypes: 'Warehouse · Stock Reconciliation · Stock Reservation', route: 'warehouse' },
+  { label: 'Fulfilment', doctypes: 'Pick List · Delivery Note', route: 'pick-list' },
+  { label: 'Logistics', doctypes: 'Shipment · Delivery Trip', route: 'shipment' },
+  { label: 'Production', doctypes: 'Work Order · Job Card · BOM', route: 'work-order' },
+  { label: 'Assets & maintenance', doctypes: 'Asset · Maintenance Schedule · Maintenance Visit', route: 'asset' },
+  { label: 'Service & quality', doctypes: 'Issue · Quality Inspection', route: 'quality-inspection' },
+];
 
-      {summary && (
-        <div className="space-y-3">
-          <div className="rounded-xl border border-white/10 bg-[#111]/70 p-3">
-            <p className="text-xs font-semibold text-white/75">{summary.path.join(' / ')}</p>
-            <p className="text-[10px] text-white/35 mt-1">{summary.sourceDoctypes.length ? summary.sourceDoctypes.join(', ') : 'No WorkOS source doctypes mapped.'}</p>
-          </div>
+function erpNextDeskAreaUrl(deskUrl: string | undefined, route: string): string | null {
+  if (!deskUrl) return null;
+  try {
+    const url = new URL(deskUrl);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    url.pathname = `/app/${route}`;
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
-          <div className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/10 via-white/[0.03] to-black/20 p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/45">Metric story</p>
-                <p className="mt-2 text-lg font-semibold text-white">{summary.headline}</p>
-                <p className="mt-1 text-[10px] text-white/35">
-                  {summary.templateKey.replace(/_/g, ' ')} · generated {new Date(summary.generatedAt).toLocaleString()}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[10px] uppercase tracking-[0.14em] text-white/35">Health</p>
-                <p className="text-3xl font-semibold text-white">{summary.healthScore ?? 'n/a'}</p>
-              </div>
-            </div>
-          </div>
+function OperationsSystemsPanel({ status, loading, onRefresh }: { status: ErpNextTenantStatus | null; loading: boolean; onRefresh: () => void }) {
+  const ready = status?.status === 'ready' && Boolean(status.deskUrl);
+  const provisioning = status?.status === 'provisioning';
+  const failure = status?.status === 'failed';
+  const errorMessage = typeof status?.error === 'string' ? status.error : status?.error?.message;
+  return <GlassCard>
+    <div className="flex items-start justify-between gap-4"><div><SectionTitle icon={Database}>ERPNext OPERATIONS</SectionTitle><p className="-mt-2 text-sm text-white/50">The system of record for operational work. WorkOS opens it in read-only context.</p></div><button type="button" onClick={onRefresh} disabled={loading} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/75 hover:bg-white/5 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button></div>
+    {!status && <div className="mt-4 flex items-center gap-2 text-sm text-white/45"><LoaderCircle className="h-4 w-4 animate-spin" />Checking ERPNext…</div>}
+    {status && <div className="mt-4 space-y-4">
+      <div className={`rounded-xl border p-4 ${ready ? 'border-emerald-300/20 bg-emerald-300/10' : failure ? 'border-rose-300/20 bg-rose-400/10' : 'border-amber-300/20 bg-amber-300/10'}`}>
+        <div className="flex items-start justify-between gap-3"><div className="flex gap-2"><span className="mt-0.5">{ready ? <CheckCircle2 className="h-4 w-4 text-emerald-200" /> : failure ? <CircleX className="h-4 w-4 text-rose-200" /> : <LoaderCircle className="h-4 w-4 animate-spin text-amber-100" />}</span><div><p className="text-sm font-semibold text-white/90">{ready ? 'ERPNext is ready' : provisioning ? 'ERPNext is provisioning' : failure ? 'ERPNext needs attention' : 'ERPNext is not configured'}</p><p className="mt-1 text-xs text-white/55">{ready ? `Checked now${status.siteName ? ` · ${status.siteName}` : ''}` : errorMessage || (provisioning ? `Current stage: ${status.provisioningStage || 'preparing your site'}. This page checks again automatically.` : 'Connect and configure ERPNext in Settings to use Operations evidence.')}</p></div></div>{ready && <a href={status.deskUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg border border-emerald-200/20 px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-emerald-200/10">Open ERPNext <ExternalLink className="ml-1 inline h-3 w-3" /></a>}</div>
+        {!ready && <button type="button" onClick={() => window.location.assign('/twin/data?tab=integrations')} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/75 hover:bg-white/10"><Settings2 className="h-3.5 w-3.5" />Open integration settings</button>}
+      </div>
+      <div><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">ERPNext areas</p><div className="grid grid-cols-1 gap-2 md:grid-cols-2">{OPERATIONS_DESK_AREAS.map(area => {
+        const href = ready ? erpNextDeskAreaUrl(status.deskUrl, area.route) : null;
+        const content = <><p className="text-xs font-semibold text-white/75">{area.label}{href && <ExternalLink className="ml-1 inline h-3 w-3" />}</p><p className="mt-1 text-[10px] leading-relaxed text-white/35">{area.doctypes}</p></>;
+        return href ? <a key={area.label} href={href} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.08]">{content}</a> : <div key={area.label} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">{content}</div>;
+      })}</div></div>
+    </div>}
+  </GlassCard>;
+}
 
-          {summary.unsupportedReason && (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <p className="text-xs font-semibold text-white/70 mb-1">Not connected yet</p>
-              <p className="text-xs text-white/45">{summary.unsupportedReason}</p>
-            </div>
-          )}
+const OPERATIONS_METRIC_KEYS: Record<string, ErpNextOperationsMetricKey> = {
+  'Open material requests': 'open_material_requests',
+  'Open purchase orders': 'open_purchase_orders',
+  'Low-stock positions': 'low_stock_positions',
+  'Open work orders': 'open_work_orders',
+  'Work-order completion': 'work_order_completion_percent',
+  'Failed or rejected quality checks': 'failed_quality_checks',
+};
 
-          {summary.warnings.length > 0 && (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <p className="text-xs font-semibold text-white/70 mb-1">Partial data warnings</p>
-              {summary.warnings.slice(0, 3).map(warning => (
-                <p key={warning} className="text-[10px] text-white/40">{warning}</p>
-              ))}
-            </div>
-          )}
+function metricKeyFor(metric: CanonicalMetric): ErpNextOperationsMetricKey | null {
+  const directKey = metric.sources.find(source => source.source_type === 'integration')?.config?.metricKey;
+  if (typeof directKey === 'string' && Object.values(OPERATIONS_METRIC_KEYS).includes(directKey as ErpNextOperationsMetricKey)) return directKey as ErpNextOperationsMetricKey;
+  return OPERATIONS_METRIC_KEYS[metric.name] ?? null;
+}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {summary.metricCards.map(metric => <OperationsMetricCard key={metric.id} metric={metric} />)}
-          </div>
-
-          {summary.childRollups && <OperationsChildRollups children={summary.childRollups} />}
-
-          {summary.breakdowns.length > 0 && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              {summary.breakdowns.map(breakdown => <OperationsBreakdown key={breakdown.id} breakdown={breakdown} />)}
-            </div>
-          )}
-
-          <OperationsInsightList insights={summary.insights} />
-
-        </div>
-      )}
-    </GlassCard>
-  );
+function OperationsMetricsPanel({ companyId, members, canEdit }: { companyId: string; members: Array<{ id: string; first_name?: string | null; last_name?: string | null; role_name?: string | null }>; canEdit: boolean }) {
+  const [metrics, setMetrics] = useState<CanonicalMetric[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<ErpNextOperationsMetricKey | null>(null);
+  const [target, setTarget] = useState('');
+  const [lowStockThreshold, setLowStockThreshold] = useState('');
+  const [ownerMemberId, setOwnerMemberId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setMetrics(await fetchErpNextOperationsMetrics(companyId)); setError(null); }
+    catch (cause) { setError(parseApiErrorMessage(cause)); }
+    finally { setLoading(false); }
+  }, [companyId]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  const refresh = async () => {
+    setRefreshing(true);
+    try { setMetrics(await refreshErpNextOperationsMetrics(companyId)); setError(null); }
+    catch (cause) { setError(parseApiErrorMessage(cause)); }
+    finally { setRefreshing(false); }
+  };
+  const bootstrap = async () => {
+    setBootstrapping(true);
+    try { setMetrics(await bootstrapErpNextOperationsMetrics(companyId)); setError(null); }
+    catch (cause) { setError(parseApiErrorMessage(cause)); }
+    finally { setBootstrapping(false); }
+  };
+  const startConfig = (metric: CanonicalMetric) => {
+    const key = metricKeyFor(metric);
+    if (!key) return;
+    setEditing(key); setTarget(metric.target_value ? String(metric.target_value) : ''); setLowStockThreshold(''); setOwnerMemberId(metric.owner_member_id || members[0]?.id || '');
+  };
+  const saveConfig = async (metric: CanonicalMetric) => {
+    const key = metricKeyFor(metric);
+    const targetNumber = Number(target);
+    const lowStockNumber = Number(lowStockThreshold);
+    if (!key || !Number.isFinite(targetNumber) || !ownerMemberId || (key === 'low_stock_positions' && (!Number.isFinite(lowStockNumber) || lowStockNumber < 0))) return;
+    setSaving(true);
+    try {
+      const updated = await configureErpNextOperationsMetric(companyId, key, { target: targetNumber, ownerMemberId, ...(key === 'low_stock_positions' ? { lowStockThreshold: lowStockNumber } : {}) });
+      setMetrics(updated); setEditing(null); setError(null);
+    } catch (cause) { setError(parseApiErrorMessage(cause)); }
+    finally { setSaving(false); }
+  };
+  return <GlassCard>
+    <div className="flex items-start justify-between gap-4"><div><SectionTitle icon={BarChart3}>OPERATIONS METRICS</SectionTitle><p className="-mt-2 text-sm text-white/50">ERPNext values are shown as evidence. Configure a target before a KPI contributes to a score.</p></div><div className="flex shrink-0 gap-2">{metrics.length === 0 && canEdit && <button type="button" onClick={() => void bootstrap()} disabled={bootstrapping || loading} className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 disabled:opacity-50">{bootstrapping ? 'Creating…' : 'Add starter KPIs'}</button>}<button type="button" onClick={() => void refresh()} disabled={refreshing || loading || metrics.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/75 hover:bg-white/5 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />{refreshing ? 'Refreshing' : 'Refresh values'}</button></div></div>
+    {error && <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100/80">{error}</div>}
+    {loading && <p className="mt-4 text-sm text-white/45">Loading ERPNext metrics…</p>}
+    {!loading && !error && metrics.length === 0 && <p className="mt-4 text-sm text-white/45">No ERPNext Operations metrics are available yet.{canEdit ? ' Add the six starter KPIs to begin.' : ''}</p>}
+    {!loading && metrics.length > 0 && <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">{metrics.map(metric => {
+      const key = metricKeyFor(metric);
+      const integrationSource = metric.sources.find(source => source.source_type === 'integration') as (typeof metric.sources[number] & { status?: 'needs_configuration' | 'active' }) | undefined;
+      const configured = integrationSource?.status === 'active';
+      const isEditing = key === editing;
+      return <div key={metric.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-white/90">{metric.name}</p><p className="mt-1 text-2xl font-semibold text-white">{metric.current_value ?? '—'} <span className="text-xs font-normal text-white/45">{metric.unit}</span></p></div><span className={`rounded-full px-2 py-1 text-[10px] ${configured ? 'bg-emerald-300/10 text-emerald-100/80' : 'bg-amber-300/10 text-amber-100/80'}`}>{configured ? 'Configured' : 'Needs target'}</span></div><p className="mt-2 text-[11px] leading-relaxed text-white/45">{metric.description}</p>{isEditing ? <div className="mt-3 space-y-2 border-t border-white/10 pt-3"><label className="block text-[10px] uppercase tracking-wide text-white/40">Target<input value={target} onChange={event => setTarget(event.target.value)} type="number" className="mt-1 block w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs text-white" /></label>{key === 'low_stock_positions' && <label className="block text-[10px] uppercase tracking-wide text-white/40">Low-stock threshold<input value={lowStockThreshold} onChange={event => setLowStockThreshold(event.target.value)} type="number" min="1" className="mt-1 block w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs text-white" /></label>}<label className="block text-[10px] uppercase tracking-wide text-white/40">Owner<select value={ownerMemberId} onChange={event => setOwnerMemberId(event.target.value)} className="mt-1 block w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs text-white">{members.map(member => <option key={member.id} value={member.id}>{[member.first_name, member.last_name].filter(Boolean).join(' ') || member.role_name || 'Teammate'}</option>)}</select></label><div className="flex gap-2"><button type="button" disabled={saving} onClick={() => void saveConfig(metric)} className="rounded-lg bg-emerald-300/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50">{saving ? 'Saving' : 'Save target'}</button><button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/60">Cancel</button></div></div> : <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><p className="text-[10px] text-white/35">{configured ? `Target: ${metric.target_value}` : 'Raw ERPNext value only; no score yet.'}</p>{canEdit && key && <button type="button" onClick={() => startConfig(metric)} className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[10px] font-semibold text-white/75 hover:bg-white/10">{configured ? 'Edit target' : 'Configure'}</button>}</div>}</div>;
+    })}</div>}
+  </GlassCard>;
 }
 
 // Sales/Products panels share the exact same NodeSummaryResult shape and sub-renderers as
@@ -453,6 +543,26 @@ function ProductsErpNextPanel({ summary, loading, error, onRefresh }: {
   );
 }
 
+function ProductPortfolioFocus({ onExplore }: { onExplore: () => void }) {
+  const [portfolio, setPortfolio] = useState<ErpNextCatalogPortfolio | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(() => {
+    setLoading(true);
+    return fetchErpNextProductPortfolio().then((value) => { setPortfolio(value); setError(null); }).catch((cause) => {
+      setPortfolio(null); setError(parseApiErrorMessage(cause));
+    }).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  const productCount = portfolio?.lines.reduce((total, line) => total + line.products.length, 0) ?? 0;
+  return <GlassCard>
+    <div className="flex items-start justify-between gap-4"><div><SectionTitle icon={Briefcase}>PRODUCT PORTFOLIO</SectionTitle><p className="text-sm text-white/50">Live ERPNext Item Groups and Items. Catalogue entities are read-only in WorkOS.</p></div><button type="button" onClick={() => void load()} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-white/70">Refresh</button></div>
+    {loading && <p className="mt-4 text-sm text-white/40">Loading ERPNext catalogue…</p>}
+    {error && <p className="mt-4 rounded-lg border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{error}</p>}
+    {portfolio && <><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-[10px] uppercase tracking-wider text-white/35">Product lines</p><p className="mt-1 text-2xl font-semibold">{portfolio.lines.length}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-[10px] uppercase tracking-wider text-white/35">Products</p><p className="mt-1 text-2xl font-semibold">{productCount}</p></div></div><p className="mt-4 text-xs text-white/45">{portfolio.message || portfolio.warnings[0] || 'Select Explore product lines to inspect the live catalogue in the graph.'}</p><button type="button" onClick={onExplore} className="mt-4 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-white">Explore product lines</button></>}
+  </GlassCard>;
+}
+
 export function BdtActionWorkspace({
   node,
   department,
@@ -462,8 +572,6 @@ export function BdtActionWorkspace({
   isOpen = true,
   containerMode,
   canEdit = false,
-  onAddMember,
-  onDeleteMember,
   onInterrelatedDepartmentClick,
   trailSession = null,
   isTrailActive = false,
@@ -476,39 +584,108 @@ export function BdtActionWorkspace({
   onReplayPrev,
 }: BdtActionWorkspaceProps) {
   const primaryColor = U_DOMAIN_COLOR[department.domain] || '#8b5cf6';
-  const { profile, role } = useAuth();
+  const { profile, role, user } = useAuth();
   const companyId = profile?.company_id ?? null;
   const canEditMetrics = isMetricAdmin(role);
   const isMetaContainerMode = containerMode === 'meta-paid-acquisition';
   const isPersistedBdtNode = UUID_RE.test(node.id);
-  const { metrics: nodeMetrics, rollups, createMetric, createDraft, updateMetricValue } = useCanonicalMetrics(
+  const metricTarget = node.workspaceKind === 'metrics'
+    ? { target_type: 'department' as const, target_id: department.id }
+    : { target_type: 'bdt_node' as const, target_id: node.id };
+  const { metrics: nodeMetrics, createMetric, createDraft, updateMetricValue } = useCanonicalMetrics(
     isPersistedBdtNode ? companyId : null,
-    { target_type: 'bdt_node', target_id: node.id, status: 'active' },
+    { ...metricTarget, status: 'active' },
   );
-  const { members: workspaceMembers } = useTeamMembers(companyId);
+  const { members: workspaceMembers, refetch: refetchTeamMembers } = useTeamMembers(companyId);
+  const projectStore = useProjectsStore({ companyId, userId: user?.id, departmentSourceKey: department.sourceKey });
   const [showMetricWizard, setShowMetricWizard] = useState(false);
-  const isTeamNode = node.type === 'team';
-  const isProjectNode = isProjectLeafNode(node);
-  const teamMembers = node.members ?? [];
-  const teamMemberCount = node.memberCount ?? teamMembers.length;
+  const [newProjectName, setNewProjectName] = useState('');
+  const isTeamNode = node.workspaceKind === 'team' || node.type === 'team';
+  const isSystemsNode = node.workspaceKind === 'systems';
+  const isMetricsNode = node.workspaceKind === 'metrics';
+  const isProjectNode = node.workspaceKind === 'projects';
+  const isFocusNode = node.workspaceKind === 'focus';
+  const isProductPortfolioFocus = isFocusNode && (node.stableSourceKey === 'prod_product_portfolio' || node.presentation === 'erpnext_catalog');
+  const teamMembers = isTeamNode
+    ? workspaceMembers.filter(member => member.department_id === department.id)
+    : (node.members ?? []);
+  const teamMemberCount = teamMembers.length;
+  const memberName = (member: typeof teamMembers[number]) => ('name' in member
+    ? member.name
+    : [member.first_name, member.last_name].filter(Boolean).join(' ') || 'Team member');
+  const departmentProjects = projectStore.projects.filter(project => project.departmentSourceKey === department.sourceKey);
+  const providerLabels: Record<string, string> = {
+    erpnext_products: 'ERPNext Product Catalogue',
+    erpnext_sales: 'ERPNext Sales / CRM',
+    erpnext_operations: 'ERPNext Operations',
+    meta_ads: 'Meta Ads',
+  };
+  const providerCapabilities = useMemo(() => node.providerCapabilities ?? [], [node.providerCapabilities]);
+  const [systemStatus, setSystemStatus] = useState<Record<string, string>>({});
+  const [erpNextStatus, setErpNextStatus] = useState<ErpNextTenantStatus | null>(null);
+  const [erpNextStatusLoading, setErpNextStatusLoading] = useState(false);
+  const isOperationsDepartment = department.sourceKey === 'dept_operations' || department.id === 'dept_operations' || department.label === 'Operations';
+  const isOperationsSystem = isOperationsDepartment && isSystemsNode;
+  const loadErpNextStatus = useCallback(async () => {
+    if (!isOperationsSystem) return;
+    setErpNextStatusLoading(true);
+    try {
+      setErpNextStatus(await api.get<ErpNextTenantStatus>('/api/erpnext/status'));
+    } catch (cause) {
+      setErpNextStatus({ status: 'not_configured', error: { message: parseApiErrorMessage(cause) } });
+    } finally {
+      setErpNextStatusLoading(false);
+    }
+  }, [isOperationsSystem]);
+  useEffect(() => {
+    if (!isSystemsNode) return;
+    let active = true;
+    const load = async () => {
+      const next: Record<string, string> = {};
+      const needsErpNext = providerCapabilities.some(capability => capability.startsWith('erpnext_'));
+      const [connections, erp] = await Promise.all([
+        fetchConnections().catch(() => ({} as Record<string, Awaited<ReturnType<typeof fetchConnections>>>[string])),
+        needsErpNext ? api.get<{ status?: string }>('/api/erpnext/status').catch(() => ({ status: 'unavailable' })) : Promise.resolve(null),
+      ]);
+      for (const capability of providerCapabilities) {
+        if (capability === 'meta_ads') next[capability] = connections['int-meta'] ? 'Connected' : 'Not connected';
+        if (capability.startsWith('erpnext_')) next[capability] = erp?.status === 'ready' ? 'Connected' : (erp?.status ?? 'Not connected');
+      }
+      if (active) setSystemStatus(next);
+    };
+    void load();
+    return () => { active = false; };
+  }, [isSystemsNode, providerCapabilities]);
+  useEffect(() => {
+    if (!isOperationsSystem || !isOpen) {
+      queueMicrotask(() => setErpNextStatus(null));
+      return;
+    }
+    void Promise.resolve().then(loadErpNextStatus);
+    const timer = window.setInterval(() => {
+      if (erpNextStatus?.status === 'provisioning') void Promise.resolve().then(loadErpNextStatus);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, isOperationsSystem, loadErpNextStatus, erpNextStatus?.status]);
   const isOperationsContext = (
-    (department.sourceKey === 'dept_operations' || department.id === 'dept_operations' || department.label === 'Operations')
+    isOperationsDepartment
     && isPersistedBdtNode
+    && isFocusNode
   );
-  const [operationsSummary, setOperationsSummary] = useState<ErpNextOpsNodeSummary | null>(null);
+  const [operationsSnapshot, setOperationsSnapshot] = useState<ErpNextOperationsSnapshot | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
   const [operationsError, setOperationsError] = useState<string | null>(null);
 
-  const loadOperationsSummary = useCallback(() => {
+  const loadOperationsSnapshot = useCallback(() => {
     if (!isOperationsContext) return;
     setOperationsLoading(true);
-    fetchErpNextOperationsNodeSummary(node.id)
-      .then(summary => {
-        setOperationsSummary(summary);
+    fetchErpNextOperationsSnapshot(node.id)
+      .then(snapshot => {
+        setOperationsSnapshot(snapshot);
         setOperationsError(null);
       })
       .catch(err => {
-        setOperationsSummary(null);
+        setOperationsSnapshot(null);
         setOperationsError(parseApiErrorMessage(err));
       })
       .finally(() => setOperationsLoading(false));
@@ -516,16 +693,16 @@ export function BdtActionWorkspace({
 
   useEffect(() => {
     if (isOpen && isOperationsContext) {
-      loadOperationsSummary();
+      void Promise.resolve().then(loadOperationsSnapshot);
     } else {
-      setOperationsSummary(null);
-      setOperationsError(null);
+      queueMicrotask(() => { setOperationsSnapshot(null); setOperationsError(null); });
     }
-  }, [isOpen, isOperationsContext, loadOperationsSummary]);
+  }, [isOpen, isOperationsContext, loadOperationsSnapshot]);
 
   const isSalesContext = (
     (department.sourceKey === 'dept_sales' || department.id === 'dept_sales' || department.label === 'Sales')
     && isPersistedBdtNode
+    && isFocusNode
   );
   const [salesSummary, setSalesSummary] = useState<ErpNextSalesNodeSummary | null>(null);
   const [salesLoading, setSalesLoading] = useState(false);
@@ -534,7 +711,7 @@ export function BdtActionWorkspace({
   const loadSalesSummary = useCallback(() => {
     if (!isSalesContext) return;
     setSalesLoading(true);
-    fetchErpNextSalesNodeSummary(node.id)
+    fetchErpNextSalesFocusSummary(node.id)
       .then(summary => {
         setSalesSummary(summary);
         setSalesError(null);
@@ -548,10 +725,9 @@ export function BdtActionWorkspace({
 
   useEffect(() => {
     if (isOpen && isSalesContext) {
-      loadSalesSummary();
+      void Promise.resolve().then(loadSalesSummary);
     } else {
-      setSalesSummary(null);
-      setSalesError(null);
+      queueMicrotask(() => { setSalesSummary(null); setSalesError(null); });
     }
   }, [isOpen, isSalesContext, loadSalesSummary]);
 
@@ -573,21 +749,15 @@ export function BdtActionWorkspace({
         setProductsError(parseApiErrorMessage(err));
       })
       .finally(() => setProductsLoading(false));
-  }, [isProductsContext, node.id]);
+  }, [isProductsContext, node.virtualErpNext]);
 
   useEffect(() => {
     if (isOpen && isProductsContext) {
-      loadProductsSummary();
+      void Promise.resolve().then(loadProductsSummary);
     } else {
-      setProductsSummary(null);
-      setProductsError(null);
+      queueMicrotask(() => { setProductsSummary(null); setProductsError(null); });
     }
   }, [isOpen, isProductsContext, loadProductsSummary]);
-
-  const isMarketingContext = (
-    (department.sourceKey === 'dept_marketing' || department.id === 'dept_marketing' || department.label === 'Marketing')
-    && isPersistedBdtNode
-  );
 
   const panelIconByType: Record<string, typeof Activity> = {
     signal: Radio,
@@ -599,7 +769,13 @@ export function BdtActionWorkspace({
   const PanelIcon = panelIconByType[node.type] ?? Activity;
 
   const sidebarBlurb = isProjectNode
-    ? `Project workspace for ${department.label}.`
+    ? `Projects for ${department.label}, saved only on this device.`
+    : isSystemsNode
+      ? `Connected systems and provider readiness for ${department.label}.`
+      : isMetricsNode
+        ? `ERPNext evidence and user-configured KPIs for ${department.label}.`
+        : isFocusNode
+          ? `${node.label} is the primary operational focus for ${department.label}.`
     : node.type === 'signal'
       ? `Review signal and suggested response for ${department.label}.`
       : node.type === 'decision'
@@ -617,13 +793,13 @@ export function BdtActionWorkspace({
 
   const { save, remove, has, getId } = useSavedWorkflows();
 
-  const lookup = {
+  const lookup = useMemo(() => ({
     companyId: 'bdt-universal',
-    role: 'founder' as any,
+    role: 'founder' as UserPlanetRole,
     rootId: department.id,
     branchId: department.id,
     actionId: node.id,
-  };
+  }), [department.id, node.id]);
 
   const alreadySaved = has(lookup);
 
@@ -648,7 +824,7 @@ export function BdtActionWorkspace({
         actionHint: node.type,
       });
     }
-  }, [alreadySaved, save, remove, getId, lookup.companyId, lookup.role, department.id, department.label, primaryColor, node.id, node.label, node.type]);
+  }, [alreadySaved, save, remove, getId, lookup, department.id, department.label, primaryColor, node.id, node.label, node.type]);
 
   // Interrelated departments resolution using RBAC filter
   const interrelatedDepts = filterReadableDepartments(
@@ -826,18 +1002,17 @@ export function BdtActionWorkspace({
             </p>
 
             <div className="space-y-4">
-              <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <SectionTitle icon={Activity as any}>Task Status</SectionTitle>
+              {!isOperationsDepartment && <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <SectionTitle icon={Activity}>Task Status</SectionTitle>
                 <div className="flex items-center gap-3 mt-3">
                   <div className="h-1.5 flex-1 bg-white/5 rounded-full overflow-hidden">
                     <div className="h-full rounded-full w-1/4" style={{ background: `linear-gradient(90deg, ${primaryColor}, ${primaryColor}88)` }} />
                   </div>
                   <span className="text-xs font-medium text-white/50">{node.score}%</span>
                 </div>
-              </div>
-
+              </div>}
               <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <SectionTitle icon={Briefcase as any}>Context</SectionTitle>
+                <SectionTitle icon={Briefcase}>Context</SectionTitle>
                 <p className="text-xs text-white/50 leading-relaxed">
                   This task is part of the <strong>{department.label}</strong> workflow, optimizing your {department.domain} objectives.
                 </p>
@@ -855,26 +1030,24 @@ export function BdtActionWorkspace({
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
                     <SectionTitle icon={Users}>TEAM ROSTER</SectionTitle>
-                    <p className="text-sm text-white/55">
-                      {teamMemberCount} teammate{teamMemberCount === 1 ? '' : 's'} attached to this BDT node.
-                    </p>
+                    <p className="text-sm text-white/55">{teamMemberCount} teammate{teamMemberCount === 1 ? '' : 's'} assigned to {department.label}.</p>
                   </div>
-                  {canEdit && onAddMember && (
+                  {canEdit && (
                     <button
                       type="button"
-                      onClick={() => onAddMember(department.id, node.id)}
+                      onClick={() => { window.location.assign('/team'); }}
                       className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all hover:brightness-110 shrink-0"
                       style={{ background: `${primaryColor}18`, color: primaryColor, border: `1px solid ${primaryColor}40` }}
                     >
                       <UserPlus className="w-3.5 h-3.5" />
-                      Add Teammate
+                      Manage team
                     </button>
                   )}
                 </div>
 
                 {teamMembers.length === 0 ? (
                   <div className="rounded-xl border border-white/5 bg-[#111] px-4 py-5 text-sm text-white/40">
-                    No teammates added yet.
+                    No team members assigned to this department.
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -887,26 +1060,35 @@ export function BdtActionWorkspace({
                           className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
                           style={{ background: `${primaryColor}18`, border: `1px solid ${primaryColor}35`, color: primaryColor }}
                         >
-                          {member.name?.slice(0, 1).toUpperCase() || 'M'}
+                          {memberName(member).slice(0, 1).toUpperCase() || 'M'}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-white/90 truncate">{member.name}</p>
+                          <p className="text-sm font-medium text-white/90 truncate">{memberName(member)}</p>
                           <p className="text-xs text-white/40 truncate">{member.role}</p>
                         </div>
-                        {canEdit && (
-                          <div className="flex items-center gap-1 opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0">
-                            {onDeleteMember && (
-                              <button
-                                type="button"
-                                onClick={() => onDeleteMember(department, node, index)}
-                                className="p-1.5 text-white/40 hover:text-rose-300 hover:bg-white/10 rounded transition-colors"
-                                title="Delete teammate"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {canEdit && workspaceMembers.some(member => member.department_id !== department.id) && (
+                  <div className="mt-4 border-t border-white/10 pt-4"><p className="mb-2 text-xs text-white/45">Assign a teammate to {department.label}</p><div className="flex flex-wrap gap-2">{workspaceMembers.filter(member => member.department_id !== department.id).map(member => <button key={member.id} type="button" onClick={() => { void api.patch(`/api/team/members/${member.id}/department`, { departmentId: department.id }).then(() => refetchTeamMembers()); }} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/10">{[member.first_name, member.last_name].filter(Boolean).join(' ') || member.role_name}</button>)}</div></div>
+                )}
+              </GlassCard>
+            )}
+
+            {isOperationsSystem ? (
+              <OperationsSystemsPanel status={erpNextStatus} loading={erpNextStatusLoading} onRefresh={() => void loadErpNextStatus()} />
+            ) : isSystemsNode && (
+              <GlassCard>
+                <SectionTitle icon={Radio}>SYSTEMS</SectionTitle>
+                {providerCapabilities.length === 0 ? (
+                  <p className="text-sm text-white/50">No supported system is currently available for this department.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {providerCapabilities.map(capability => (
+                      <div key={capability} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 flex items-center justify-between gap-3">
+                        <div><p className="text-sm font-semibold text-white/85">{providerLabels[capability] ?? capability}</p><p className="text-xs text-white/45 mt-1">{systemStatus[capability] ?? 'Checking connection…'}</p></div>
+                        <button type="button" onClick={() => window.location.assign('/twin/data?tab=integrations')} className="px-3 py-2 rounded-lg text-xs font-semibold border border-white/15 text-white/75 hover:bg-white/10">Configure</button>
                       </div>
                     ))}
                   </div>
@@ -914,7 +1096,24 @@ export function BdtActionWorkspace({
               </GlassCard>
             )}
 
-            {!isTeamNode && !isMetaContainerMode && (
+            {isProjectNode && (
+              <GlassCard>
+                <div className="flex items-start justify-between gap-4 mb-4"><div><SectionTitle icon={Briefcase}>PROJECTS</SectionTitle><p className="text-sm text-amber-200/75">Saved on this device. Projects are not shared with teammates.</p></div></div>
+                <div className="flex gap-2 mb-4"><input value={newProjectName} onChange={event => setNewProjectName(event.target.value)} placeholder={`New ${department.label} project`} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" /><button type="button" disabled={!newProjectName.trim()} onClick={() => { projectStore.createProject({ name: newProjectName.trim(), type: 'project', memberIds: [], departmentSourceKey: department.sourceKey }); setNewProjectName(''); }} className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ background: `${primaryColor}22`, color: primaryColor, border: `1px solid ${primaryColor}44` }}>Create</button></div>
+                {departmentProjects.length === 0 ? <p className="text-sm text-white/45">No projects yet for this department.</p> : <div className="space-y-2">{departmentProjects.map(project => <div key={project.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"><p className="text-sm font-medium">{project.name}</p>{project.description && <p className="text-xs text-white/45 mt-1">{project.description}</p>}</div>)}</div>}
+              </GlassCard>
+            )}
+
+            {isFocusNode && !isMetaContainerMode && (
+              <GlassCard>
+                <SectionTitle icon={GitBranch}>FOCUS OVERVIEW</SectionTitle>
+                <p className="text-sm text-white/55">{node.label} is the primary ownership area for {department.label}. Metrics and locally saved projects are shown below; connected provider evidence appears when available.</p>
+              </GlassCard>
+            )}
+
+            {isProductPortfolioFocus && <ProductPortfolioFocus onExplore={onClose} />}
+
+            {!isTeamNode && !isSystemsNode && !isMetricsNode && !isProjectNode && !isFocusNode && !isMetaContainerMode && (
               <GlassCard>
                 <SectionTitle icon={PanelIcon}>
                   {isProjectNode ? 'PROJECT DETAILS' : `${node.type.toUpperCase()} WORKSPACE`}
@@ -924,11 +1123,12 @@ export function BdtActionWorkspace({
             )}
 
             {!isMetaContainerMode && isOperationsContext && (
-              <OperationsErpNextPanel
-                summary={operationsSummary}
+              <OperationsControlTower
+                snapshot={operationsSnapshot}
                 loading={operationsLoading}
                 error={operationsError}
-                onRefresh={loadOperationsSummary}
+                onRefresh={loadOperationsSnapshot}
+                onCreateProject={(title, detail) => projectStore.createProject({ name: title, description: detail, type: 'project', memberIds: [], departmentSourceKey: department.sourceKey })}
               />
             )}
 
@@ -950,25 +1150,11 @@ export function BdtActionWorkspace({
               />
             )}
 
-            {!isMetaContainerMode && isMarketingContext && isMetaMetricNode(node) && companyId && (
-              <MetaMetricPanel
-                companyId={companyId}
-                nodeLabel={node.label}
-                nodeStableSourceKey={node.stableSourceKey}
-                canConfigure={canEditMetrics}
-                members={workspaceMembers}
-              />
+            {!isMetaContainerMode && isOperationsDepartment && isMetricsNode && companyId && (
+              <OperationsMetricsPanel companyId={companyId} members={workspaceMembers} canEdit={canEditMetrics} />
             )}
 
-            {!isMetaContainerMode && isMarketingContext && isMetaSpendReachNode(node) && companyId && (
-              <SpendReachPanel nodeLabel={node.label} nodeStableSourceKey={node.stableSourceKey} />
-            )}
-
-            {!isMetaContainerMode && isMarketingContext && isMetaCampaignsNode(node) && companyId && (
-              <CampaignsPanel nodeLabel={node.label} nodeStableSourceKey={node.stableSourceKey} />
-            )}
-
-            {!isMetaContainerMode && !isTeamNode && companyId && isPersistedBdtNode && !isAnyMetaPanelNode(node) && (
+            {!isMetaContainerMode && !isOperationsDepartment && !isTeamNode && !isSystemsNode && !isProjectNode && companyId && isPersistedBdtNode && (
               <GlassCard>
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <SectionTitle icon={BarChart3}>LIVE METRICS</SectionTitle>
@@ -984,8 +1170,7 @@ export function BdtActionWorkspace({
                   )}
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-                  <MetricRollupHealthPanel rollup={rollups.find(r => r.target_type === 'bdt_node' && r.target_id === node.id)} title={`${node.label} Health`} />
-                  <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="xl:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                     {nodeMetrics.map(metric => (
                       <MetricCard key={metric.id} metric={metric} canEdit={canEditMetrics && !metric.sources.some(source => source.source_type === 'integration')} onUpdateValue={updateMetricValue} />
                     ))}
@@ -1013,7 +1198,7 @@ export function BdtActionWorkspace({
               </GlassCard>
             )}
 
-            {!isTeamNode && !isProjectNode && (
+            {!isOperationsDepartment && !isTeamNode && !isProjectNode && (
             <GlassCard>
               <SectionTitle icon={Zap}>METADATA</SectionTitle>
               <h3 className="text-lg font-semibold text-white mb-4" style={{ color: primaryColor }}>{department.label}</h3>
@@ -1105,9 +1290,9 @@ export function BdtActionWorkspace({
         <MetricCreateWizard
           companyId={companyId}
           members={workspaceMembers}
-          targetType="bdt_node"
-          targetId={node.id}
-          targetLabel={`BDT Node: ${node.label}`}
+          targetType={metricTarget.target_type}
+          targetId={metricTarget.target_id}
+          targetLabel={isMetricsNode ? `Department: ${department.label}` : `BDT Node: ${node.label}`}
           createMetric={createMetric}
           createDraft={createDraft}
           onClose={() => setShowMetricWizard(false)}

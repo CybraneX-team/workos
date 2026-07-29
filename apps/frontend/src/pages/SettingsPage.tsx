@@ -26,7 +26,7 @@ interface DeptConfig {
 }
 
 type Section = 'organization' | 'profile' | 'departments' | 'workspace' | 'notifications' | 'connections';
-type ErpNextStatus = { status: 'not_configured' | 'provisioning' | 'ready' | 'failed'; deskUrl?: string };
+type ErpNextStatus = { status: 'not_configured' | 'provisioning' | 'ready' | 'failed'; deskUrl?: string; provisioningStage?: string };
 
 const NAV: { id: Section; icon: React.ReactNode; label: string }[] = [
   { id: 'organization', icon: <Layers size={15} />, label: 'Organization' },
@@ -91,10 +91,19 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!profile?.company_id) return;
     let cancelled = false;
-    void api.get<ErpNextStatus>('/api/erpnext/status')
-      .then(status => { if (!cancelled) setErpNextStatus(status); })
-      .catch(() => { if (!cancelled) setErpNextStatus(null); });
-    return () => { cancelled = true; };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = async () => {
+      try {
+        const status = await api.get<ErpNextStatus>('/api/erpnext/status');
+        if (cancelled) return;
+        setErpNextStatus(status);
+        if (status.status === 'provisioning') timer = setTimeout(() => void refresh(), 5_000);
+      } catch {
+        if (!cancelled) setErpNextStatus(null);
+      }
+    };
+    void refresh();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [profile?.company_id]);
 
   const displayDepts: DeptConfig[] = departmentStore.departments
@@ -375,7 +384,9 @@ export default function SettingsPage() {
                     </a>
                   ) : (
                     <span style={{ fontSize: 13, color: DIM }}>
-                      {erpNextStatus?.status === 'provisioning' ? 'Setting up ERPNext…' : erpNextStatus?.status === 'failed' ? 'ERPNext setup failed' : 'Not available yet'}
+                      {erpNextStatus?.status === 'provisioning'
+                        ? `Setting up ERPNext${erpNextStatus.provisioningStage ? ` (${erpNextStatus.provisioningStage.replaceAll('_', ' ')})` : ''}…`
+                        : erpNextStatus?.status === 'failed' ? 'ERPNext setup failed' : 'Not available yet'}
                     </span>
                   )
                 },

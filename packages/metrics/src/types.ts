@@ -33,6 +33,15 @@ export interface MetricSource {
   confidence: number;
   created_by: string | null;
   created_at: string;
+  /** Canonical integration lifecycle state; manual sources remain active. */
+  status: 'active' | 'disconnected' | 'needs_configuration';
+  integration_id?: string | null;
+  source_key?: string | null;
+  external_account_id?: string | null;
+  currency?: string | null;
+  last_attempted_at?: string | null;
+  last_synced_at?: string | null;
+  last_error?: string | null;
 }
 
 export interface MetricValue {

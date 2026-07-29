@@ -249,7 +249,7 @@ export function evaluateTargetMovementFindings(inputs: TargetMovementInput[]): F
       actionLabel: hasGoal ? 'Open linked goal' : 'Review target alignment',
       actionHref: hasGoal
         ? `/twin/strategy?goal=${encodeURIComponent(input.goalId!)}`
-        : '/universal?focus=mkt_paid_acquisition&openHub=1',
+        : '/universal?focus=mkt_paid_acquisition',
     }];
   });
 }
@@ -271,6 +271,6 @@ export function staleDataFinding(dataAgeHours: number): FindingCandidate | null 
     fingerprint: 'stale-data', kind: 'stale_data', severity: dataAgeHours >= 72 ? 'critical' : 'warning', scope: 'integration',
     title: 'Meta Ads data is stale', explanation: `The latest successful snapshot is ${Math.floor(dataAgeHours)} hours old.`,
     periodStart: null, periodEnd: null, evidence: { dataAgeHours: Math.round(dataAgeHours * 10) / 10 }, estimatedSpendExposure: 0,
-    actionKind: 'review_paid_acquisition', actionLabel: 'Review refresh status', actionHref: '/universal?focus=mkt_paid_acquisition&openHub=1', immediate: true,
+    actionKind: 'review_paid_acquisition', actionLabel: 'Review refresh status', actionHref: '/universal?focus=mkt_paid_acquisition', immediate: true,
   };
 }

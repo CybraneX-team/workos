@@ -5,6 +5,13 @@ import { recomputeCanonicalRollups, scoreMetric, type MetricDirection } from './
 
 export type MetaMetricKey = 'roas_30d' | 'cost_per_conversion_30d' | 'selected_conversions_30d';
 
+/**
+ * Meta canonical metrics belong to the V4 Marketing focus workspace.  This is
+ * deliberately not a metric leaf: V4 no longer seeds the V3 Ad Performance
+ * descendant that used to host these metrics.
+ */
+export const META_PAID_ACQUISITION_FOCUS_SOURCE_KEY = 'mkt_paid_acquisition';
+
 const META_METRICS: Record<MetaMetricKey, {
   name: string;
   unit: (currency: string) => string;
@@ -15,15 +22,15 @@ const META_METRICS: Record<MetaMetricKey, {
 }> = {
   roas_30d: {
     name: 'Meta ROAS (30d)', unit: () => 'x', valueType: 'ratio', direction: 'higher_is_better',
-    nodeSourceKey: 'mkt_paid_acquisition_ad_performance', value: metrics => metrics.roas,
+    nodeSourceKey: META_PAID_ACQUISITION_FOCUS_SOURCE_KEY, value: metrics => metrics.roas,
   },
   cost_per_conversion_30d: {
     name: 'Meta cost per conversion (30d)', unit: currency => currency, valueType: 'currency', direction: 'lower_is_better',
-    nodeSourceKey: 'mkt_paid_acquisition_ad_performance', value: metrics => metrics.cpa,
+    nodeSourceKey: META_PAID_ACQUISITION_FOCUS_SOURCE_KEY, value: metrics => metrics.cpa,
   },
   selected_conversions_30d: {
     name: 'Meta attributed conversions (30d)', unit: () => '', valueType: 'count', direction: 'higher_is_better',
-    nodeSourceKey: 'mkt_paid_acquisition_ad_performance', value: metrics => metrics.conversions30d,
+    nodeSourceKey: META_PAID_ACQUISITION_FOCUS_SOURCE_KEY, value: metrics => metrics.conversions30d,
   },
 };
 
@@ -319,13 +326,15 @@ export async function configureMetaMetric(companyId: string, userId: string, key
     await client.query('BEGIN');
     const [{ rows: owners }, { rows: nodes }] = await Promise.all([
       client.query(`SELECT 1 FROM public.company_members WHERE id = $1 AND company_id = $2 AND status = 'active'`, [input.ownerMemberId, companyId]),
-      // Matched on the immutable V2 metadata.sourceKey, not the positional source_key column.
-      // Branch/action/metric
-      // siblings share the same metadata object, so node_type='metric' disambiguates to the one
-      // leaf that actually opens in the workspace.
+      // Canonical Meta metrics attach to the one V4 Paid Acquisition focus node.
+      // Do not fall back to a label, legacy child node, or any non-V4 taxonomy row.
       client.query(
         `SELECT id FROM public.department_bdt_nodes
-          WHERE company_id = $1 AND node_type = 'metric' AND metadata->>'sourceKey' = $2`,
+          WHERE company_id = $1
+            AND node_type = 'branch'
+            AND metadata->>'sourceKey' = $2
+            AND metadata->>'taxonomyVersion' = 'v4'
+            AND metadata->>'workspaceKind' = 'focus'`,
         [companyId, definition.nodeSourceKey],
       ),
     ]);

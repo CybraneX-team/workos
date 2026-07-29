@@ -4,7 +4,7 @@ Status: implemented for local development **and deployed to Azure** (2026-07-20)
 The cloud deployment is documented in `../runbooks/cloud-deploy.md`; this document
 describes the architecture and boundaries, which are unchanged by that deployment.
 
-Last verified: 2026-07-22.
+Last verified: 2026-07-29 (fresh local tenant provisioning, setup verification, SSO, and user reconciliation).
 
 ## Purpose
 
@@ -46,11 +46,22 @@ The only shared ERP package is `@cybranex/erpnext-contracts`, because both appli
 1. Company creation in `apps/backend/src/routes/companies.ts` enqueues three coalesced commands: `provision_tenant`, `configure_sso`, and `reconcile_users`.
 2. The WorkOS outbox worker claims only rows matching `ERPNEXT_TARGET_ENV`.
 3. The control-plane persists a provision job and tenant state before returning `202`.
-4. Its worker creates or reuses the Frappe site, generates Administrator API keys, **completes ERPNext's setup wizard**, applies branding, encrypts credentials, and marks the tenant ready.
-5. SSO and user commands retry until status is `ready`.
+4. Its worker records the active stage and heartbeat, creates or reuses the Frappe site under a per-site container lock, verifies installed apps, generates Administrator API keys, **completes and verifies ERPNext's setup wizard**, applies branding, encrypts credentials, and marks the tenant ready.
+5. SSO and user commands may initially retry with `tenant_not_ready`; they converge after the tenant reaches `ready`.
 
-Step 4's "creates or reuses" is true only of `localProvision()`; the remote shim always
-creates.
+On a provisioning failure, the worker stores a bounded, redacted diagnostic in both
+`erpnext.provision_jobs.last_error` and `erpnext.tenants.last_error`. Local Docker
+failures identify the lifecycle stage, command class, exit status, signal, and safe
+stderr; generated credentials and configured secret values are never persisted.
+
+The safe tenant-status response exposes `provisioningStage` only while a provision job is
+active. The Settings page polls its authenticated backend status endpoint every five seconds
+while the tenant is provisioning; it never receives credentials or raw diagnostics.
+
+Both local provisioning and the checked-in remote-shim source use a per-site container lock,
+an inner `timeout`, an installed-app verification, and only then generate credentials. The
+remote mirror must still be deployed to the Azure VM separately; changing this repository does
+not alter a running remote shim.
 
 Sites are created with **both** `erpnext` and `crm` (Frappe CRM) installed, in
 that order — `crm` declares no `required_apps`, so ordering is not enforced for
@@ -67,8 +78,10 @@ country. `completeSetup()` in `src/frappe/client.ts` runs that wizard over REST 
 duplicated into the remote shim.
 
 It runs before `applyBranding()` (the wizard rewrites workspaces and Website Settings) and
-before `status='ready'`, so `ready` now implies the tenant is genuinely usable — which is
-what `resolveErpNextCreds()` and `routes/bdtNodeActivation.ts`'s `erpConnected` gate assume.
+before `status='ready'`, followed by a persisted `System Settings.setup_complete` and Company
+postcondition check. A 2xx setup response alone is not enough because Frappe can return success
+while another setup request owns its lock. Thus `ready` implies the tenant is genuinely usable — which is
+what `resolveErpNextCreds()` and the V4 ERPNext focus workspaces assume.
 
 `initialize_system_settings_and_user` must precede `setup_complete`: once frappe's own stage
 is marked complete in `Installed Application`, `process_setup_stages()` calls
@@ -150,13 +163,14 @@ Normalized service errors use `{ code, message, retryable }`. Runtime schemas ar
 | `public.oidc_clients` | WorkOS OIDC client per `(company_id, environment, provider_name)`; secret encrypted with WorkOS `ENCRYPTION_KEY`. |
 | `public.erpnext_command_outbox` | Environment-scoped command references, retry state, generation, and locks; no plaintext client secret. |
 | `erpnext.tenants` | Tenant status, safe URLs, and Frappe API credentials encrypted with control-plane `ERPNEXT_CREDENTIALS_KEY`. |
-| `erpnext.provision_jobs` | Durable provisioning jobs, idempotency, attempts, and locks. |
+| `erpnext.provision_jobs` | Durable provisioning jobs, idempotency, attempts, locks, current stage, stage start, and heartbeat. |
 | `erpnext.managed_users` | Last applied managed-user state used to disable removals. |
 | `erpnext.command_receipts` | Mutating-command idempotency receipts. |
 
 WorkOS migration: `apps/backend/db/migrations/035_erpnext_control_plane_outbox.sql`.
 
-Control-plane migration: `apps/erpnext-control-plane/db/migrations/001_control_plane.sql`.
+Control-plane migrations: `apps/erpnext-control-plane/db/migrations/001_control_plane.sql`
+through `003_provision_lifecycle.sql`; apply them with `pnpm --filter erpnext-control-plane db:migrate`.
 
 ## Frappe apps and the custom image
 
@@ -215,10 +229,9 @@ Frappe CRM's `ERPNext CRM Settings` singleton.
 - Local provisioning uses Docker and sites named `erp-<slug>.localhost`.
 - Remote provisioning uses the configured remote provisioning shim — a small Node/Express
   service on the VM that runs `bench` on the control-plane's behalf (the control-plane
-  cannot reach the VM's Docker socket). Its `/provision` handler **duplicates**
-  `localProvision()`'s `bench new-site` call, including the installed-app list, and the two
-  must be changed together. A mirror is version-controlled at `infra/erpnext-remote-shim/`;
-  the VM remains the live source of truth.
+  cannot reach the VM's Docker socket). The version-controlled source at
+  `infra/erpnext-remote-shim/` mirrors local site creation and must be deployed manually to
+  affect the VM. The VM's currently deployed behavior must be verified separately.
 - **Deployed (2026-07-20):** a `remote` control-plane runs as the Azure Container App
   `erpnext-control-plane` (env `startup-twin-env`, RG `startup-digital-twin-rg`,
   **internal ingress**, port 8090). It calls the existing ERPNext VM shim/Frappe — the
@@ -250,11 +263,21 @@ marked `ready` with no `Company`, chart of accounts, fiscal year, or default cur
 dumping the first user onto `/desk/setup-wizard/0`. See "Completing ERPNext setup" above
 for the current behaviour and `../runbooks/cloud-deploy.md` for the history.
 
-### The remote shim has drifted from `localProvision()` (unfixed)
+### Provisioning lifecycle and worker shutdown
 
-`/provision` is not idempotent and omits `--mariadb-user-host-login-scope=%`. See
-`../../infra/erpnext-remote-shim/README.md`. Setup completion is deliberately **not** part
-of this drift — it lives in the control-plane and covers both paths.
+The control-plane persists each job's current stage, heartbeat, and stage start time. Site
+creation is serialized inside the Frappe backend container and bounded there, so cancelling the
+host-side Docker client cannot leave an unbounded `bench new-site` process. The control-plane
+owns process shutdown centrally: it stops the worker, closes its HTTP listener, and closes the
+database pool. A watched process therefore cannot continue serving `/healthz` with a dead worker
+loop. The checked-in remote shim follows the same protocol, but needs a manual VM deployment
+before it can protect remote tenants. Setup completion deliberately remains in the control-plane
+and covers both local and remote paths.
+
+For local development, run exactly one frontend, backend, and control-plane process. Starting a
+second watcher can leave an old process holding port `8090`; `/healthz` may then describe the
+wrong process rather than the intended worker. The local runbook includes a scoped clean-restart
+procedure and requires inspection of the outbox/job rows when provisioning does not advance.
 
 ### Dropped Postgres connection kills both workers (2026-07-21, unfixed)
 

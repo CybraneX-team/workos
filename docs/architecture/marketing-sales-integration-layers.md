@@ -126,11 +126,10 @@ been collecting consent for a while.
 
 ## Layer 5 — Unify the Marketing projection
 
-Sales is declarative: a `MAPPINGS` table, a `node-summary` endpoint, and
-`listActiveBranchKeys()` *derived* by filtering `unsupported`. Marketing is a hardcoded
-3-key array in `routes/bdtNodeActivation.ts` plus two frontend special-cases — one of which
-matches the literal string `'ad performance health'`, so **renaming a node in the code-owned taxonomy
-silently unbinds the dashboard**.
+Sales and Marketing are now both V4 focus workspaces. Sales resolves the stable
+`sales_deal_execution` focus key server-side; Marketing routes the stable
+`mkt_paid_acquisition` focus key directly to the Meta Ads hub. Neither depends on generated
+branch/action descendants or activation locks.
 
 Giving Marketing the Sales shape makes Organic Growth (GA4) and Brand & Intelligence
 (Similarweb) *data* additions rather than code changes.

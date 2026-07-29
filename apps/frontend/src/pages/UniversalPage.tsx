@@ -3,20 +3,17 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import UniversalPolytope from '../components/UniversalPolytope';
 import { PolytopeSidePanel } from '../components/PolytopeSidePanel';
-import { PolytopeManager } from '../components/PolytopeManager';
-import CreateDepartmentPanel from '../components/CreateDepartmentPanel';
 import { usePolytopeStore } from '../lib/usePolytopeStore';
 import type { UExternalNode, UInternalNode } from '../lib/usePolytopeStore';
 import { useAuth } from '../lib/auth';
 import { useCompany } from '../lib/db/companies';
-import { useTeamMembers } from '../lib/db/team';
 import type { CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
 import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
 import { BdtActionWorkspace } from '../components/workspace/BdtActionWorkspace';
 import { isBdtWorkspaceLeafNode } from '../lib/usePolytopeStore';
-import { canReadDept, canWriteDept as canWriteDeptHelper, canDeleteDept as canDeleteDeptHelper } from '../lib/bdtTrailRbac';
+import { canReadDept, canWriteDept as canWriteDeptHelper } from '../lib/bdtTrailRbac';
 import { useWorkflowTrail } from '../lib/useWorkflowTrail';
 import { useBdtSavedTrails } from '../lib/useBdtSavedTrails';
 import type { UserPlanetRole } from '../data/companyPlanetRoots';
@@ -27,11 +24,9 @@ export default function UniversalPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const replayTrailId = searchParams.get('replayTrail');
   const focusKey = searchParams.get('focus');
-  const shouldOpenHub = searchParams.get('openHub') === '1';
   const { user, profile, canRead, canWrite, role: authRole } = useAuth();
   const canCreateDepartments = canWrite('twin') && canWrite('team');
   const { company } = useCompany(profile?.company_id);
-  const { members: workspaceMembers } = useTeamMembers(profile?.company_id);
   const store = usePolytopeStore('bdt');
   const [productPortfolio, setProductPortfolio] = useState<ErpNextCatalogPortfolio | null>(null);
   const { sendContextUpdate, voiceState, toggle, intensityRef } = useVoice();
@@ -175,7 +170,6 @@ export default function UniversalPage() {
   }
 
   const canWriteDept = (dept?: UExternalNode | null) => canCreateDepartments && canWriteDeptHelper(dept);
-  const canDeleteDept = (dept?: UExternalNode | null) => canCreateDepartments && canDeleteDeptHelper(dept);
   const hasWritableDepartment = canCreateDepartments && (
     store.departments.length === 0 || store.departments.some(d => canWriteDept(d))
   );
@@ -187,7 +181,6 @@ export default function UniversalPage() {
   // Sidebar state — which dept is selected in sidebar, and internal drill-down path
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [internalPath, setInternalPath] = useState<string[]>([]);
-  const [openPaidAcquisitionHub, setOpenPaidAcquisitionHub] = useState(false);
   // Counter incremented each time the sidebar's back button is pressed
   const [internalBackStep, setInternalBackStep] = useState(0);
 
@@ -204,24 +197,9 @@ export default function UniversalPage() {
   const sidebarPathAuthority = useRef<string[] | null>(null);
   const sidebarPathAuthorityTimer = useRef<number | null>(null);
 
-  // ── Draft dept state (for "Add Department" inline flow) ───────────────────
-  const [draftDept, setDraftDept] = useState<UExternalNode | null>(null);
-  const draftDeptScreenPosRef = useRef<{ x: number; y: number } | null>(null);
-
-  // ── Draft internal node state (for "Add Node" inline flow) ───────────────
-  const [draftInternalNode, setDraftInternalNode] = useState<{ deptId: string; node: UInternalNode } | null>(null);
-  const draftInternalNodeScreenPosRef = useRef<{ x: number; y: number } | null>(null);
-
-  // ── Draft member state (for "Add Member" inline flow) ───────────────
-  const [draftMember, setDraftMember] = useState<{ deptId: string; nodeId: string } | null>(null);
-  const draftMemberScreenPosRef = useRef<{ x: number; y: number } | null>(null);
-
   // Camera reset trigger — increment to fly back to overview
-  const [polytopeResetTrigger, setPolytopeResetTrigger] = useState(0);
+  const polytopeResetTrigger = 0;
 
-  // PolytopeManager (CRUD modal) — only used for edit/delete flows now
-  const [managerOpen, setManagerOpen] = useState(false);
-  const [managerView, setManagerView] = useState<any>({ type: 'home' });
 
   useEffect(() => {
     void store.loadDepartments();
@@ -247,7 +225,6 @@ export default function UniversalPage() {
     const selection = findSelection(department.internalNodes);
     return selection ? { department, ...selection } : null;
   }, [focusKey, store.departments]);
-  const urlOwnsPaidAcquisitionHub = shouldOpenHub && focusKey === 'mkt_paid_acquisition';
   const focusOwnsPaidAcquisitionSelection = focusKey === 'mkt_paid_acquisition' && Boolean(paidAcquisitionDeepLink);
   const resolvedSelectedDeptId = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.department.id
@@ -263,7 +240,7 @@ export default function UniversalPage() {
       })),
     }));
     const replace = (nodes: UInternalNode[]): UInternalNode[] => nodes.map(node => {
-      if (node.stableSourceKey === 'prod_product_portfolio_product_lines' && node.presentation === 'erpnext_catalog' && node.taxonomyVersion === 'v3') return { ...node, children: virtualLines };
+      if (node.stableSourceKey === 'prod_product_portfolio' && node.presentation === 'erpnext_catalog' && node.taxonomyVersion === 'v4') return { ...node, children: virtualLines };
       return node.children?.length ? { ...node, children: replace(node.children) } : node;
     });
     return store.departments.map(department => ({ ...department, internalNodes: replace(department.internalNodes) }));
@@ -285,7 +262,7 @@ export default function UniversalPage() {
     return targetNode;
   };
   const selectedNode = getSelectedInternalNode();
-  const isLiveProductLines = Boolean(selectedNode && selectedNode.stableSourceKey === 'prod_product_portfolio_product_lines' && selectedNode.presentation === 'erpnext_catalog' && selectedNode.taxonomyVersion === 'v3');
+  const isLiveProductLines = Boolean(selectedNode && selectedNode.stableSourceKey === 'prod_product_portfolio' && selectedNode.presentation === 'erpnext_catalog' && selectedNode.taxonomyVersion === 'v4');
   const refreshProductPortfolio = useCallback(() => {
     void fetchErpNextProductPortfolio().then(setProductPortfolio).catch(() => setProductPortfolio({ status: 'not_configured', generatedAt: new Date().toISOString(), lines: [], warnings: [], message: 'Connect ERPNext to load Product Lines.' }));
   }, []);
@@ -295,13 +272,9 @@ export default function UniversalPage() {
   }, [isLiveProductLines, refreshProductPortfolio]);
   const isLeafNode = !!selectedNode && isBdtWorkspaceLeafNode(selectedNode);
   const isPaidAcquisitionNode = Boolean(selectedNode && (selectedNode.stableSourceKey === 'mkt_paid_acquisition' || selectedNode.sourceKey === 'mkt_paid_acquisition'));
-  const isWorkspaceOpen = isLeafNode || ((openPaidAcquisitionHub || urlOwnsPaidAcquisitionHub) && isPaidAcquisitionNode);
+  const isWorkspaceOpen = isLeafNode;
 
   const handleInternalPathChange = useCallback((path: string[]) => {
-    // While the URL owns the Paid Acquisition container selection, the scene
-    // can still be mounting with no selected department. Ignore that transient
-    // empty path so it cannot erase the deep-linked workspace before it opens.
-    if (shouldOpenHub && focusKey === 'mkt_paid_acquisition' && path.length === 0) return;
     const authoritativePath = sidebarPathAuthority.current;
     if (authoritativePath) {
       const matchesAuthority = authoritativePath.length === path.length
@@ -313,7 +286,7 @@ export default function UniversalPage() {
         ? current
         : [...path]
     ));
-  }, [focusKey, shouldOpenHub]);
+  }, []);
 
   const paidAcquisitionDepartmentId = paidAcquisitionDeepLink?.department.id ?? null;
   const paidAcquisitionPathKey = paidAcquisitionDeepLink?.path.join('\u001f') ?? '';
@@ -321,65 +294,14 @@ export default function UniversalPage() {
     if (focusKey !== 'mkt_paid_acquisition' || !paidAcquisitionDepartmentId || !paidAcquisitionPathKey) return;
     const path = paidAcquisitionPathKey.split('\u001f');
     setSelectedDeptId((current) => current === paidAcquisitionDepartmentId ? current : paidAcquisitionDepartmentId);
-    // A direct container deep link can open from parent state immediately. Do
-    // not also start a scene camera selection: its department callback may race
-    // this render and clear the supplied internal path. Focus-only navigation
-    // still requests the normal camera fly.
-    const requestedDepartment = shouldOpenHub ? undefined : paidAcquisitionDepartmentId;
-    setRequestSelectDeptId((current) => current === requestedDepartment ? current : requestedDepartment);
+    setRequestSelectDeptId((current) => current === paidAcquisitionDepartmentId ? current : paidAcquisitionDepartmentId);
     setInternalPath((current) => (
       current.length === path.length && current.every((entry, index) => entry === path[index])
         ? current
         : path
     ));
-    // URL state may open the hub, but a focus-only URL must not close a hub the
-    // user explicitly opened from the side panel.
-    if (shouldOpenHub) setOpenPaidAcquisitionHub(true);
     setSelectDeptNonce((value) => value + 1);
-  }, [focusKey, paidAcquisitionDepartmentId, paidAcquisitionPathKey, shouldOpenHub]);
-
-  useEffect(() => {
-    const deepLinkIsStillSelectingNode = shouldOpenHub && focusKey === 'mkt_paid_acquisition' && !selectedNode;
-    if (!isPaidAcquisitionNode && !deepLinkIsStillSelectingNode) setOpenPaidAcquisitionHub(false);
-  }, [focusKey, isPaidAcquisitionNode, selectedNode, shouldOpenHub]);
-
-  const handleEditDepartment = (dept: UExternalNode) => {
-    if (!canWriteDept(dept)) return;
-    setManagerView({ type: 'editDept', dept });
-    setManagerOpen(true);
-  };
-
-  const handleEditNode = (dept: UExternalNode, node: UInternalNode) => {
-    if (!canWriteDept(dept)) return;
-    setManagerView({ type: 'editNode', dept, node });
-    setManagerOpen(true);
-  };
-
-  const handleDeleteDepartmentClick = (dept: UExternalNode) => {
-    if (!canDeleteDept(dept)) return;
-    setManagerView({ type: 'deleteDept', dept });
-    setManagerOpen(true);
-  };
-
-  const handleDeleteNodeClick = (dept: UExternalNode, node: UInternalNode) => {
-    if (!canDeleteDept(dept)) return;
-    setManagerView({ type: 'deleteNode', dept, node });
-    setManagerOpen(true);
-  };
-
-  const handleDeleteMemberClick = async (dept: UExternalNode, node: UInternalNode, memberIndex: number) => {
-    if (!canWriteDept(dept)) return;
-    const member = node.members?.[memberIndex];
-    if (!member) return;
-
-    if (member.companyMemberId) {
-      await store.removeNodeMember(node.id, member.companyMemberId);
-      return;
-    }
-
-    const newMembers = (node.members || []).filter((_, index) => index !== memberIndex);
-    await store.updateNode(dept.id, node.id, { members: newMembers, memberCount: newMembers.length });
-  };
+  }, [focusKey, paidAcquisitionDepartmentId, paidAcquisitionPathKey]);
 
   // Core workspace/Voice AI zoom state
   const [corePhase, setCorePhase] = useState<CoreWorkspacePhase>('idle');
@@ -453,115 +375,13 @@ export default function UniversalPage() {
     );
   }, [store.departments, companyName]);
 
-  // ── Add Department: spawn draft node + show panel ─────────────────────────
-  // Camera fly is handled internally by Scene via useEffect on draftNodePos.
-  const handleAddDepartment = () => {
-    if (!canCreateDepartments) return;
-    const draftId = `draft_dept_${Date.now()}`;
-    const draft: UExternalNode = {
-      id: draftId,
-      label: 'New Department',
-      domain: 'build',
-      cluster: '',
-      score: 75,
-      metrics: { performance: 75, efficiency: 75, capacity: 75, alignment: 75, risk: 25 },
-      internalNodes: [],
-      isDraft: true,
-    };
-    setDraftDept(draft);
-    // Deselect any current dept so the polytope returns to overview
-    setRequestSelectDeptId(null);
-  };
-
-  const handleDraftDeptUpdate = (patch: Partial<Pick<UExternalNode, 'label' | 'domain'>>) => {
-    setDraftDept(prev => prev ? { ...prev, ...patch } : prev);
-  };
-
-  const handleDraftDeptClose = (isCancel?: boolean) => {
-    if (isCancel) {
-      setDraftDept(null);
-      setRequestSelectDeptId(null);
-      setPolytopeResetTrigger(c => c + 1);
-    }
-  };
-
-  const handleDraftDeptCreated = async (data: Omit<UExternalNode, 'id' | 'internalNodes' | 'isDraft'>) => {
-    const saved = await store.addDepartment(data);
-    setDraftDept(null);
-    setPolytopeResetTrigger(c => c + 1);
-    // Select the newly created real dept
-    setSelectedDeptId(saved.id);
-    setRequestSelectDeptId(saved.id);
-  };
-
-  // ── Add Node: spawn draft internal node + show panel ─────────────────────
-  const handleAddNode = (deptId: string) => {
-    const dept = store.departments.find(d => d.id === deptId);
-    if (!dept || !canWriteDept(dept)) return;
-    const draftNode: UInternalNode = {
-      id: `draft_node_${Date.now()}`,
-      label: 'New Node',
-      type: 'team',
-      score: 75,
-      children: [],
-    };
-    setDraftInternalNode({ deptId, node: draftNode });
-    if (selectedDeptId !== deptId) {
-      setSelectedDeptId(deptId);
-      setRequestSelectDeptId(deptId);
-    }
-  };
-
-  const handleDraftNodeUpdate = (patch: Partial<Pick<UInternalNode, 'label' | 'type'>>) => {
-    setDraftInternalNode(prev => prev ? { ...prev, node: { ...prev.node, ...patch } } : prev);
-  };
-
-  const handleDraftNodeClose = (isCancel?: boolean) => {
-    if (isCancel) {
-      setDraftInternalNode(null);
-    }
-  };
-
-  const handleDraftNodeCreated = async (data: Omit<UInternalNode, 'id' | 'children'>) => {
-    if (!draftInternalNode) return;
-    const deptId = draftInternalNode.deptId;
-    await store.addNode(deptId, data, internalPath);
-    setDraftInternalNode(null);
-    setSelectedDeptId(deptId);
-  };
-
-  // ── Add Member: spawn draft member + show panel ─────────────────────
-  const handleAddMember = (deptId: string, nodeId: string) => {
-    const dept = store.departments.find(d => d.id === deptId);
-    if (!canWriteDept(dept)) return;
-    setDraftMember({ deptId, nodeId });
-    if (selectedDeptId !== deptId) {
-      setSelectedDeptId(deptId);
-      setRequestSelectDeptId(deptId);
-    }
-  };
-
-  const handleDraftMemberClose = (isCancel?: boolean) => {
-    if (isCancel) {
-      setDraftMember(null);
-    }
-  };
-
-  const handleDraftMemberCreated = async (data: { memberId: string }) => {
-    if (!draftMember) return;
-    const { deptId, nodeId } = draftMember;
-    await store.addNodeMember(nodeId, data.memberId);
-    setDraftMember(null);
-    setSelectedDeptId(deptId);
-  };
-
   // When dept is selected in 3D scene → update sidebar highlight
   const handleDepartmentChange = (id: string | null) => {
     // The direct Paid Acquisition hub route owns department/path selection
     // until the workspace closes. Scene initialization can report an empty or
     // stale selection while its camera state catches up; accepting it here
     // would clear the URL-selected node.
-    if (shouldOpenHub && focusKey === 'mkt_paid_acquisition') return;
+    if (focusKey === 'mkt_paid_acquisition') return;
     selectionFromScene.current = true;
     if (id !== selectedDeptId) {
       setInternalPath([]);
@@ -681,7 +501,7 @@ export default function UniversalPage() {
           pointerEvents: (isPolytopeInteractive || corePhase === 'workspace') ? 'auto' : 'none',
         }}
       >
-        {showBdtCanvas && !urlOwnsPaidAcquisitionHub && (
+        {showBdtCanvas && (
           <UniversalPolytope
             key={bdtSessionId}
             storeScope="bdt"
@@ -694,12 +514,6 @@ export default function UniversalPage() {
             requestSelectDeptId={requestSelectDeptId}
             selectDeptNonce={selectDeptNonce}
             requestBackStep={internalBackStep}
-            draftDept={draftDept}
-            draftNodeScreenPosRef={draftDeptScreenPosRef}
-            draftInternalNode={draftInternalNode}
-            draftInternalNodeScreenPosRef={draftInternalNodeScreenPosRef}
-            draftMember={draftMember}
-            draftMemberScreenPosRef={draftMemberScreenPosRef}
             cameraResetTrigger={polytopeResetTrigger}
             departments={displayDepartments}
             selectedInternalPath={resolvedInternalPath}
@@ -730,22 +544,15 @@ export default function UniversalPage() {
       )}
 
       {/* ── Left sidebar panel — hidden when create panel is shown ── */}
-      {isPolytopeInteractive && !isWorkspaceOpen && !draftDept && !draftInternalNode && !draftMember && (
+      {isPolytopeInteractive && !isWorkspaceOpen && (
         <div className="fixed bottom-6 left-4 z-[60] pointer-events-auto">
           <PolytopeSidePanel
             departments={displayDepartments}
             selectedDeptId={resolvedSelectedDeptId}
             onDeptSelect={(id) => handleSidebarDeptSelect(id)}
             selectedInternalPath={resolvedInternalPath}
-            onAddDepartment={handleAddDepartment}
-            onAddNode={handleAddNode}
             onRefreshProductPortfolio={refreshProductPortfolio}
-            onAddMember={handleAddMember}
             onInternalBack={() => setInternalBackStep(c => c + 1)}
-            onUpdateDepartment={store.updateDepartment}
-            onDeleteDepartment={store.deleteDepartment}
-            onUpdateNode={store.updateNode}
-            onDeleteNode={store.deleteNode}
             onNodeSelect={(path) => {
               const authoritativePath = [...path];
               sidebarPathAuthority.current = authoritativePath;
@@ -754,115 +561,38 @@ export default function UniversalPage() {
                 if (sidebarPathAuthority.current === authoritativePath) sidebarPathAuthority.current = null;
                 sidebarPathAuthorityTimer.current = null;
               }, 2_000);
-              setOpenPaidAcquisitionHub(false);
               setRequestSelectDeptId(undefined);
               setInternalPath(authoritativePath);
               setSearchParams((current) => {
-                if (!current.has('focus') && !current.has('openHub') && !current.has('tab')) return current;
+                if (!current.has('focus') && !current.has('tab')) return current;
                 const next = new URLSearchParams(current);
                 next.delete('focus');
-                next.delete('openHub');
                 next.delete('tab');
                 return next;
               }, { replace: true });
             }}
-            onEditDepartment={handleEditDepartment}
-            onEditNode={handleEditNode}
-            onDeleteDepartmentClick={handleDeleteDepartmentClick}
-            onDeleteNodeClick={handleDeleteNodeClick}
-            onDeleteMemberClick={handleDeleteMemberClick}
-            canEdit={canCreateDepartments}
-            canCreateDepartment={canCreateDepartments}
             bdtWorkspaceLeaves
-            onOpenPaidAcquisition={(path) => {
-              setInternalPath(path);
-              setOpenPaidAcquisitionHub(true);
-            }}
           />
         </div>
       )}
 
-      {isPolytopeInteractive && store.loaded && !store.loading && store.departments.length === 0 && !draftDept && (
+      {isPolytopeInteractive && store.loaded && !store.loading && store.departments.length === 0 && (
         <div className="fixed left-6 bottom-6 z-[60] max-w-sm rounded-xl border border-slate-800 bg-black/70 p-4 text-sm text-slate-300 backdrop-blur-md">
           No accessible departments are available for your account.
         </div>
       )}
 
-      {/* ── Draft Dept Creation Panel ── */}
-      {canCreateDepartments && draftDept && (
-        <CreateDepartmentPanel
-          mode="department"
-          draftNodeScreenPosRef={draftDeptScreenPosRef}
-          onDraftUpdate={handleDraftDeptUpdate}
-          onClose={handleDraftDeptClose}
-          onCreated={handleDraftDeptCreated}
-        />
-      )}
-
-      {/* ── Draft Internal Node Creation Panel ── */}
-      {draftInternalNode && (() => {
-        const dept = store.departments.find(d => d.id === draftInternalNode.deptId);
-        if (!dept || !canWriteDept(dept)) return null;
-        return (
-          <CreateDepartmentPanel
-            mode="node"
-            dept={dept}
-            draftNodeScreenPosRef={draftInternalNodeScreenPosRef}
-            onDraftUpdate={handleDraftNodeUpdate}
-            onClose={handleDraftNodeClose}
-            onCreated={handleDraftNodeCreated}
-          />
-        );
-      })()}
-
-      {/* ── Draft Member Creation Panel ── */}
-      {draftMember && (() => {
-        const dept = store.departments.find(d => d.id === draftMember.deptId);
-        const findNode = (nodes: UInternalNode[], id: string): UInternalNode | null => {
-          for (const entry of nodes) {
-            if (entry.id === id) return entry;
-            const child = findNode(entry.children || [], id);
-            if (child) return child;
-          }
-          return null;
-        };
-        const node = dept ? findNode(dept.internalNodes, draftMember.nodeId) : null;
-        if (!dept || !node || !canWriteDept(dept)) return null;
-        return (
-          <CreateDepartmentPanel
-            mode="member"
-            dept={dept}
-            node={node}
-            availableMembers={workspaceMembers}
-            assignedMemberIds={(node.members || []).map(member => member.companyMemberId).filter((id): id is string => Boolean(id))}
-            draftNodeScreenPosRef={draftMemberScreenPosRef}
-            onClose={handleDraftMemberClose}
-            onCreated={handleDraftMemberCreated}
-          />
-        );
-      })()}
-
       {/* ── BDT Action Workspace (Leaf Nodes) ── */}
       {selectedDept && selectedNode && (
         <BdtActionWorkspace
           isOpen={isWorkspaceOpen}
-          containerMode={(openPaidAcquisitionHub || urlOwnsPaidAcquisitionHub) && isPaidAcquisitionNode ? 'meta-paid-acquisition' : undefined}
+          containerMode={isPaidAcquisitionNode ? 'meta-paid-acquisition' : undefined}
           node={selectedNode}
           department={selectedDept}
           allDepartments={displayDepartments}
           canEdit={canWriteDept(selectedDept)}
-          onAddMember={handleAddMember}
-          onDeleteMember={handleDeleteMemberClick}
           onClose={() => {
-            if (openPaidAcquisitionHub || urlOwnsPaidAcquisitionHub) {
-              setOpenPaidAcquisitionHub(false);
-              setSearchParams((current) => {
-                const next = new URLSearchParams(current);
-                next.delete('openHub');
-                next.delete('tab');
-                return next;
-              }, { replace: true });
-            } else setInternalPath(prev => prev.slice(0, -1));
+            setInternalPath(prev => prev.slice(0, -1));
           }}
           onDepartmentClick={handleInterrelatedDepartmentClick}
           onInterrelatedDepartmentClick={handleInterrelatedDepartmentClick}
@@ -879,25 +609,6 @@ export default function UniversalPage() {
         />
       )}
 
-      {/* ── CRUD modal — only for edit/delete flows now ── */}
-      {hasWritableDepartment && <PolytopeManager
-        departments={store.departments}
-        onAddDepartment={store.addDepartment}
-        onUpdateDepartment={store.updateDepartment}
-        onDeleteDepartment={(id) => {
-          if (selectedDeptId === id) {
-            setSelectedDeptId(null);
-            setRequestSelectDeptId(null);
-          }
-          void store.deleteDepartment(id);
-        }}
-        onAddNode={store.addNode}
-        onUpdateNode={store.updateNode}
-        onDeleteNode={store.deleteNode}
-        forceOpen={managerOpen}
-        forcedView={managerView}
-        onForcedClose={() => setManagerOpen(false)}
-      />}
     </div>
   );
 }

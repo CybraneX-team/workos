@@ -13,7 +13,7 @@ history, no backup, no review trail.
 
 ## Keeping it honest
 
-`/provision` duplicates the `bench new-site` call in `localProvision()`
+`/provision` mirrors the bounded, lock-protected site-creation step in `localProvision()`
 (`apps/erpnext-control-plane/src/provisionWorker.ts`). **The two must be changed
 together.** If they drift, local dev and production provision differently and the
 gap only surfaces when a real tenant is created — for example, a tenant silently
@@ -23,21 +23,20 @@ Deduplicating them properly (thin generic exec endpoint, or running the
 control-plane on the VM) is tracked as follow-up work; this copy is the
 stop-gap.
 
-### 🔴 They have already drifted (verified 2026-07-22, unfixed)
+### Provisioning invariants
 
-This file is byte-identical to the VM (`index.js` md5 `c321fb65…`), so the following are
-real divergences from `localProvision()`, not a stale mirror:
+The table describes the checked-in source. The Azure VM may still differ until this file is
+manually deployed there; verify the deployed checksum before relying on remote provisioning.
 
 | | `localProvision()` | `/provision` here |
 |---|---|---|
-| Idempotency | guards with `bench list-sites` (`provisionWorker.ts:15`) | **none** — `siteExists()` exists at `index.js:30` but is wired only to `/ondemand-ask` (`index.js:55`) |
-| `--mariadb-user-host-login-scope=%` | passed (`provisionWorker.ts:19`) | **absent** |
+| Idempotency | lock + `bench list-sites`; verifies required installed apps | same lock + required-app verification |
+| `--mariadb-user-host-login-scope=%` | passed | passed |
 | ERPNext setup wizard | n/a — done by the control-plane for both paths | n/a |
 
-The idempotency gap is the one that bites. `provisionWorker.run()` retries up to
-`max_attempts`; if a remote provision fails *after* the site directory is created, every
-retry then fails with "site already exists" and the tenant ends at `status='failed'`. The
-identical failure self-heals locally.
+`provisionWorker.run()` retries up to `max_attempts`; a busy remote lock returns a retryable
+conflict, while an incomplete site is reported explicitly rather than marked usable. The same
+rules apply locally. This safety is effective remotely only after deploying this mirror.
 
 Fixing either of these means editing **both** files and copying this one up to the VM.
 
@@ -45,7 +44,10 @@ Fixing either of these means editing **both** files and copying this one up to t
 
 ERPNext's setup wizard is run by the control-plane's `completeSetup()`
 (`apps/erpnext-control-plane/src/frappe/client.ts`), not by either `bench new-site` caller.
-Both of its entry points are `@frappe.whitelist()`, so it goes over the tenant's REST API
+
+This directory is a source mirror, not a deployment mechanism. Updating it does **not**
+change the Azure VM. Deploy the reviewed file through the remote ERPNext runbook before
+using remote provisioning. Both setup entry points are `@frappe.whitelist()`, so setup goes over the tenant's REST API
 and covers local and remote from a single implementation — deliberately avoiding a third
 thing to keep in sync by hand. Adding it here would reintroduce exactly the drift this
 file warns about.

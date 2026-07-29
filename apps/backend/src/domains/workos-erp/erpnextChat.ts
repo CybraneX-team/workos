@@ -157,7 +157,7 @@ erpnextChatRouter.get('/status', authJwt, async (req, res) => {
   if (!companyId) return res.status(403).json({ error: 'no_company' });
   try {
     const status = await getTenantStatus(companyId);
-    return res.json({ status: status.status, siteName: status.siteName, deskUrl: status.deskUrl, error: status.lastError });
+    return res.json({ status: status.status, siteName: status.siteName, deskUrl: status.deskUrl, provisioningStage: status.provisioningStage, error: status.lastError });
   } catch (error) {
     console.error('[erpnextStatus] failed', error);
     return res.status(503).json({ status: 'not_configured', deskUrl: undefined, error: { code: 'control_plane_unavailable', message: 'ERPNext status is temporarily unavailable.', retryable: true } });

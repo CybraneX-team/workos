@@ -109,7 +109,7 @@ export type DeptMeta = SharedDeptMeta;
 export const DEPT_LEVEL1_NODES: Record<string, DeptLevel1Def[]> = Object.fromEntries(
   BDT_TAXONOMY.map((department) => [
     department.sourceKey,
-    department.capabilities.map(({ sourceKey, label, mappedUniversalCategory }) => ({
+    department.nodes.map(({ sourceKey, label, mappedUniversalCategory }) => ({
       sourceKey, label, mappedUniversalCategory,
     })),
   ]),

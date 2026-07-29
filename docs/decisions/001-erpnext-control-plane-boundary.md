@@ -172,6 +172,21 @@ for this ADR's boundary:
   remote shim — one implementation covers local and remote, avoiding a third divergent copy
   of provisioning logic.
 
+## Provisioning-lifecycle amendment (2026-07-29)
+
+The control-plane now persists a job's active stage, stage start, and heartbeat (migration
+`003_provision_lifecycle.sql`). Local site creation is serialized inside the Frappe backend
+container with a per-site lock and a bounded inner timeout; a competing creator is a retryable
+condition and does not consume an attempt. The control-plane does not mark a tenant ready merely
+because Frappe's setup endpoint returns HTTP success: it verifies persisted
+`System Settings.setup_complete` and the expected Company first.
+
+This does not alter the ownership decision. WorkOS still owns the durable command outbox and
+safe browser status route; the control-plane still owns Frappe execution and credentials. The
+safe status contract may expose a current provisioning stage, but never a credential or raw
+provisioning diagnostic. The matching remote-shim source is version-controlled, but a separate
+manual VM rollout is required before these site-creation protections apply remotely.
+
 ## Authoritative files
 
 - `apps/backend/src/domains/workos-erp/erpnextSales.ts`

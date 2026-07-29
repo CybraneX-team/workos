@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { pool } from '../db.js';
 import { env } from '../config.js';
@@ -8,6 +9,12 @@ import { recomputeCanonicalRollups } from '../lib/canonicalMetrics.js';
 import { geminiJson } from '../lib/gemini.js';
 import { scoreMetric } from '@cybranex/metrics';
 import { configureMetaMetric, isMetaMetricKey, setMetaConversionAction } from '../lib/metaMetricEngine.js';
+import {
+  bootstrapOperationsCanonicalMetrics,
+  configureOperationsCanonicalMetric,
+  isOperationsMetricKey,
+  refreshOperationsCanonicalMetrics,
+} from '../lib/operationsMetricEngine.js';
 import { buildMetaAdsBrief, getStoredMetaCanonicalContext } from '../domains/meta-ads/service.js';
 
 export const metricsRouter = Router();
@@ -20,6 +27,13 @@ const VALUE_TYPES = ['number', 'currency', 'percent', 'duration', 'count', 'rati
 const SOURCE_TYPES = ['manual', 'integration'] as const;
 const RELATIONS = ['owns', 'measures', 'drives', 'health_component'] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function operationsTrace(req: any, res: any): string {
+  const incoming = typeof req.header === 'function' ? req.header('x-workos-trace-id') : undefined;
+  const traceId = typeof incoming === 'string' && /^[a-zA-Z0-9_-]{8,80}$/.test(incoming) ? incoming : randomUUID();
+  res.setHeader('X-WorkOS-Trace-Id', traceId);
+  return traceId;
+}
 
 type TargetType = typeof TARGET_TYPES[number];
 type Direction = typeof DIRECTIONS[number];
@@ -844,6 +858,15 @@ const metaConfigSchema = z.object({
   goalLinks: z.array(z.object({ goalId: z.string().uuid(), weight: z.coerce.number().positive() })).default([]),
 });
 
+const operationsMetricConfigSchema = z.object({
+  target: z.coerce.number(),
+  ownerMemberId: z.string().uuid(),
+  weight: z.coerce.number().positive().default(1),
+  // Required only for the low-stock metric. Zero is permitted: it means no
+  // item/warehouse position may fall below zero, rather than an invented rule.
+  lowStockThreshold: z.coerce.number().min(0).optional(),
+});
+
 metricsRouter.put('/:companyId/integrations/meta/conversion-event', requirePermission('twin', 'write'), async (req: any, res) => {
   if (!assertCompany(req, res, req.params.companyId) || !requireMetricAdmin(req, res)) return;
   try {
@@ -864,6 +887,81 @@ metricsRouter.put('/:companyId/integrations/meta/:metricKey', requirePermission(
     return res.json(await configureMetaMetric(req.params.companyId, req.auth.userId, req.params.metricKey, parsed.data, stored));
   } catch (error: any) {
     return res.status(400).json({ error: error?.message ?? 'meta_metric_config_failed' });
+  }
+});
+
+// ERPNext Operations metrics are canonical integration metrics. Listing is
+// read-only; bootstrap, refresh, and target configuration are explicit writes.
+metricsRouter.get('/:companyId/integrations/erpnext-operations', requirePermission('twin', 'read'), async (req: any, res) => {
+  if (!assertCompany(req, res, req.params.companyId)) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT m.*,
+              COALESCE(jsonb_agg(DISTINCT to_jsonb(ml)) FILTER (WHERE ml.id IS NOT NULL), '[]'::jsonb) AS links,
+              COALESCE(jsonb_agg(DISTINCT to_jsonb(ms)) FILTER (WHERE ms.id IS NOT NULL), '[]'::jsonb) AS sources
+         FROM public.metrics m
+         JOIN public.metric_sources own_source
+           ON own_source.metric_id=m.id
+          AND own_source.company_id=m.company_id
+          AND own_source.integration_id='int-erpnext-operations'
+         LEFT JOIN public.metric_links ml ON ml.metric_id=m.id
+         LEFT JOIN public.metric_sources ms ON ms.metric_id=m.id
+        WHERE m.company_id=$1
+        GROUP BY m.id, own_source.source_key
+        ORDER BY own_source.source_key`,
+      [req.params.companyId],
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('[metrics] operations list failed', error);
+    return res.status(500).json({ error: 'operations_metrics_list_failed' });
+  }
+});
+
+metricsRouter.post('/:companyId/integrations/erpnext-operations', requirePermission('twin', 'write'), async (req: any, res) => {
+  if (!assertCompany(req, res, req.params.companyId) || !requireMetricAdmin(req, res)) return;
+  const traceId = operationsTrace(req, res);
+  const startedAt = Date.now();
+  console.info('[operations-metrics] request_bootstrap', { traceId, companyId: req.params.companyId });
+  try {
+    const metrics = await bootstrapOperationsCanonicalMetrics(req.params.companyId, req.auth.userId, traceId);
+    console.info('[operations-metrics] request_bootstrap_complete', { traceId, companyId: req.params.companyId, elapsedMs: Date.now() - startedAt });
+    return res.status(201).json(metrics);
+  } catch (error: any) {
+    const message = error?.message ?? 'operations_metrics_bootstrap_failed';
+    console.error('[operations-metrics] request_bootstrap_failed', { traceId, companyId: req.params.companyId, elapsedMs: Date.now() - startedAt, error: message });
+    return res.status(message === 'erpnext_operations_snapshot_incomplete' ? 503 : 400).json({ error: message });
+  }
+});
+
+metricsRouter.post('/:companyId/integrations/erpnext-operations/refresh', requirePermission('twin', 'write'), async (req: any, res) => {
+  if (!assertCompany(req, res, req.params.companyId) || !requireMetricAdmin(req, res)) return;
+  const traceId = operationsTrace(req, res);
+  try {
+    return res.json(await refreshOperationsCanonicalMetrics(req.params.companyId, req.auth.userId, traceId));
+  } catch (error: any) {
+    const message = error?.message ?? 'operations_metrics_refresh_failed';
+    return res.status(message === 'erpnext_operations_snapshot_incomplete' ? 503 : 400).json({ error: message });
+  }
+});
+
+metricsRouter.put('/:companyId/integrations/erpnext-operations/:metricKey', requirePermission('twin', 'write'), async (req: any, res) => {
+  if (!assertCompany(req, res, req.params.companyId) || !requireMetricAdmin(req, res)) return;
+  const traceId = operationsTrace(req, res);
+  if (!isOperationsMetricKey(req.params.metricKey)) return res.status(400).json({ error: 'invalid_operations_metric_key' });
+  const parsed = operationsMetricConfigSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_operations_metric_config', details: parsed.error.flatten() });
+  try {
+    return res.json(await configureOperationsCanonicalMetric(
+      req.params.companyId,
+      req.auth.userId,
+      req.params.metricKey,
+      parsed.data,
+      traceId,
+    ));
+  } catch (error: any) {
+    const message = error?.message ?? 'operations_metric_config_failed';
+    return res.status(message === 'erpnext_operations_snapshot_incomplete' ? 503 : 400).json({ error: message });
   }
 });
 

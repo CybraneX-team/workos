@@ -4,11 +4,10 @@ import { Text, Billboard, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { gsap } from 'gsap';
 import type { UInternalNode } from '../../lib/universalPolytopeData';
-import { isActionLeafNode, isBdtWorkspaceLeafNode } from '../../lib/universalPolytopeData';
-import { isBdtNodeActive, isVirtualErpNextNodeLocked } from '../../lib/bdtPolytopeData';
+import { isActionLeafNode } from '../../lib/universalPolytopeData';
+import { isVirtualErpNextNodeLocked } from '../../lib/bdtPolytopeData';
 import { PlasmaSphere } from '../PolytopeShared';
 import { useDragWorkspaceStore } from '../../lib/useDragWorkspaceStore';
-import { usePolytopeStore } from '../../lib/usePolytopeStore';
 
 // DraggableHtmlCard removed per page feedback.
 
@@ -53,15 +52,6 @@ interface InternalNodeProps {
   entryEase?: string;
   /** When true, place the node at its target immediately (session restore). */
   skipEntryAnimation?: boolean;
-  /** BDT active/inactive gating — omitted by callers outside the BDT department tree (e.g.
-   * the reference-company planet view), in which case gating is a no-op (fully active). */
-  departmentSourceKey?: string;
-  /** Retained for breadcrumb rendering; activation uses branchSourceKey only. */
-  level1Label?: string;
-  /** Retained for breadcrumb rendering; activation uses branchSourceKey only. */
-  branchLabel?: string;
-  /** Nearest branch ancestor's stable source key for activation matching. */
-  branchSourceKey?: string;
 }
 
 
@@ -88,10 +78,6 @@ export function InternalNode({
   entryDuration = 1.1,
   entryEase = 'power3.out',
   skipEntryAnimation = false,
-  departmentSourceKey,
-  level1Label,
-  branchLabel,
-  branchSourceKey,
 }: InternalNodeProps) {
   const groupRef = useRef<THREE.Group>(null);
   const currentPos = useRef(startPos.clone());
@@ -101,20 +87,8 @@ export function InternalNode({
 
   const radii = [0.25, 0.20, 0.15, 0.12, 0.09];
   const isLevel1 = node.nodeLevel === 'level1';
-  const isBranch = node.nodeLevel === 'branch';
   const radius = isLevel1 ? radii[0] * 1.4 : (radii[depth] || 0.05);
-  const childLevel1Label = isLevel1 ? node.label : level1Label;
-  const childBranchLabel = isBranch ? node.label : branchLabel;
-  // V2 taxonomy source keys are immutable and shared by branch/action/metric siblings.
-  const childBranchSourceKey = isBranch ? (node.stableSourceKey ?? node.sourceKey) : branchSourceKey;
-
-  const { activeKeys } = usePolytopeStore('bdt');
-  const isInactive = !isDraft && (
-    node.virtualErpNext
-      ? isVirtualErpNextNodeLocked(node)
-      : isBdtWorkspaceLeafNode(node)
-        && !isBdtNodeActive(branchSourceKey, departmentSourceKey, activeKeys)
-  );
+  const isInactive = !isDraft && isVirtualErpNextNodeLocked(node);
 
   const isMeActiveCenter = selectedPath.length > 0 && selectedPath[selectedPath.length - 1] === node.id;
   const isMeAncestor = selectedPath.includes(node.id) && !isMeActiveCenter;
@@ -430,9 +404,7 @@ export function InternalNode({
                 border: '1px solid rgba(255,255,255,0.15)',
                 pointerEvents: 'none',
               }}>
-                {node.virtualErpNext?.disabled
-                  ? 'Inactive in ERPNext'
-                  : node.availability === 'planned' ? 'Planned integration' : 'Not connected yet'}
+                Inactive in ERPNext
               </div>
             </Html>
           </Billboard>
@@ -569,10 +541,6 @@ export function InternalNode({
             revealDelayMs={revealDelayMs}
             entryDuration={entryDuration}
             entryEase={entryEase}
-            departmentSourceKey={departmentSourceKey}
-            level1Label={childLevel1Label}
-            branchLabel={childBranchLabel}
-            branchSourceKey={childBranchSourceKey}
           />
         );
       })}

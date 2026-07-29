@@ -121,3 +121,10 @@ export function fetchErpNextSalesNodeSummary(nodeId: string, options?: { limit?:
   }
   return api.get<ErpNextSalesNodeSummary>(`/api/erpnext/sales/node-summary?${params.toString()}`);
 }
+
+/** V4 Deal Execution focus summary; independent of retired BDT descendants. */
+export function fetchErpNextSalesFocusSummary(nodeId: string, options?: { limit?: number }) {
+  const params = new URLSearchParams({ nodeId });
+  if (options?.limit !== undefined) params.set('limit', String(options.limit));
+  return api.get<ErpNextSalesNodeSummary>(`/api/erpnext/sales/summary?${params.toString()}`);
+}

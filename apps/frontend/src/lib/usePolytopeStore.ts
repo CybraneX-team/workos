@@ -4,8 +4,7 @@ import type { UExternalNode, UInternalNode, UDomain, UCompanySize } from './bdtP
 import { U_DOMAIN_COLOR, isActionLeafNode, isBdtWorkspaceLeafNode } from './bdtPolytopeData';
 import { api } from './api';
 import { normalizeDepartmentsFromApi } from './bdtDepartmentApiMapper';
-import { getSizeConfigs, loadBdtCatalog } from './bdtCatalog';
-import { fetchActiveBdtNodeKeys, buildActiveKeySet } from './db/bdtNodeActivation';
+import { loadBdtCatalog } from './bdtCatalog';
 
 /** Twin (/3d company polytope) and BDT (/universal) use separate graphs and caches. */
 export type PolytopeStoreScope = 'twin' | 'bdt';
@@ -21,7 +20,7 @@ function stripSeededTeamMembers(nodes: UInternalNode[]): UInternalNode[] {
 }
 
 const TWIN_CACHE_KEY = 'polytope_departments_twin_v2';
-const BDT_CACHE_KEY = 'polytope_departments_bdt_v5';
+const BDT_CACHE_KEY = 'polytope_departments_bdt_v6';
 const LEGACY_STORAGE_KEY = 'polytope_departments_v1';
 
 export type { UExternalNode, UInternalNode, UDomain };
@@ -41,11 +40,11 @@ function persistCache(storageKey: string, departments: UExternalNode[]) {
 function loadCachedDepartments(
   storageKey: string,
   defaults: UExternalNode[],
-  options?: { onboardingFallback?: boolean },
+  options?: { onboardingFallback?: boolean; allowLegacyCache?: boolean },
 ): UExternalNode[] | null {
   try {
     let raw = localStorage.getItem(storageKey);
-    if (!raw) raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw && options?.allowLegacyCache) raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) return JSON.parse(raw) as UExternalNode[];
 
     if (!options?.onboardingFallback) return null;
@@ -216,10 +215,6 @@ export interface PolytopeStoreState {
   loading: boolean;
   loaded: boolean;
   error: string | null;
-  /** BDT-scope only — which (departmentSourceKey::level1Label::branchLabel) leaves have a
-   * wired-up panel. Undefined in the Twin scope, where gating doesn't apply. */
-  activeKeys?: Set<string>;
-  erpConnected?: boolean;
   loadDepartments: () => Promise<void>;
   setCompanySize: (size: UCompanySize | null | undefined) => void;
   addDepartment: (dept: Omit<UExternalNode, 'id' | 'internalNodes'>) => Promise<UExternalNode>;
@@ -243,7 +238,7 @@ function createLocalPolytopeStore({ storageKey, defaultDepartments, onboardingFa
     lockedDepartments: [],
     setCompanySize: () => {},
     departments: enrichDepartmentsFromSeed(
-      loadCachedDepartments(storageKey, defaultDepartments, { onboardingFallback }) ?? defaultDepartments,
+      loadCachedDepartments(storageKey, defaultDepartments, { onboardingFallback, allowLegacyCache: true }) ?? defaultDepartments,
       defaultDepartments,
     ),
     loading: false,
@@ -253,7 +248,7 @@ function createLocalPolytopeStore({ storageKey, defaultDepartments, onboardingFa
     loadDepartments: async () => {
       if (get().loading) return;
       set({ loading: true, error: null });
-      const cached = loadCachedDepartments(storageKey, defaultDepartments, { onboardingFallback });
+      const cached = loadCachedDepartments(storageKey, defaultDepartments, { onboardingFallback, allowLegacyCache: true });
       const cachedOrLocal = cached ?? (get().departments.length ? get().departments : defaultDepartments);
       const departments = enrichDepartmentsFromSeed(cachedOrLocal, defaultDepartments);
       persistCache(storageKey, departments);
@@ -329,56 +324,25 @@ function createLocalPolytopeStore({ storageKey, defaultDepartments, onboardingFa
 }
 
 export function createApiPolytopeStore({ storageKey, defaultDepartments, onboardingFallback }: StoreConfig) {
-  let _allDepts: UExternalNode[] = [];
-
-  function splitBySize(all: UExternalNode[], size: UCompanySize | null | undefined) {
-    if (!size) return { visible: all, locked: [] as UExternalNode[] };
-    const config = getSizeConfigs()[size];
-    // Catalog not loaded yet → show everything rather than crash; re-split once loaded.
-    if (!config) return { visible: all, locked: [] as UExternalNode[] };
-    const visibleKeys = new Set(config.visibleDeptIds);
-    const visible = all.filter(d => !d.sourceKey || visibleKeys.has(d.sourceKey));
-    const locked = all.filter(d => {
-      const sourceKey = d.sourceKey;
-      return typeof sourceKey === 'string' && !visibleKeys.has(sourceKey);
-    });
-    return { visible, locked };
-  }
-
   return create<PolytopeStoreState>((set, get) => ({
     departments: loadCachedDepartments(storageKey, defaultDepartments) ?? defaultDepartments,
     lockedDepartments: [],
     loading: false,
     loaded: false,
     error: null,
-    // Undefined means activation has not been verified yet. It must not be treated as
-    // an empty, authoritative result: that would incorrectly lock every BDT leaf.
-    activeKeys: undefined,
-    erpConnected: false,
-
-    setCompanySize: (size) => {
-      const all = _allDepts.length ? _allDepts : [...get().departments, ...get().lockedDepartments];
-      _allDepts = all;
-      const { visible, locked } = splitBySize(all, size);
-      set({ departments: visible, lockedDepartments: locked });
-    },
+    // V4 departments are selected during onboarding; company size never locks or hides them.
+    setCompanySize: () => {},
 
     loadDepartments: async () => {
       if (get().loading) return;
       set({ loading: true, error: null });
       try {
-        // The graph itself is the critical path. Catalog and activation checks
-        // are independent enrichments, so do not make a cold catalog request
-        // block department rendering or URL-owned workspace deep links.
-        const [, response, activeNodes] = await Promise.all([
+        // The catalog enriches display metadata but never controls navigation.
+        const [, response] = await Promise.all([
           loadBdtCatalog().catch(() => undefined),
           api.get<{ departments: UExternalNode[] }>('/api/departments'),
-          // A capability-check failure must leave leaves usable. Only an explicit backend
-          // response may lock a node; retry on the next department load.
-          fetchActiveBdtNodeKeys().catch(() => undefined),
         ]);
         const departments = normalizeDepartmentsFromApi(response.departments ?? []);
-        _allDepts = departments;
         persistCache(storageKey, departments);
         set({
           departments,
@@ -386,8 +350,6 @@ export function createApiPolytopeStore({ storageKey, defaultDepartments, onboard
           loading: false,
           loaded: true,
           error: null,
-          activeKeys: activeNodes ? buildActiveKeySet(activeNodes) : undefined,
-          erpConnected: activeNodes?.erpConnected ?? false,
         });
       } catch (err) {
         console.error('[departments] load failed', err);
@@ -543,7 +505,7 @@ export function createApiPolytopeStore({ storageKey, defaultDepartments, onboard
 const useTwinPolytopeStore = createLocalPolytopeStore({
   storageKey: TWIN_CACHE_KEY,
   defaultDepartments: TWIN_DEFAULT_DEPARTMENTS,
-  onboardingFallback: true,
+  onboardingFallback: false,
 });
 
 const useBdtPolytopeStore = createApiPolytopeStore({

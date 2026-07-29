@@ -467,5 +467,5 @@ if (workflowScenario) {
     }
   }
 }
-console.log(`Seeded Meta Ads "${scenario}" fixture for ${companyId}. Open /universal?focus=mkt_paid_acquisition&openHub=1`);
+console.log(`Seeded Meta Ads "${scenario}" fixture for ${companyId}. Open /universal?focus=mkt_paid_acquisition`);
 await pool.end();

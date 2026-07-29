@@ -39,6 +39,37 @@ async function siteExists(siteName) {
   }
 }
 
+async function siteHasRequiredApps(siteName) {
+  try {
+    const { stdout } = await execFileAsync('docker', [
+      'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
+      'bench', '--site', siteName, 'list-apps', '--format', 'json',
+    ], { cwd: FRAPPE_DOCKER_DIR, timeout: 60_000 });
+    return ['frappe', 'erpnext', 'crm'].every((app) => stdout.includes(`"${app}"`));
+  } catch {
+    return false;
+  }
+}
+
+async function createSite(siteName) {
+  // The lock and timeout execute inside the bench container. A timeout of the
+  // outer Docker CLI alone does not terminate bench new-site and used to leave
+  // a live orphan process that made all retries collide with it.
+  const script = `set -eu
+lock="$1"; site="$2"; root="$3"; admin="$4"
+flock -n -E 75 "$lock" sh -c '
+  set -eu
+  site="$1"; root="$2"; admin="$3"
+  if bench list-sites | grep -Fqx "$site"; then exit 0; fi
+  exec timeout --signal=TERM --kill-after=30s 25m bench new-site "$site" --mariadb-user-host-login-scope=% --mariadb-root-password "$root" --admin-password "$admin" --install-app erpnext --install-app crm
+' workos-site-create "$site" "$root" "$admin"`;
+  return execFileAsync('docker', [
+    'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
+    'sh', '-lc', script, 'workos-site-create', `/tmp/workos-site-${siteName}.lock`, siteName,
+    FRAPPE_DB_ROOT_PASSWORD, FRAPPE_SITE_ADMIN_PASSWORD,
+  ], { cwd: FRAPPE_DOCKER_DIR, timeout: 26 * 60_000 });
+}
+
 const app = express();
 app.use(express.json());
 
@@ -52,7 +83,7 @@ app.get('/ondemand-ask', async (req, res) => {
   const match = ONDEMAND_DOMAIN_RE.exec(domain);
   if (!match) return res.sendStatus(403);
   const siteName = `erp-${match[1]}.localhost`;
-  res.sendStatus((await siteExists(siteName)) ? 200 : 403);
+  res.sendStatus((await siteHasRequiredApps(siteName)) ? 200 : 403);
 });
 
 app.use((req, res, next) => {
@@ -72,23 +103,11 @@ app.post('/provision', async (req, res) => {
   const siteName = `erp-${slug}.localhost`;
 
   try {
-    // Skip creation if the site already exists, mirroring localProvision()'s
-    // `bench list-sites` guard. provisionWorker.run() retries the whole job, and
-    // ERPNext setup completion now runs *after* this call — so without this guard a
-    // transient setup failure left an orphaned site that made every retry fail with
-    // "site already exists", permanently failing the tenant. generate_keys below is
-    // safe to re-run: it reissues the Administrator API key pair.
     if (!(await siteExists(siteName))) {
-      await execFileAsync('docker', [
-        'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
-        'bench', 'new-site', siteName,
-        '--mariadb-root-password', FRAPPE_DB_ROOT_PASSWORD,
-        '--admin-password', FRAPPE_SITE_ADMIN_PASSWORD,
-        // Keep this app list in sync with localProvision() in
-        // apps/erpnext-control-plane/src/provisionWorker.ts.
-        '--install-app', 'erpnext',
-        '--install-app', 'crm',
-      ], { cwd: FRAPPE_DOCKER_DIR, timeout: 300_000 });
+      await createSite(siteName);
+    }
+    if (!(await siteHasRequiredApps(siteName))) {
+      return res.status(409).json({ error: 'site_incomplete', message: 'Site exists but ERPNext/CRM installation is incomplete.' });
     }
 
     const { stdout } = await execFileAsync('docker', [
@@ -102,6 +121,9 @@ app.post('/provision', async (req, res) => {
     res.json({ siteName, apiKey, apiSecret });
   } catch (err) {
     console.error('provision failed', err);
+    if (err && err.code === 75) {
+      return res.status(409).json({ error: 'provision_in_progress', message: 'Another site creation process holds this tenant lock.' });
+    }
     res.status(500).json({ error: 'provision_failed', message: String(err.message || err).slice(0, 500) });
   }
 });

@@ -35,9 +35,11 @@ export async function provisionTenant(companyId: string, payload: ProvisionTenan
   return request(`/internal/v1/tenants/${companyId}/provision`, { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function queryRecords(companyId: string, queries: RecordQuery[]) {
+export async function queryRecords(companyId: string, queries: RecordQuery[], options: { traceId?: string } = {}) {
   const response = await request(`/internal/v1/tenants/${companyId}/records/query-batch`, {
-    method: 'POST', body: JSON.stringify({ environment: env.ERPNEXT_TARGET_ENV, queries }),
+    method: 'POST',
+    body: JSON.stringify({ environment: env.ERPNEXT_TARGET_ENV, queries }),
+    headers: options.traceId ? { 'X-WorkOS-Trace-Id': options.traceId } : undefined,
   });
   return RecordQueryBatchResponseSchema.parse(response).results;
 }

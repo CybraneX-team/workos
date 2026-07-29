@@ -44,6 +44,9 @@ export const TenantStatusSchema = z.object({
   status: TenantStatusValueSchema,
   siteName: z.string().optional(),
   deskUrl: z.string().url().optional(),
+  // Internal stage names are deliberately small and non-sensitive. They let
+  // callers distinguish a live setup from a stalled provisioning request.
+  provisioningStage: z.string().max(80).optional(),
   lastError: ServiceErrorSchema.optional(),
 });
 export type TenantStatus = z.infer<typeof TenantStatusSchema>;

@@ -27,6 +27,8 @@ export type BranchKind =
   | 'risks_controls'
   | 'decision_queue';
 
+export type BdtWorkspaceKind = 'team' | 'systems' | 'metrics' | 'projects' | 'focus';
+
 /** Position in the BDT hierarchy — must match department_bdt_nodes.node_level CHECK (migration 028). */
 export type NodeLevel = 'level1' | 'branch' | 'internal' | 'action';
 

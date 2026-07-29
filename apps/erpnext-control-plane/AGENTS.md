@@ -1,6 +1,6 @@
 # ERPNext control-plane guide
 
-Last verified: 2026-07-21.
+Last verified: 2026-07-29.
 
 This Express service runs independently on port `8090`. Read `../../docs/architecture/erpnext-control-plane.md` and `../../docs/runbooks/local-erpnext-sso.md` before changing provisioning or SSO.
 
@@ -41,7 +41,7 @@ These rules are checked by `apps/backend/test/erpnextArchitecture.test.ts`.
 - `src/frappe/client.ts`: the only direct Frappe HTTP adapter.
 - `src/tenantStore.ts`: safe status and credential resolution.
 - `src/crypto.ts`: authenticated tenant-credential encryption.
-- `db/migrations/001_control_plane.sql`: control-plane schema.
+- `db/migrations/001_control_plane.sql` through `003_provision_lifecycle.sql`: control-plane schema and provisioning lifecycle state.
 - `scripts/migrate.ts`: schema migration command.
 - `scripts/seed.ts`: local-only sales/operations seed dispatcher.
 - `test/`: service-level tests currently present for credential encryption.
@@ -49,7 +49,7 @@ These rules are checked by `apps/backend/test/erpnextArchitecture.test.ts`.
 ## Operational invariants
 
 - The service process serves exactly one `ERPNEXT_ENV` (`local` or `remote`) and rejects mismatched requests.
-- Provisioning is durably inserted before returning `202` and is idempotent by `(environment, idempotency_key)`.
+- Provisioning is durably inserted before returning `202` and is idempotent by `(environment, idempotency_key)`. Active jobs persist `current_stage`, `stage_started_at`, and `heartbeat_at`.
 - Record batches preserve per-query success/failure.
 - User reconciliation receives the complete desired set; previously managed users omitted from it are disabled.
 - SSO configuration returns retryable `tenant_not_ready` until credentials exist.
@@ -57,19 +57,16 @@ These rules are checked by `apps/backend/test/erpnextArchitecture.test.ts`.
 - `lead-sync` inserts `Lead Sync Source` with a **discovery (user) token**, then swaps in the Page-scoped token last. `before_insert` calls Graph `/me/accounts`, which a Page token cannot do (`(#100) Tried accessing nonexisting field (accounts)`). That same hook creates the `Facebook Page` / `Facebook Lead Form` rows, so this service must not write those doctypes.
 - Local sites are named `erp-<slug>.localhost` and use `http://erp-<slug>.localhost:8081` for API and Desk URLs.
 - Sites are provisioned with **two** Frappe apps: `erpnext`, then `crm` (Frappe CRM). Both stacks must run the custom image built from `infra/erpnext-image/` — Frappe apps live in the image layer, so `crm` cannot be added to a running container. Provisioning a site with an image that lacks `crm` fails at `bench new-site --install-app crm`.
-- The remote provisioning shim (`/home/erpadmin/provision-shim/index.js` on `erpnext-vm`) mirrors `localProvision()`'s `bench new-site` call. Changing install-app behavior here requires editing that file on the VM too, or the two paths silently diverge. A mirror is version-controlled at `infra/erpnext-remote-shim/`, but **nothing deploys from it** — the VM is still the live source of truth, so update both by hand.
-- `localProvision()` runs `bench new-site` as a **host** process via `docker compose exec`, taking several minutes (longer under arm64 emulation) and logging nothing on success. It is not visible to `ps` inside the container; check the host with `ps aux | grep 'bench new-site'` before assuming a job is stuck.
-- **`completeSetup()` (`src/frappe/client.ts`) runs ERPNext's setup wizard** between provisioning and `applyBranding()`, before `status='ready'`. Both entry points are `@frappe.whitelist()`, so it goes over REST and covers local **and** remote from one place — do not duplicate it into the shim. Order matters twice: `initialize_system_settings_and_user` must precede `setup_complete` (once frappe's stage is marked complete, `set_missing_values()` overwrites `country`/`currency`/`time_zone` from System Settings, so a retry would re-fail identically), and setup must precede branding (the wizard rewrites workspaces and Website Settings).
+- The remote provisioning shim (`/home/erpadmin/provision-shim/index.js` on `erpnext-vm`) has a version-controlled source mirror at `infra/erpnext-remote-shim/`. Nothing deploys automatically: verify and deploy the reviewed mirror manually before relying on its new behavior.
+- Local creation is serialized **inside the Frappe backend container** with a per-site `flock` and a 25-minute inner `timeout`; the outer Docker CLI has a 26-minute bound. A busy lock is retryable and does not consume an attempt. Inspect the active job heartbeat and container process, not a host-side `bench` process.
+- **`completeSetup()` (`src/frappe/client.ts`) runs ERPNext's setup wizard** between provisioning and `applyBranding()`, before `status='ready'`, and `verifySetup()` then checks persisted `System Settings.setup_complete` plus the expected Company. Both setup entry points are `@frappe.whitelist()`, so they cover local and remote from one place — do not duplicate them into the shim. Order matters twice: `initialize_system_settings_and_user` must precede `setup_complete` (once frappe's stage is marked complete, `set_missing_values()` overwrites `country`/`currency`/`time_zone` from System Settings, so a retry would re-fail identically), and setup must precede branding (the wizard rewrites workspaces and Website Settings).
 - Setup needs the company's locale facts, which arrive on `ProvisionTenantRequest` and are stored on `erpnext.provision_jobs` (migration `002`) because the worker claims the job later. Do not look them up here — reading `public.companies` breaks the boundary, and `test/erpnextArchitecture.test.ts` enforces that.
-- The job lock is **15 minutes**, not 5: it must outlast `bench new-site` plus the setup wizard (chart of accounts + `crm`'s `create_demo_data` hook), or a second worker reclaims the job mid-setup.
-
-## 🔴 Known broken (verified 2026-07-22, unfixed)
-
-- **The remote shim has drifted from `localProvision()`.** `/provision` is **not
-  idempotent** — `siteExists()` exists in the shim but is wired only to `/ondemand-ask`, so
-  a retry after a partial failure fails permanently with "site already exists", whereas
-  `localProvision()`'s `bench list-sites` guard self-heals. The shim also omits
-  `--mariadb-user-host-login-scope=%`. See `infra/erpnext-remote-shim/README.md`.
+- The job lease is **30 minutes** and refreshes every 30 seconds while running. The inner
+  site-creation timeout is 25 minutes, leaving time for setup and preventing a second worker
+  from reclaiming an active job.
+- `startProvisionWorker()` does not install its own signal handlers. `src/server.ts` owns
+  shutdown: stop the worker, close HTTP, then close the pool. Do not reintroduce worker-only
+  signal handlers that can leave `/healthz` alive after the loop stops.
 
 ## Verification
 

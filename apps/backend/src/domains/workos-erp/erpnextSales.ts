@@ -287,6 +287,23 @@ const MAPPINGS: MappingDefinition[] = [
 const MAPPING_BY_KEY = new Map(MAPPINGS.map(entry => [entry.key, entry]));
 const MAPPING_BY_METRIC_KEY = new Map(MAPPINGS.map(entry => [`spec_dept_sales_${entry.key}`, entry]));
 
+// V4 intentionally has one Sales focus node, rather than a graph of generated
+// pipeline descendants. This explicit evidence set is the contract for that
+// focus workspace. Keep it in stable-key terms; labels and old hierarchy depth
+// must never decide what a V4 workspace reads.
+const SALES_DEAL_EXECUTION_FOCUS_KEY = 'sales_deal_execution';
+const DEAL_EXECUTION_MAPPING_KEYS = [
+  'sales_pipeline_leads',
+  'sales_pipeline_opportunities',
+  'sales_pipeline_deal_stages',
+  'sales_pipeline_pipeline_coverage',
+  'sales_pipeline_proposals',
+  'sales_performance_win_rate',
+  'sales_performance_conversion',
+  'sales_performance_sales_cycle',
+  'sales_performance_pipeline_health',
+] as const;
+
 const ACTION_DOCTYPES_BY_MAPPING: Record<string, Array<{ doctype: string; includeNew?: boolean; listLabel?: string; newLabel?: string }>> = {
   sales_accounts_accounts: [
     { doctype: 'Customer', listLabel: 'Open Customer list', newLabel: 'Create Customer' },
@@ -343,7 +360,7 @@ const ACTION_DOCTYPES_BY_MAPPING: Record<string, Array<{ doctype: string; includ
   ],
 };
 
-// Purely additive: consumed by bdtNodeActivation.ts to resolve which Sales leaves are active.
+// Retained only for the ERPNext Sales summary resolver.
 export const MAPPING_SOURCE_LABELS: Record<string, { level1Label: string; branchLabel: string }> = Object.fromEntries(
   MAPPINGS.map(entry => [entry.key, { level1Label: entry.level1Label, branchLabel: entry.branchLabel }]),
 );
@@ -355,10 +372,6 @@ export const MAPPING_SOURCE_LABELS: Record<string, { level1Label: string; branch
 export const MAPPING_SOURCE_DOCTYPES: Record<string, string[]> = Object.fromEntries(
   MAPPINGS.map(entry => [entry.key, [...new Set(entry.reads.map(read => read.doctype))]]),
 );
-
-export function listActiveBranchKeys(): Array<{ level1Label: string; branchLabel: string }> {
-  return MAPPINGS.filter(entry => entry.status !== 'unsupported').map(entry => ({ level1Label: entry.level1Label, branchLabel: entry.branchLabel }));
-}
 
 function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
   const next = Number(value);
@@ -751,6 +764,182 @@ async function buildRollupSummary(companyId: string, nodeId: string, path: NodeP
   };
 }
 
+async function buildMappingSummary(
+  companyId: string,
+  nodeId: string,
+  nodeLabel: string,
+  pathLabels: string[],
+  mappingDef: MappingDefinition,
+  limit: number,
+): Promise<NodeSummaryResult> {
+  const generatedAt = new Date().toISOString();
+
+  if (mappingDef.status === 'unsupported') {
+    const reason = mappingDef.unsupportedReason ?? 'This Sales node is not connected to WorkOS Sales v1.';
+    return {
+      status: 'unsupported',
+      generatedAt,
+      department: 'Sales',
+      nodeId,
+      nodeLabel,
+      path: pathLabels,
+      mappingKey: mappingDef.key,
+      mappingLabel: mappingDef.label,
+      ...unsupportedMetricStory(reason),
+      sourceDoctypes: mappingDef.sourceDoctypes,
+      metrics: [],
+      cards: [],
+      childRollups: [],
+      recommendedActions: [],
+      warnings: [],
+      unsupportedReason: reason,
+    };
+  }
+
+  const creds = await resolveErpNextCreds(companyId);
+  if (!creds) {
+    const message = await getErpNextNotConfiguredMessage(companyId);
+    return {
+      status: 'not_configured',
+      generatedAt,
+      department: 'Sales',
+      nodeId,
+      nodeLabel,
+      path: pathLabels,
+      mappingKey: mappingDef.key,
+      mappingLabel: mappingDef.label,
+      ...notConfiguredMetricStory(message),
+      sourceDoctypes: mappingDef.sourceDoctypes,
+      metrics: [],
+      cards: [],
+      childRollups: [],
+      recommendedActions: [],
+      warnings: [message],
+    };
+  }
+
+  const warnings: string[] = [];
+  const reads = await Promise.all(mappingDef.reads.map(async definition => ({
+    definition,
+    result: await safeRead(creds, definition, limit, warnings),
+  })));
+  const failedCount = reads.filter(read => !read.result.ok).length;
+  const status: ErpNextSalesStatus = failedCount > 0 || mappingDef.status === 'partial' ? 'partial' : 'ready';
+  const story = buildSalesMetricStory(mappingDef, reads);
+
+  return {
+    status,
+    generatedAt,
+    siteName: creds.siteName,
+    department: 'Sales',
+    nodeId,
+    nodeLabel,
+    path: pathLabels,
+    mappingKey: mappingDef.key,
+    mappingLabel: mappingDef.label,
+    templateKey: story.templateKey,
+    headline: story.headline,
+    healthScore: story.healthScore,
+    sourceDoctypes: mappingDef.sourceDoctypes,
+    metrics: metricsFor(reads),
+    metricCards: story.metricCards,
+    breakdowns: story.breakdowns,
+    insights: story.insights,
+    cards: cardsFor(creds, reads),
+    evidence: linkEvidence(creds, story.evidence),
+    childRollups: [],
+    erpnextActions: erpnextActionsFor(creds, mappingDef),
+    recommendedActions: buildSalesRecommendations(mappingDef, reads),
+    warnings,
+    unsupportedReason: undefined,
+  };
+}
+
+/**
+ * V4 Sales focus summary. Unlike the legacy node summary, this reads a fixed,
+ * audited Deal Execution evidence set and never derives meaning from deleted
+ * child nodes. The response keeps the existing summary shape so consumers can
+ * reuse the established Sales panel.
+ */
+export async function buildDealExecutionSummary(companyId: string, nodeId: string, limit: number): Promise<NodeSummaryResult | null> {
+  const path = await resolveNodePath(companyId, nodeId);
+  const focus = path?.[path.length - 1];
+  if (!focus
+    || focus.department_source_key !== 'dept_sales'
+    || focus.metadata?.sourceKey !== SALES_DEAL_EXECUTION_FOCUS_KEY) {
+    return null;
+  }
+
+  const pathLabels = path.map(row => row.label);
+  const children = await Promise.all(DEAL_EXECUTION_MAPPING_KEYS.map(async mappingKey => {
+    const mappingDef = MAPPING_BY_KEY.get(mappingKey);
+    if (!mappingDef) throw new Error(`missing_deal_execution_mapping:${mappingKey}`);
+    return buildMappingSummary(companyId, mappingKey, mappingDef.label, [...pathLabels, mappingDef.label], mappingDef, limit);
+  }));
+  const creds = await resolveErpNextCreds(companyId);
+  const scoredChildren = children.filter(summary => typeof summary.healthScore === 'number');
+  const healthScore = scoredChildren.length
+    ? Math.round(scoredChildren.reduce((total, summary) => total + (summary.healthScore ?? 0), 0) / scoredChildren.length)
+    : null;
+  const incomplete = children.filter(summary => summary.status !== 'ready');
+  const attention = children.find(summary => summary.status === 'partial' || (summary.healthScore ?? 100) < 70);
+  const status: ErpNextSalesStatus = children.some(summary => summary.status === 'not_configured')
+    ? 'not_configured'
+    : incomplete.length > 0 ? 'partial' : 'ready';
+  const actions = new Map<string, ErpNextDeskAction>();
+  for (const child of children) {
+    for (const action of child.erpnextActions ?? []) actions.set(action.id, action);
+  }
+
+  return {
+    status,
+    generatedAt: new Date().toISOString(),
+    siteName: creds?.siteName,
+    department: 'Sales',
+    nodeId,
+    nodeLabel: focus.label,
+    path: pathLabels,
+    mappingKey: SALES_DEAL_EXECUTION_FOCUS_KEY,
+    mappingLabel: 'Deal Execution',
+    templateKey: 'rollup',
+    headline: attention
+      ? `${attention.mappingLabel} needs the most attention in Deal Execution.`
+      : 'Deal Execution is connected to its CRM pipeline and commercial evidence.',
+    healthScore,
+    sourceDoctypes: [...new Set(children.flatMap(summary => summary.sourceDoctypes))],
+    metrics: [
+      { label: 'Evidence views', value: children.length },
+      { label: 'Ready views', value: children.filter(summary => summary.status === 'ready').length },
+      { label: 'Views needing attention', value: incomplete.length },
+    ],
+    metricCards: [
+      metricCard('evidence_views', 'Evidence views', children.length, 'CRM pipeline and commercial evidence available in Deal Execution.', 'neutral'),
+      metricCard('ready_views', 'Ready views', children.filter(summary => summary.status === 'ready').length, 'Views with complete direct ERPNext reads.', children.some(summary => summary.status === 'ready') ? 'good' : 'neutral'),
+      metricCard('attention_views', 'Needs attention', incomplete.length, 'Views with partial data, unavailable data, or configuration requirements.', incomplete.length ? 'warning' : 'good'),
+    ],
+    breakdowns: buildRollupBreakdowns(children),
+    insights: [
+      { id: 'focus_evidence_set', label: 'Deal Execution evidence', detail: 'This workspace reads the V4 Sales evidence set directly; it does not depend on generated BDT descendants.', severity: 'info' },
+      ...(attention ? [{ id: 'focus_attention', label: 'Needs attention first', detail: `${attention.mappingLabel}: ${attention.headline}`, severity: 'warning' as const }] : []),
+    ],
+    cards: children.flatMap(summary => summary.cards).slice(0, 10),
+    evidence: children.flatMap(summary => summary.evidence).slice(0, 20),
+    childRollups: children.map(summary => ({
+      nodeId: summary.mappingKey,
+      nodeLabel: summary.mappingLabel,
+      mappingLabel: summary.mappingLabel,
+      status: summary.status,
+      templateKey: summary.templateKey,
+      healthScore: summary.healthScore,
+      headline: summary.headline,
+    })),
+    erpnextActions: [...actions.values()],
+    recommendedActions: children.flatMap(summary => summary.recommendedActions).slice(0, 8),
+    warnings: [...new Set(children.flatMap(summary => summary.warnings))].slice(0, 12),
+    unsupportedReason: undefined,
+  };
+}
+
 export async function buildNodeSummary(companyId: string, nodeId: string, limit: number): Promise<NodeSummaryResult | null> {
   const path = await resolveNodePath(companyId, nodeId);
   if (!path) return null;
@@ -791,85 +980,7 @@ export async function buildNodeSummary(companyId: string, nodeId: string, limit:
     };
   }
 
-  if (mappingDef.status === 'unsupported') {
-    const reason = mappingDef.unsupportedReason ?? 'This Sales node is not connected to WorkOS Sales v1.';
-    return {
-      status: 'unsupported',
-      generatedAt,
-      department: 'Sales',
-      nodeId,
-      nodeLabel: leaf.label,
-      path: pathLabels,
-      mappingKey: mappingDef.key,
-      mappingLabel: mappingDef.label,
-      ...unsupportedMetricStory(reason),
-      sourceDoctypes: mappingDef.sourceDoctypes,
-      metrics: [],
-      cards: [],
-      childRollups: [],
-      recommendedActions: [],
-      warnings: [],
-      unsupportedReason: reason,
-    };
-  }
-
-  const creds = await resolveErpNextCreds(companyId);
-  if (!creds) {
-    const message = await getErpNextNotConfiguredMessage(companyId);
-    return {
-      status: 'not_configured',
-      generatedAt,
-      department: 'Sales',
-      nodeId,
-      nodeLabel: leaf.label,
-      path: pathLabels,
-      mappingKey: mappingDef.key,
-      mappingLabel: mappingDef.label,
-      ...notConfiguredMetricStory(message),
-      sourceDoctypes: mappingDef.sourceDoctypes,
-      metrics: [],
-      cards: [],
-      childRollups: [],
-      recommendedActions: [],
-      warnings: [message],
-    };
-  }
-
-  const warnings: string[] = [];
-  const reads = await Promise.all(mappingDef.reads.map(async definition => ({
-    definition,
-    result: await safeRead(creds, definition, limit, warnings),
-  })));
-  const failedCount = reads.filter(read => !read.result.ok).length;
-  const status: ErpNextSalesStatus = failedCount > 0 || mappingDef.status === 'partial' ? 'partial' : 'ready';
-  const story = buildSalesMetricStory(mappingDef, reads);
-
-  return {
-    status,
-    generatedAt,
-    siteName: creds.siteName,
-    department: 'Sales',
-    nodeId,
-    nodeLabel: leaf.label,
-    path: pathLabels,
-    mappingKey: mappingDef.key,
-    mappingLabel: mappingDef.label,
-    templateKey: story.templateKey,
-    headline: story.headline,
-    healthScore: story.healthScore,
-    sourceDoctypes: mappingDef.sourceDoctypes,
-    metrics: metricsFor(reads),
-    metricCards: story.metricCards,
-    breakdowns: story.breakdowns,
-    insights: story.insights,
-    cards: cardsFor(creds, reads),
-    evidence: linkEvidence(creds, story.evidence),
-    childRollups: [],
-    erpnextActions: erpnextActionsFor(creds, mappingDef),
-    recommendedActions: buildSalesRecommendations(mappingDef, reads),
-    warnings,
-    unsupportedReason: undefined,
-  };
+  return buildMappingSummary(companyId, nodeId, leaf.label, pathLabels, mappingDef, limit);
 }
 
 export async function buildSalesAudit(companyId: string, limit: number) {
@@ -916,6 +1027,27 @@ erpnextSalesRouter.get('/node-summary', authJwt, async (req, res) => {
   const limit = boundedNumber(req.query.limit, 500, 1, 1000);
   const summary = await buildNodeSummary(companyId, nodeId, limit);
   if (!summary) return res.status(404).json({ error: 'sales_node_not_found' });
+
+  if (summary.status === 'not_configured') {
+    return res.status(503).json({ error: 'erpnext_not_configured', message: summary.warnings[0] ?? 'WorkOS is not configured.' });
+  }
+
+  return res.json(summary);
+});
+
+// V4 route: `sales_deal_execution` is a focus node with no generated children.
+// Keep `/node-summary` available for legacy/internal consumers while new V4
+// clients use this hierarchy-independent contract.
+erpnextSalesRouter.get('/summary', authJwt, async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) return res.status(403).json({ error: 'no_company' });
+
+  const nodeId = typeof req.query.nodeId === 'string' ? req.query.nodeId : '';
+  if (!nodeId) return res.status(400).json({ error: 'node_id_required' });
+
+  const limit = boundedNumber(req.query.limit, 500, 1, 1000);
+  const summary = await buildDealExecutionSummary(companyId, nodeId, limit);
+  if (!summary) return res.status(404).json({ error: 'sales_deal_execution_not_found' });
 
   if (summary.status === 'not_configured') {
     return res.status(503).json({ error: 'erpnext_not_configured', message: summary.warnings[0] ?? 'WorkOS is not configured.' });

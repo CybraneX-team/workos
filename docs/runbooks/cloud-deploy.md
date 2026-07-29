@@ -196,20 +196,11 @@ automatically. See its README for the copy-up procedure. Verify a deploy with
 `md5sum` on both ends plus `systemctl is-active erpnext-provision-shim` and
 `curl -s localhost:3001/health`.
 
-🔴 **KNOWN BROKEN — the two have already drifted.** Verified 2026-07-22; the committed
-mirror is byte-identical to the VM (`index.js` md5 `c321fb65…`), so this is real
-divergence from `localProvision()`, not a stale copy:
-
-1. **`/provision` is not idempotent.** `localProvision()` guards with `bench list-sites`
-   before creating (`provisionWorker.ts:15`). The shim defines `siteExists()`
-   (`index.js:30`) but wires it **only** to `/ondemand-ask` (`index.js:55`) — `/provision`
-   calls `bench new-site` unconditionally. Because `provisionWorker.run()` retries up to
-   `max_attempts`, a remote provision that fails after the site directory exists will fail
-   **every** retry with "site already exists" and end at `status='failed'`. The same
-   scenario self-heals locally.
-2. **`--mariadb-user-host-login-scope=%` is missing** from the shim.
-   `provisionWorker.ts:19` passes it; `index.js` does not. Local and production create
-   site DB users with different host scopes.
+The checked-in shim source was updated on 2026-07-29 to match local site-creation
+invariants: per-site container locking, a 25-minute inner timeout, required-app
+verification, and `--mariadb-user-host-login-scope=%`. **This repository has not deployed
+that source to the VM.** Do not claim the live VM has these protections until the reviewed
+file is copied up, the shim service is restarted, and its deployed checksum is verified.
 
 Setup completion is **not** part of this drift: the control-plane runs the wizard over
 REST for both paths — see "Tenant setup is completed during provisioning" below.
@@ -278,9 +269,12 @@ completing the wizard without a country crashed on
 
 The control-plane now completes setup itself, in `completeSetup()`
 (`apps/erpnext-control-plane/src/frappe/client.ts`), between provisioning and
-`applyBranding()`. `status='ready'` is only written after it succeeds, so
-`resolveErpNextCreds()` and `routes/bdtNodeActivation.ts`'s `erpConnected` gate no longer
-unlock BDT branches against an empty site.
+`applyBranding()`. `status='ready'` is only written after setup and its persisted postcondition
+checks succeed, so
+`resolveErpNextCreds()` and the V4 ERPNext focus workspaces no longer present an empty site
+as connected evidence. The postcondition checks are persisted `System Settings.setup_complete`
+and the expected Company; a setup endpoint HTTP `200` alone is not accepted as proof of a usable
+tenant.
 
 Both entry points it calls are `@frappe.whitelist()`, so this runs over the same REST
 surface as every other control-plane command — **one implementation covering local and

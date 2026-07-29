@@ -12,6 +12,12 @@ import { metricProgress } from './useGoalsStore';
 
 const STORAGE_KEY = 'bdt_projects_v1';
 
+export type ProjectStorageScope = {
+  companyId: string | null | undefined;
+  userId: string | null | undefined;
+  departmentSourceKey?: string;
+};
+
 export type ProjectType = 'project' | 'product' | 'initiative' | 'experiment';
 export type ProjectStatus = 'on_track' | 'at_risk' | 'delayed' | 'done';
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
@@ -49,6 +55,7 @@ export interface Project {
   goalId?: string;       // explicit link to a backend BDT goal
   goalLink?: string;     // cached goal title for display
   sourceCardIds?: string[];  // multiple linked SavedWorkflowItem ids
+  departmentSourceKey?: string;
   createdAt: string;
 }
 
@@ -148,23 +155,23 @@ export const RISK_META: Record<RiskSeverity, { label: string; color: string }> =
 
 /* ── seed (first run only) ───────────────────────────────────────────────── */
 
-function seed(): ProjectsState {
+function seed(empty = false): ProjectsState {
   const now = Date.now();
   const iso = (offsetDays = 0) => new Date(now + offsetDays * 86400000).toISOString();
 
-  const members: Member[] = [
+  const members: Member[] = empty ? [] : [
     { id: 'm_you', name: 'You', role: 'founder' },
     { id: 'm_alex', name: 'Alex Rivera', role: 'manager' },
     { id: 'm_sam', name: 'Sam Cole', role: 'contributor' },
     { id: 'm_mia', name: 'Mia Chen', role: 'contributor' },
   ];
 
-  const projects: Project[] = [
+  const projects: Project[] = empty ? [] : [
     { id: 'p_canvas', name: 'Canvas v2 Launch', description: 'Ship the new active-canvas experience to GA.', type: 'product', ownerId: 'm_you', memberIds: ['m_you', 'm_alex', 'm_sam'], status: 'on_track', health: 72, goalId: 'g_canvas', goalLink: 'Launch Canvas v2', createdAt: iso(-8) },
     { id: 'p_seed', name: 'Seed Round Prep', description: 'Close the seed round with a strong metric pack.', type: 'initiative', ownerId: 'm_you', memberIds: ['m_you', 'm_alex'], status: 'at_risk', health: 48, goalId: 'g_seed', goalLink: 'Close Seed Round', createdAt: iso(-5) },
   ];
 
-  const tasks: ProjectTask[] = [
+  const tasks: ProjectTask[] = empty ? [] : [
     { id: 't1', projectId: 'p_canvas', title: 'Stabilize drag-and-drop animations', assigneeId: 'm_sam', status: 'in_progress', dueDate: iso(2), createdAt: iso(-7) },
     { id: 't2', projectId: 'p_canvas', title: 'Polish side panels on expand', assigneeId: 'm_alex', status: 'todo', dueDate: iso(4), createdAt: iso(-6) },
     { id: 't3', projectId: 'p_canvas', title: 'Wire AI copilot save-to-notes', assigneeId: 'm_sam', status: 'todo', createdAt: iso(-5) },
@@ -174,39 +181,44 @@ function seed(): ProjectsState {
     { id: 't7', projectId: 'p_seed', title: 'Compile target investor list', assigneeId: 'm_alex', status: 'done', createdAt: iso(-3) },
   ];
 
-  const milestones: Milestone[] = [
+  const milestones: Milestone[] = empty ? [] : [
     { id: 'ms1', projectId: 'p_canvas', title: 'Beta freeze', dueDate: iso(2), done: false },
     { id: 'ms2', projectId: 'p_canvas', title: 'GA release', dueDate: iso(9), done: false },
     { id: 'ms3', projectId: 'p_seed', title: 'Investor deck ready', dueDate: iso(1), done: false },
   ];
-  const decisions: Decision[] = [
+  const decisions: Decision[] = empty ? [] : [
     { id: 'd1', projectId: 'p_canvas', title: 'Cut mobile redesign from v2 scope', rationale: 'Focus engineering on activation.', status: 'approved', createdAt: iso(-3) },
     { id: 'd2', projectId: 'p_seed', title: 'Raise on a SAFE vs a priced round', rationale: 'Faster close; defer valuation.', status: 'open', createdAt: iso(-1) },
   ];
-  const risks: Risk[] = [
+  const risks: Risk[] = empty ? [] : [
     { id: 'rk1', projectId: 'p_canvas', title: 'Drag-drop performance on large boards', severity: 'medium', mitigated: false },
     { id: 'rk2', projectId: 'p_seed', title: 'Runway tight before close', severity: 'high', mitigated: false },
   ];
-  const files: ProjectFile[] = [
+  const files: ProjectFile[] = empty ? [] : [
     { id: 'f1', projectId: 'p_canvas', name: 'Canvas v2 spec', kind: 'doc', ref: '#' },
     { id: 'f2', projectId: 'p_seed', name: 'Metric pack (WIP)', kind: 'link', ref: '#' },
   ];
-  const chat: ProjectChatMsg[] = [
+  const chat: ProjectChatMsg[] = empty ? [] : [
     { id: 'c1', projectId: 'p_canvas', authorId: 'm_alex', role: 'member', text: 'Side panels look great now — QA is next.', at: iso(0) },
     { id: 'c2', projectId: 'p_canvas', authorId: 'm_you', role: 'member', text: 'Agreed. Sam, can you take the QA pass?', at: iso(0) },
   ];
 
-  return { members, projects, tasks, milestones, decisions, risks, files, chat, currentMemberId: 'm_you' };
+  return { members, projects, tasks, milestones, decisions, risks, files, chat, currentMemberId: empty ? 'local' : 'm_you' };
 }
 
 /* ── persistence ─────────────────────────────────────────────────────────── */
 
-function load(): ProjectsState {
+function storageKey(scope?: ProjectStorageScope): string {
+  if (!scope?.companyId || !scope?.userId) return STORAGE_KEY;
+  return `bdt_projects_v2:${scope.companyId}:${scope.userId}`;
+}
+
+function load(key = STORAGE_KEY, empty = false): ProjectsState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) {
-      const seeded = seed();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+      const seeded = seed(empty);
+      localStorage.setItem(key, JSON.stringify(seeded));
       return seeded;
     }
     const parsed = JSON.parse(raw) as Partial<ProjectsState>;
@@ -225,13 +237,13 @@ function load(): ProjectsState {
       currentMemberId: parsed.currentMemberId || 'm1',
     };
   } catch {
-    return seed();
+    return seed(empty);
   }
 }
 
-function persist(state: ProjectsState) {
+function persist(state: ProjectsState, key = STORAGE_KEY) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(key, JSON.stringify(state));
     window.setTimeout(() => window.dispatchEvent(new Event('projects_updated')), 0);
   } catch { /* quota */ }
 }
@@ -242,22 +254,25 @@ function uid(prefix: string) {
 
 /* ── hook ────────────────────────────────────────────────────────────────── */
 
-export function useProjectsStore() {
-  const [state, setState] = useState<ProjectsState>(() => load());
+export function useProjectsStore(scope?: ProjectStorageScope) {
+  const scopedKey = storageKey(scope);
+  const empty = Boolean(scope?.companyId && scope?.userId);
+  const [state, setState] = useState<ProjectsState>(() => load(scopedKey, empty));
 
   useEffect(() => {
-    const handler = () => setState(load());
+    setState(load(scopedKey, empty));
+    const handler = () => setState(load(scopedKey, empty));
     window.addEventListener('projects_updated', handler);
     return () => window.removeEventListener('projects_updated', handler);
-  }, []);
+  }, [scopedKey, empty]);
 
   const update = useCallback((mutate: (s: ProjectsState) => ProjectsState) => {
     setState(prev => {
       const next = mutate(prev);
-      persist(next);
+      persist(next, scopedKey);
       return next;
     });
-  }, []);
+  }, [scopedKey]);
 
   const createProject = useCallback((input: {
     name: string;
@@ -267,6 +282,7 @@ export function useProjectsStore() {
     goalLink?: string;
     description?: string;
     sourceCardId?: string;
+    departmentSourceKey?: string;
   }) => {
     update(s => {
       const ownerId = s.currentMemberId;
@@ -282,6 +298,7 @@ export function useProjectsStore() {
         goalId: input.goalId,
         goalLink: input.goalLink,
         sourceCardIds: input.sourceCardId ? [input.sourceCardId] : [],
+        departmentSourceKey: input.departmentSourceKey,
         createdAt: new Date().toISOString(),
       };
       return { ...s, projects: [project, ...s.projects] };

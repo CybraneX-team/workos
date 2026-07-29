@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronRight, ChevronLeft, Hexagon, Check, Search, Users, Building2,
-  Clock, CheckCircle, Plus, Sparkles, X, ArrowRight,
+  Clock, CheckCircle, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { createCompany } from '../lib/db/companies';
@@ -15,10 +15,7 @@ import type { JoinableCompany } from '../lib/db/team';
 import {
   getBdtCatalog,
   mapSuggestedLabelsToCatalogIds,
-  matchCatalogDepartmentId,
   getDepartmentChipStyle,
-  createCustomDepartmentEntry,
-  type CustomDepartmentEntry,
 } from '../lib/bdtOnboarding';
 import { useBdtCatalog } from '../lib/bdtCatalog';
 import type { UCompanySize } from '../lib/bdtPolytopeData';
@@ -215,47 +212,20 @@ export default function Onboarding() {
 
   const bdtCatalog = getBdtCatalog();
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<string[]>([]);
-  const [customDepartments, setCustomDepartments] = useState<CustomDepartmentEntry[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
-  const [customDeptInput, setCustomDeptInput] = useState('');
   const [aiSuggestedIds, setAiSuggestedIds] = useState<string[]>([]);
 
   function toggleCatalogDepartment(deptId: string) {
     setSelectedCatalogIds(prev => prev.includes(deptId) ? prev.filter(id => id !== deptId) : [...prev, deptId]);
   }
 
-  function addCustomDepartment() {
-    const trimmed = customDeptInput.trim();
-    if (!trimmed) return;
-    const catalogId = matchCatalogDepartmentId(trimmed);
-    if (catalogId) {
-      if (!selectedCatalogIds.includes(catalogId)) setSelectedCatalogIds(prev => [...prev, catalogId]);
-      setCustomDeptInput('');
-      return;
-    }
-    const duplicate = customDepartments.some(d => d.label.toLowerCase() === trimmed.toLowerCase());
-    if (duplicate) { setError('This custom department is already in your list'); return; }
-    setCustomDepartments(prev => [...prev, createCustomDepartmentEntry(trimmed, prev.length, true)]);
-    setCustomDeptInput('');
-    setError(null);
-  }
-
-  function toggleCustomDepartment(id: string) {
-    setCustomDepartments(prev => prev.map(d => d.id === id ? { ...d, selected: !d.selected } : d));
-  }
-
-  function removeCustomDepartment(id: string) {
-    setCustomDepartments(prev => prev.filter(d => d.id !== id));
-  }
-
   function countSelectedDepartments() {
-    return selectedCatalogIds.length + customDepartments.filter(d => d.selected).length;
+    return selectedCatalogIds.length;
   }
 
   function getSelectedDepartmentLabels() {
     const fromCatalog = bdtCatalog.filter(d => selectedCatalogIds.includes(d.id)).map(d => d.label);
-    const fromCustom = customDepartments.filter(d => d.selected).map(d => d.label);
-    return [...fromCatalog, ...fromCustom];
+    return fromCatalog;
   }
 
   async function fetchAiDepartmentSuggestions() {
@@ -374,7 +344,7 @@ export default function Onboarding() {
       competitors: form.competitors ? form.competitors.split(',').map(s => s.trim()).filter(Boolean) : undefined,
       departments: departmentLabels,
       bdt_department_source_keys: selectedCatalogIds,
-      bdt_custom_departments: customDepartments.filter(d => d.selected).map(d => d.label),
+      bdt_custom_departments: [],
       bdtCompanySize,
       profile: {
         first_name: form.first_name.trim() || undefined,
@@ -869,48 +839,6 @@ export default function Onboarding() {
                 );
               })}
 
-              {customDepartments.length > 0 && (
-                <div>
-                  <p style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.14em', textTransform: 'uppercase', margin: '0 0 10px' }}>Custom</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {customDepartments.map(item => {
-                      const chip = getDepartmentChipStyle(item.color, item.selected);
-                      return (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <button type="button" onClick={() => toggleCustomDepartment(item.id)} style={{
-                            padding: '8px 14px', borderRadius: 10, border: chip.border,
-                            background: chip.background, color: chip.color,
-                            fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: FF,
-                            display: 'flex', alignItems: 'center', gap: 6,
-                          }}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                            {item.selected && <Check size={12} style={{ color: item.color }} />}
-                            {item.label}
-                          </button>
-                          <button type="button" onClick={() => removeCustomDepartment(item.id)} style={{ padding: '6px', borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', display: 'flex' }}>
-                            <X size={13} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <OInput
-                  type="text" placeholder="Add a custom department…" value={customDeptInput}
-                  onChange={e => setCustomDeptInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomDepartment(); } }}
-                />
-                <button type="button" onClick={addCustomDepartment} style={{
-                  padding: '13px 18px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                  background: ACCENT, color: '#0d0b1a', fontWeight: 700, fontSize: 13,
-                  fontFamily: FF, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  <Plus size={14} /> Add
-                </button>
-              </div>
             </div>
           </div>
         )}

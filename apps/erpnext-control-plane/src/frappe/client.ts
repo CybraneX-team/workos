@@ -130,6 +130,29 @@ export async function completeSetup(creds: TenantCredentials, input: TenantSetup
   }, 600_000);
 }
 
+/**
+ * Frappe's setup endpoint can return 200 when another setup request owns its
+ * lock. Treat the persisted setup state as the contract, never the HTTP status
+ * alone. This prevents a half-configured site being exposed as a ready tenant.
+ */
+export async function verifySetup(creds: TenantCredentials, expectedCompanyName: string): Promise<void> {
+  const settings = await request<{ message?: { setup_complete?: number | boolean } }>(
+    creds,
+    'GET',
+    '/api/method/frappe.client.get_value?doctype=System%20Settings&fieldname=setup_complete',
+  );
+  if (!settings.message?.setup_complete) throw new Error('frappe_setup_incomplete');
+
+  const companies = await request<{ data?: Array<{ name?: string }> }>(
+    creds,
+    'GET',
+    `/api/resource/Company?${new URLSearchParams({ fields: JSON.stringify(['name']), filters: JSON.stringify([['Company', 'name', '=', expectedCompanyName]]), limit_page_length: '1' })}`,
+  );
+  if (!companies.data?.some(company => company.name === expectedCompanyName)) {
+    throw new Error('frappe_company_missing_after_setup');
+  }
+}
+
 export async function applyBranding(creds: TenantCredentials): Promise<void> {
   const updates: Array<[string, string, Record<string, unknown>]> = [
     ['Desktop Icon', 'ERPNext', { label: 'WorkOS' }],
