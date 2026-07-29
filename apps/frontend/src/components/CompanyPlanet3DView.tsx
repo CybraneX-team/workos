@@ -109,6 +109,7 @@ function SceneContent({
   const isDragging = useDragWorkspaceStore(s => s.isDragging);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [isPolytopeHovered, setIsPolytopeHovered] = useState(false);
   const [focusRootId, setFocusRootId] = useState<string | null>(null);
   const [internalNodesVisible, setInternalNodesVisible] = useState(false);
   const [isZoomingIn, setIsZoomingIn] = useState(false);
@@ -530,20 +531,24 @@ function SceneContent({
       ease: PLANET_ANIM.cameraEase,
     });
 
+    const targetWorldPos = planetPolytopeGroupRef.current
+      ? nodePos.clone().applyEuler(planetPolytopeGroupRef.current.rotation)
+      : nodePos;
+
     gsap.killTweensOf(camera.position);
     gsap.to(camera.position, {
-      x: nodePos.x,
-      y: nodePos.y,
-      z: nodePos.z + FOCUS_ZOOM_OFFSET,
+      x: targetWorldPos.x,
+      y: targetWorldPos.y,
+      z: targetWorldPos.z + FOCUS_ZOOM_OFFSET,
       duration: PLANET_ANIM.zoomInDuration,
       ease: PLANET_ANIM.cameraEase,
     });
     if (orbitRef.current) {
       gsap.killTweensOf(orbitRef.current.target);
       gsap.to(orbitRef.current.target, {
-        x: nodePos.x,
-        y: nodePos.y,
-        z: nodePos.z,
+        x: targetWorldPos.x,
+        y: targetWorldPos.y,
+        z: targetWorldPos.z,
         duration: PLANET_ANIM.zoomInDuration,
         ease: PLANET_ANIM.cameraEase,
       });
@@ -674,6 +679,7 @@ function SceneContent({
   // Use useFrame to smoothly apply fadeProgress/scaleProgress each frame
   const groupRefs = useRef<Map<string, THREE.Group>>(new Map());
   const coreRef = useRef<THREE.Group>(null);
+  const planetPolytopeGroupRef = useRef<THREE.Group>(null);
 
   useFrame(() => {
     if (orbitRef.current && !skipOrbitUpdateRef.current) {
@@ -711,6 +717,13 @@ function SceneContent({
         group.visible = group.scale.x > 0.01;
       }
     });
+
+    if (planetPolytopeGroupRef.current) {
+      const isPaused = focusRootId != null || insideRootPolytope || isWorkspaceOpen || hoveredId !== null || isPolytopeHovered || isDragging;
+      if (!isPaused) {
+        planetPolytopeGroupRef.current.rotation.y += 0.0025;
+      }
+    }
   });
 
   return (
@@ -726,7 +739,11 @@ function SceneContent({
       />
       <Stars radius={80} depth={40} count={3500} factor={3} saturation={0.5} fade speed={0.4} />
 
-      <group>
+      <group
+        ref={planetPolytopeGroupRef}
+        onPointerOver={() => setIsPolytopeHovered(true)}
+        onPointerOut={() => setIsPolytopeHovered(false)}
+      >
         {/* Edges Removed */}
 
         {/* Center Orb */}
@@ -805,7 +822,22 @@ function SceneContent({
                   {/* HTML Label */}
                   <Html position={[0, -NODE_RADIUS - 0.7, 0]} center zIndexRange={[100, 0]}>
                     <div
-                      className="flex flex-col items-center pointer-events-none"
+                      className="flex flex-col items-center pointer-events-auto cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isZoomingOut) handleNodeClick(node.id, node.pos);
+                      }}
+                      onPointerOver={(e) => {
+                        e.stopPropagation();
+                        if (!isTransitioning && !isZoomingOut) {
+                          setHoveredId(node.id);
+                          document.body.style.cursor = 'pointer';
+                        }
+                      }}
+                      onPointerOut={() => {
+                        setHoveredId(null);
+                        document.body.style.cursor = 'auto';
+                      }}
                       style={{
                         opacity: (isOther || (isFocus && isDeepDrillDown) || isWorkspaceOpen || (isNarrativeMode && isFocus)) ? 0 : 1,
                         transition: 'opacity 0.35s ease',

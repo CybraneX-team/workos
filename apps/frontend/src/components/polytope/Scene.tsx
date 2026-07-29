@@ -170,6 +170,7 @@ export function Scene({
   bdtWorkspaceLeaves = false,
 }: SceneProps) {
   const isDragging = useDragWorkspaceStore(s => s.isDragging);
+  const [isPolytopeHovered, setIsPolytopeHovered] = useState(false);
   const diveBlendRef = useRef({ value: 0 });
   const savedOverviewRef = useRef<{ camPos: THREE.Vector3; orbitTarget: THREE.Vector3 } | null>(null);
   const coreAnimTokenRef = useRef(0);
@@ -204,6 +205,7 @@ export function Scene({
 
   const EXTERNAL_NODE_POSITIONS = ACTIVE_NODE_POSITIONS;
   const orbitRef = useRef<any>(null);
+  const polytopeGroupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
 
   // ── Exit intent (zoom out from overview → parent view e.g. planet roots) ──
@@ -668,6 +670,12 @@ export function Scene({
         0.12
       );
     }
+    if (polytopeGroupRef.current) {
+      const isPaused = selectedId !== null || hoveredId !== null || isPolytopeHovered || isDragging || isCoreTransitioning;
+      if (!isPaused) {
+        polytopeGroupRef.current.rotation.y += 0.0025;
+      }
+    }
   });
 
   // ── Screen-space position tracking for draft nodes ────────────────────────
@@ -764,21 +772,28 @@ export function Scene({
 
     if (!orbitRef.current) return;
 
+    const worldPos = polytopeGroupRef.current
+      ? pos.clone().applyEuler(polytopeGroupRef.current.rotation)
+      : pos;
+
     if (validatedPath.length === 0) {
       const internalCount = dept.internalNodes.length;
       const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
-      const dir = pos.clone().normalize();
-      const { camPos, orbitTarget } = computeCameraFraming(pos, dir, internalCount, zoom);
+      const dir = worldPos.clone().normalize();
+      const { camPos, orbitTarget } = computeCameraFraming(worldPos, dir, internalCount, zoom);
       gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.5, ease: 'power3.inOut' });
       gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.5, ease: 'power3.inOut' });
       return;
     }
 
-    const targetPos = findNodePosition(pos, dept.internalNodes, validatedPath);
+    const rawTargetPos = findNodePosition(pos, dept.internalNodes, validatedPath);
     const parentNode = findNodeAtPath(dept.internalNodes, validatedPath);
-    if (!targetPos) return;
+    if (!rawTargetPos) return;
+    const targetPos = polytopeGroupRef.current
+      ? rawTargetPos.clone().applyEuler(polytopeGroupRef.current.rotation)
+      : rawTargetPos;
     const dir = targetPos.clone().normalize();
-        const isLeaf = isLeafInternalNode(parentNode, bdtWorkspaceLeaves);
+    const isLeaf = isLeafInternalNode(parentNode, bdtWorkspaceLeaves);
     const shift = isLeaf ? 2.5 : 0.0;
     const zoom = isLeaf ? 4.0 : deptZoomDistance(dept.internalNodes.length, DEPT_ZOOM_DISTANCE);
     const { camPos, orbitTarget } = computeCameraFraming(
@@ -803,8 +818,11 @@ export function Scene({
         const nodeObj = ACTIVE_NODES.find(n => n.id === id);
         const internalCount = nodeObj?.internalNodes.length ?? 0;
         const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
-        const dir = pos.clone().normalize();
-        const { camPos, orbitTarget } = computeCameraFraming(pos, dir, internalCount, zoom);
+        const worldPos = polytopeGroupRef.current
+          ? pos.clone().applyEuler(polytopeGroupRef.current.rotation)
+          : pos;
+        const dir = worldPos.clone().normalize();
+        const { camPos, orbitTarget } = computeCameraFraming(worldPos, dir, internalCount, zoom);
         gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.5, ease: 'power3.inOut' });
         gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.5, ease: 'power3.inOut' });
       }
@@ -854,7 +872,7 @@ export function Scene({
       <pointLight position={[0, 0, 0]} intensity={2} color="#ffffff" distance={20} />
       <directionalLight position={[10, 10, 10]} intensity={1} />
 
-      <group onPointerMissed={handlePointerMissed}>
+      <group ref={polytopeGroupRef} onPointerMissed={handlePointerMissed}>
         <group ref={coreGroupRef}>
           <OrgCore
             dimmed={selectedId !== null && coreWorkspacePhase === 'idle'}
@@ -950,7 +968,11 @@ export function Scene({
         })}
 
         {/* Translucent spectral shell */}
-        <mesh geometry={facesGeometry}>
+        <mesh
+          geometry={facesGeometry}
+          onPointerOver={() => setIsPolytopeHovered(true)}
+          onPointerOut={() => setIsPolytopeHovered(false)}
+        >
           <shaderMaterial
             ref={facesMatRef}
             vertexShader={vertexShader}
