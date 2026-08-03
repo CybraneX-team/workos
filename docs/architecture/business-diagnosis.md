@@ -16,6 +16,12 @@ available to both the browser and backend. Update the questionnaire version,
 frontend behavior, backend validation, and contract test together when changing
 its meaning.
 
+The authoritative implementation is the shared contract above,
+`apps/backend/src/routes/businessDiagnosis.ts`,
+`apps/backend/src/domains/business-diagnosis/`,
+`apps/frontend/src/pages/BusinessDiagnosis.tsx`, and
+`apps/backend/test/businessDiagnosisContract.test.ts`.
+
 ## Lifecycle
 
 1. The browser prefills only the editable business name from the WorkOS company.
@@ -78,3 +84,7 @@ Apply `apps/frontend/supabase/migrations/20260803090000_business_diagnoses.sql`
 after checking the actual database state and taking the required shared-environment
 backup. Its byte-identical backend mirror is
 `apps/backend/db/migrations/041_business_diagnoses.sql`.
+
+Update this document when the exact role allowlist, questionnaire or prompt
+versioning, persisted lifecycle, API contract, Gemini failure behavior, export
+contents, or direct-database boundary changes.

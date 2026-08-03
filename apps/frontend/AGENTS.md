@@ -15,6 +15,11 @@ former environment-specific `code-review-graph` tool names.
 - Meta Ads operating-loop and Campaign Studio behavior is documented in
   `../../docs/architecture/meta-ads-operating-loop.md` and
   `../../docs/architecture/meta-ads-campaign-studio.md`.
+- Business Diagnosis is a Founder/Admin-only, backend-owned company assessment.
+  Its browser page must not query `business_diagnoses` directly or expose Gemini
+  data beyond the validated API contract. Read
+  `../../docs/architecture/business-diagnosis.md` before changing its wizard,
+  replacement flow, or Excel download.
 
 ## Playwright and E2E automation
 

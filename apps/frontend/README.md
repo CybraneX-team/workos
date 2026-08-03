@@ -1,6 +1,6 @@
 # WorkOS frontend
 
-Last verified: 2026-07-27.
+Last verified: 2026-08-03.
 
 React 19 and Vite browser application for WorkOS. It uses Supabase for
 authentication and calls the authenticated WorkOS backend for business APIs.
@@ -61,6 +61,17 @@ pnpm --filter frontend lint
 
 The frontend must not receive integration credentials, service-role keys, raw
 provider errors, or internal ERPNext control-plane URLs.
+
+## Business Diagnosis
+
+`/business-diagnosis` is a native, company-scoped assessment available only to
+the exact `founder` and `admin` roles. Home is its entry point. A completed
+company may create a replacement diagnosis; the current report remains visible
+until the replacement saves successfully. Founder/Admin users can download the
+current saved report as a local Excel workbook. The browser uses authenticated
+backend APIs exclusively and never accesses `business_diagnoses` directly. See
+[`docs/architecture/business-diagnosis.md`](../../docs/architecture/business-diagnosis.md)
+for the data lifecycle, role policy, and verification contract.
 
 ## IDT Root Focus
 

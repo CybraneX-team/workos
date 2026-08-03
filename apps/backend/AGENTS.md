@@ -1,6 +1,6 @@
 # WorkOS backend guide
 
-Last verified: 2026-07-27.
+Last verified: 2026-08-03.
 
 This application is the WorkOS-side owner of the ERPNext integration. Read `../../docs/architecture/erpnext-control-plane.md` before changing ERP boundaries.
 
@@ -30,6 +30,10 @@ All ERPNext operations cross `src/lib/erpnextControlPlane.ts` using `@cybranex/e
 - `src/domains/workos-erp/`: WorkOS projections and public ERP routes.
 - `src/routes/referenceCompanies.ts`: authenticated reference-company APIs,
   including source-grounded, read-only IDT branch chat.
+- `src/routes/businessDiagnosis.ts` and `src/domains/business-diagnosis/`:
+  company-scoped Founder/Admin diagnosis, structured Gemini generation,
+  replacement safety, and read-only Excel export. Read
+  `../../docs/architecture/business-diagnosis.md` before changing this feature.
 - `src/domains/meta-ads/`: read-only Meta history, resumable deep reports,
   findings, Decision Inbox evaluation, and separately gated Campaign Studio
   drafts/approvals/jobs/browser APIs.

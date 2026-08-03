@@ -1,6 +1,6 @@
 # Cloud deployment runbook (monorepo)
 
-Last verified: 2026-07-27.
+Last verified: 2026-08-03.
 
 Live cloud now deploys from this monorepo (`CybraneX-team/workos`, branch `main`),
 not the old split repos. This runbook is the source of truth for how each tier is
@@ -37,9 +37,12 @@ az containerapp update -n startup-twin-backend -g startup-digital-twin-rg \
 Verify: `/healthz` = 200 **and** the monorepo-only `/test` endpoint responds; tail
 the new revision's logs for `[rbac] loaded 8 active role definitions`.
 
-Most recently verified on 2026-07-27: the backend image built from monorepo commit
-`6a103c2` deployed successfully and both endpoints returned `200`. This verifies the
-backend only; verify Vercel independently before claiming a frontend production deploy.
+Most recently verified on 2026-08-03: the backend image built from monorepo commit
+`571f4ec` deployed successfully as revision `startup-twin-backend--0000048` with image
+`startupdigitaltwin123.azurecr.io/startup-twin-backend:mono-571f4ec`; `/healthz` and
+`/test` both returned `200`. The matching Vercel deployment for `main` completed
+successfully. This records a deployment fact, not a substitute for verifying each future
+rollout.
 
 Env vars persist across image updates. Change them separately and **before** deploying
 dependent code: `az containerapp update ... --set-env-vars KEY=value` (merges, preserves

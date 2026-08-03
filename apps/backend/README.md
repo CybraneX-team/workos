@@ -1,4 +1,4 @@
-# FounderOS Backend (Phase 1)
+# WorkOS Backend
 
 Express service for Excel ingestion, canonical metric APIs, WorkOS integrations,
 the read-only Meta Ads operating evidence/Decision Inbox, and isolated,
@@ -81,6 +81,10 @@ pnpm --filter backend test:bdt
   pause routes under `/api/integrations/meta/*`
 - `POST /api/reference-companies/:referenceCompanyId/chat` (authenticated,
   source-grounded, read-only IDT branch chat)
+- Business Diagnosis routes under `/api/business-diagnosis`: current diagnosis,
+  transient follow-up questions, completion/replacement, and authenticated
+  `GET /export.xlsx` download. See
+  [`docs/architecture/business-diagnosis.md`](../../docs/architecture/business-diagnosis.md).
 
 ## Local setup
 
