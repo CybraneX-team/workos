@@ -144,6 +144,20 @@ export function ExternalNode({
         <Html position={[pos.x, pos.y - 1.2, pos.z]} center zIndexRange={[100, 0]}>
           <div
             ref={labelRef}
+            onClick={e => {
+              e.stopPropagation();
+              onClick();
+            }}
+            onPointerOver={e => {
+              e.stopPropagation();
+              document.body.style.cursor = 'pointer';
+              onHover(node.id);
+            }}
+            onPointerOut={e => {
+              e.stopPropagation();
+              document.body.style.cursor = 'auto';
+              onHover(null);
+            }}
             style={{
               color: 'white',
               background: 'rgba(0,0,0,0.6)',
@@ -153,7 +167,8 @@ export function ExternalNode({
               fontWeight: 'bold',
               backdropFilter: 'blur(4px)',
               border: `1px solid ${color}40`,
-              pointerEvents: 'none',
+              pointerEvents: 'auto',
+              cursor: 'pointer',
               whiteSpace: 'nowrap',
               transition: 'opacity 0.2s',
             }}

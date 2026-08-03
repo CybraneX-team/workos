@@ -1191,20 +1191,27 @@ function DeptNode({ dept, pos, idx, isSelected, isHovered, isDimmed, onSelect, o
           occlude={coreRef.current ? [coreRef as React.RefObject<THREE.Object3D>] : true}
           distanceFactor={28}
           position={[0, 0.52, 0]}
-          style={{ pointerEvents:'none', userSelect:'none' }}
+          style={{ pointerEvents:'auto', userSelect:'none', cursor:'pointer' }}
           zIndexRange={[10, 0]}
         >
-          <div style={{
-            color, fontSize: isSelected ? 11 : 9,
-            fontWeight: isSelected ? 700 : 500,
-            letterSpacing: 0.5,
-            textShadow: `0 0 8px ${color}cc, 0 1px 3px #000`,
-            transition: 'font-size 0.2s, opacity 0.3s',
-            whiteSpace: 'nowrap',
-            background: isSelected ? `rgba(8,5,20,0.75)` : 'transparent',
-            padding: isSelected ? '2px 6px' : '0',
-            borderRadius: 4,
-          }}>
+          <div
+            onClick={e => {
+              e.stopPropagation();
+              onSelect(dept.id);
+            }}
+            style={{
+              color, fontSize: isSelected ? 11 : 9,
+              fontWeight: isSelected ? 700 : 500,
+              letterSpacing: 0.5,
+              textShadow: `0 0 8px ${color}cc, 0 1px 3px #000`,
+              transition: 'font-size 0.2s, opacity 0.3s',
+              whiteSpace: 'nowrap',
+              background: isSelected ? `rgba(8,5,20,0.75)` : 'transparent',
+              padding: isSelected ? '2px 6px' : '0',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
             {dept.label}
           </div>
         </Html>
