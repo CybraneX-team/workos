@@ -26,6 +26,7 @@ Read the nearest `AGENTS.md` before changing files. Treat this file as a navigat
 - Campaign authoring fake/live-sandbox verification: `docs/runbooks/meta-ads-campaign-studio.md`
 - BDT taxonomy ownership and new-company seeding: `docs/architecture/bdt-taxonomy-and-seeding.md`
 - IDT Root Focus notes and grounded branch chat: `docs/architecture/idt-root-focus-chat.md`
+- Founder/Admin one-time business diagnosis: `docs/architecture/business-diagnosis.md`
 - Backend-specific invariants: `apps/backend/AGENTS.md`
 - Control-plane-specific invariants: `apps/erpnext-control-plane/AGENTS.md`
 - Cloud deployment (how each tier builds/deploys, config source of truth, rollback): `docs/runbooks/cloud-deploy.md`

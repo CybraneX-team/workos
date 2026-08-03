@@ -54,15 +54,43 @@ file warns about.
 
 ## Deploying a change
 
+Use the checked-in deployment script from the repository root:
+
 ```bash
-# 1. edit index.js here, review it like any other code
-# 2. copy it up (no automated pipeline exists):
-az vm run-command invoke -g startup-digital-twin-rg -n erpnext-vm \
-  --command-id RunShellScript --scripts '<write file>; systemctl restart erpnext-provision-shim'
-# 3. verify:
-#    systemctl is-active erpnext-provision-shim
-#    curl -s localhost:3001/health   # {"ok":true}
+infra/erpnext-remote-shim/deploy.sh
 ```
+
+The script:
+
+- starts the scheduled VM when necessary and waits for both `VM running` and the
+  Azure guest agent's `Ready` state;
+- verifies the pinned SSH host key, the currently running service, and `/health`
+  before writing anything;
+- copies only the reviewed `index.js`, verifies its checksum on the VM, and
+  creates a timestamped backup;
+- uses Azure Run Command for the privileged service restart because the
+  `erpadmin` SSH account cannot restart this system service non-interactively;
+- writes a unique per-rollout status file and reads it over SSH because the
+  synchronous Azure Run Command response can be delayed or absent;
+- waits up to 20 seconds for port `3001` to become ready before judging health;
+- rolls back to the timestamped backup if installation, restart, readiness, or
+  checksum verification fails.
+
+Do not replace the readiness loop with an immediate `curl`. On this VM, the
+service has taken 2–7 seconds after `systemctl restart` to log that it is
+listening. An immediate health check produces connection error `7` and can
+incorrectly classify a valid deployment as failed.
+
+Do not reuse a fixed rollout-status filename. A caller can otherwise read the
+previous deployment's terminal state before the new Azure command starts.
+
+SSH is suitable for preflight and verification, but not for the privileged
+restart. The configured `erpadmin` key is authorized on the VM; use Azure Run
+Command for root operations rather than requesting or transmitting a sudo
+password.
+
+Last verified rollout: 2026-07-29, local and remote MD5
+`916a9642232c51e502279ea3d2b27438`, service `active`, health `{"ok":true}`.
 
 ## Not in this directory
 
@@ -75,6 +103,7 @@ az vm run-command invoke -g startup-digital-twin-rg -n erpnext-vm \
 
 | File | Purpose |
 |---|---|
+| `deploy.sh` | Guarded Azure VM rollout with preflight, readiness checks, checksum verification, and rollback. |
 | `index.js` | Express service: `/health`, `/ondemand-ask` (Caddy on-demand TLS gate), `/provision` (bearer-authed). |
 | `package.json` | Single dependency, `express`. |
 | `erpnext-provision-shim.service` | systemd unit; runs as `erpadmin`, binds `127.0.0.1:3001`. |

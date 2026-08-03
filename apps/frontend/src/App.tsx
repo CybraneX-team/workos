@@ -28,6 +28,7 @@ import LandingNew from './pages/LandingNew';
 import PolytopePage from './pages/PolytopePage';
 import UniversalPage from './pages/UniversalPage';
 import WorkspacePage from './pages/WorkspacePage';
+import BusinessDiagnosis from './pages/BusinessDiagnosis';
 import SavedWorkflows from './pages/SavedWorkflows';
 import JoinStartupInvite from './pages/JoinStartupInvite';
 import IncubatorGuard from './components/incubator/IncubatorGuard';
@@ -285,6 +286,11 @@ function AppRoutes() {
                   <Route path="/overview" element={
                     <AuthGuard requireOnboarding>
                       <Overview />
+                    </AuthGuard>
+                  } />
+                  <Route path="/business-diagnosis" element={
+                    <AuthGuard requireOnboarding>
+                      <BusinessDiagnosis />
                     </AuthGuard>
                   } />
                   <Route path="/twin/strategy" element={

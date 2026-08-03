@@ -198,9 +198,19 @@ automatically. See its README for the copy-up procedure. Verify a deploy with
 
 The checked-in shim source was updated on 2026-07-29 to match local site-creation
 invariants: per-site container locking, a 25-minute inner timeout, required-app
-verification, and `--mariadb-user-host-login-scope=%`. **This repository has not deployed
-that source to the VM.** Do not claim the live VM has these protections until the reviewed
-file is copied up, the shim service is restarted, and its deployed checksum is verified.
+verification, and `--mariadb-user-host-login-scope=%`. It was deployed and
+verified on 2026-07-29 with MD5 `916a9642232c51e502279ea3d2b27438`,
+service state `active`, and health `{"ok":true}`. A later source change still
+requires a fresh reviewed deployment and checksum verification.
+
+Deploy with `infra/erpnext-remote-shim/deploy.sh`; do not hand-roll the copy and
+restart. The SSH user cannot restart the system service non-interactively, so
+the script uses SSH for preflight/verification and Azure Run Command for the
+root-only restart. Azure's synchronous command output can be delayed or absent,
+so the script uses a unique durable status file and verifies it through SSH.
+The shim needs a bounded readiness loop after restart: port `3001` has taken
+2–7 seconds to bind, and an immediate `curl` can fail with connection error `7`
+even when the new process is valid.
 
 Setup completion is **not** part of this drift: the control-plane runs the wizard over
 REST for both paths — see "Tenant setup is completed during provisioning" below.
@@ -211,7 +221,8 @@ REST for both paths — see "Tenant setup is completed during provisioning" belo
 `erpnext-vm-stop`) run it 12:00–00:00 IST daily to control cost. `az vm
 run-command` fails with `OperationNotAllowed ... requires the VM to be running`
 outside that window — `az vm start -g startup-digital-twin-rg -n erpnext-vm`
-first, and expect it to stop again on schedule.
+first, wait until the guest agent also reports `Ready`, and expect it to stop
+again on schedule.
 
 ### Current live ERPNext state (verified 2026-07-22)
 

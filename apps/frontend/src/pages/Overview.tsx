@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Activity, Zap, Shield, Bot, User, Clock, CheckCircle2, Loader2, CircleDot, TrendingUp, Target, ShieldAlert, Tag, Building2, SlidersHorizontal } from 'lucide-react';
+import { LayoutDashboard, Activity, Zap, Shield, Bot, User, Clock, CheckCircle2, Loader2, CircleDot, TrendingUp, Target, ShieldAlert, Tag, Building2, SlidersHorizontal, ClipboardCheck } from 'lucide-react';
 import { WORKSPACE_CANVAS_CARDS, WORKSPACE_CANVAS_CONNECTIONS } from '../lib/workspaceLayoutData';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -15,6 +15,7 @@ import { getCurrencyCodeForCountry, getCurrencySymbol } from '../lib/currency';
 import type { Metric } from '../types';
 import type { MetaAdsAttention } from '@cybranex/shared-types';
 import { fetchMetaAdsAttention } from '../lib/integrations/service';
+import { fetchBusinessDiagnosis, type BusinessDiagnosisStatus } from '../lib/db/businessDiagnosis';
 
 const statusConfig = {
   running:   { icon: Loader2,      color: 'text-sky-400',     animate: 'animate-spin' },
@@ -25,7 +26,7 @@ const statusConfig = {
 
 export default function Overview() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const { company } = useCompany(profile?.company_id);
 
   const currencySymbol = getCurrencySymbol(
@@ -38,10 +39,12 @@ export default function Overview() {
 
   const displayName = company?.name ?? 'Your Company';
   const displayStage = company?.stage ?? 'Seed';
+  const canUseBusinessDiagnosis = role === 'founder' || role === 'admin';
 
   const [simSnapshot, setSimSnapshot] = useState<Record<string, number> | null>(null);
   const [chartData, setChartData] = useState(revenueHistory);
   const [metaAttention, setMetaAttention] = useState<MetaAdsAttention | null>(null);
+  const [businessDiagnosis, setBusinessDiagnosis] = useState<BusinessDiagnosisStatus | null>(null);
 
   useEffect(() => {
     if (!profile?.company_id) return;
@@ -52,6 +55,11 @@ export default function Overview() {
       .then((rows) => { if (rows?.length) setChartData(rows); })
       .catch(() => {});
   }, [profile?.company_id]);
+
+  useEffect(() => {
+    if (!profile?.company_id || !canUseBusinessDiagnosis) return;
+    fetchBusinessDiagnosis().then(setBusinessDiagnosis).catch(() => setBusinessDiagnosis(null));
+  }, [profile?.company_id, canUseBusinessDiagnosis]);
 
   useEffect(() => {
     if (!profile?.company_id) return;
@@ -150,6 +158,7 @@ export default function Overview() {
           <p style={{ fontSize:13, color:'rgba(255,255,255,0.3)', margin:'7px 0 0' }}>{displayStage} · {industryLabel}</p>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:22 }}>
+          {canUseBusinessDiagnosis && <button onClick={() => navigate('/business-diagnosis')} style={{ display:'inline-flex', alignItems:'center', gap:7, color:'#e9e2ff', background:'rgba(193,174,255,.14)', border:'1px solid rgba(193,174,255,.45)', borderRadius:9, padding:'9px 12px', cursor:'pointer', fontWeight:700, fontSize:12 }}><ClipboardCheck size={15} /> {businessDiagnosis?.status === 'completed' ? 'View Business Diagnosis' : 'Start Business Diagnosis'}</button>}
           {([{c:'#10b981',l:'System Twin'},{c:'#06b6d4',l:'Env Twin'}] as {c:string,l:string}[]).map(s => (
             <div key={s.l} style={{ display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ width:7,height:7,borderRadius:'50%',background:s.c,boxShadow:`0 0 8px ${s.c}80`,display:'inline-block',animation:'tw-pulse 3s ease-in-out infinite' }} />

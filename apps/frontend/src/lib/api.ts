@@ -40,6 +40,24 @@ async function authed<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
+async function authedBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = new Headers(init.headers ?? {});
+  if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${BASE}${path}`, { ...init, headers, signal: controller.signal });
+    if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
+    return response.blob();
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export const api = {
   get:    <T>(path: string) => authed<T>(path),
   post:   <T>(path: string, body?: FormData | object) =>
@@ -58,4 +76,5 @@ export const api = {
       body: JSON.stringify(body ?? {}),
     }),
   delete: <T>(path: string) => authed<T>(path, { method: 'DELETE' }),
+  getBlob: (path: string) => authedBlob(path),
 };
