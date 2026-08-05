@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Check, Loader2 } from 'lucide-react';
+import { ChevronRight, Check, Loader2, Lock } from 'lucide-react';
+import { useAuth } from '../../lib/auth';
 import {
   COMPANY_TAG_LABELS,
   COMPANY_TAG_ICONS,
@@ -20,7 +21,15 @@ export interface CompanyTagDropdownProps {
   referenceCompanyId?: string;
   activeClassification?: 'competitor' | 'customer' | 'collaborator' | null;
   onClassificationChange?: (tag: CompanyTag | null) => void;
+  /**
+   * Optional extra restriction. Editing always additionally requires one of the
+   * roles the backend accepts on PATCH /reference-companies/:id/classification.
+   */
+  canEdit?: boolean;
 }
+
+/** Mirrors ADMIN_ROLES in apps/backend/src/routes/referenceCompanies.ts */
+const CLASSIFICATION_ADMIN_ROLES = ['super_admin', 'founder', 'co_founder', 'admin'];
 
 export function CompanyTagDropdown({
   companyId: _companyId,
@@ -30,7 +39,10 @@ export function CompanyTagDropdown({
   referenceCompanyId,
   activeClassification,
   onClassificationChange,
+  canEdit = true,
 }: CompanyTagDropdownProps) {
+  const { role } = useAuth();
+  const canClassify = canEdit && CLASSIFICATION_ADMIN_ROLES.includes(role ?? '');
   const [menuOpen, setMenuOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const [saving, setSaving] = useState(false);
@@ -72,6 +84,8 @@ export function CompanyTagDropdown({
   const handleTag = async (tag: CompanyTag, e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
+    // Backend rejects non-admins with 403; do not even attempt the write.
+    if (!canClassify) return;
 
     const newTag = activeTag === tag ? null : tag;
 
@@ -97,6 +111,27 @@ export function CompanyTagDropdown({
 
   const ActiveIcon = activeTag ? COMPANY_TAG_ICONS[activeTag] : null;
   const activeColor = activeTag ? COMPANY_TAG_COLORS[activeTag] : industryColor;
+
+  // Read-only badge for everyone who cannot change the classification.
+  if (!canClassify) {
+    return (
+      <div className="relative w-full" onClick={e => e.stopPropagation()}>
+        <div
+          title={activeTag ? undefined : 'Only an admin, founder, or co-founder can classify a company'}
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+          style={{
+            background: activeTag ? `${activeColor}12` : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${activeTag ? activeColor + '30' : 'rgba(255,255,255,0.08)'}`,
+            color: activeTag ? activeColor : 'rgba(255,255,255,0.4)',
+          }}
+        >
+          {ActiveIcon && <ActiveIcon className="w-3.5 h-3.5" />}
+          <span className="truncate">{activeTag ? COMPANY_TAG_LABELS[activeTag] : 'Unclassified'}</span>
+          <Lock className="w-3 h-3 ml-auto opacity-40" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full" onClick={e => e.stopPropagation()}>

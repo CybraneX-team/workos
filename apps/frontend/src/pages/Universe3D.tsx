@@ -2066,6 +2066,7 @@ export default function Universe3DPage() {
               industryColor={hoverTarget.industry?.color}
               referenceCompanyId={hoveredCompany?.referenceCompanyId}
               activeClassification={hoveredCompany?.classification}
+              canEdit={canManageReferenceCompanies}
               onClassificationChange={(newTag) => {
                 handleCompanyClassificationChange(hoveredCompany?.id ?? hoverTarget.company?.id, newTag);
               }}
