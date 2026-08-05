@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import type { UInternalNode } from '../../lib/universalPolytopeData';
 
+/** How far the internal ring floats outward from its department vertex. */
+export const INTERNAL_RING_DEPTH_STEP = 3.0;
+
+/** Radius of the internal ring — widens as more siblings share the orbit. */
+export function internalRingRadius(totalNodeCount: number): number {
+  return 1.8 * Math.max(1, Math.sqrt(totalNodeCount / 4));
+}
+
 /** World position for an internal node ring slot (must match ExternalNode layout). */
 export function computeInternalNodePosition(
   deptPos: THREE.Vector3,
@@ -27,9 +35,9 @@ export function computeInternalNodePosition(
     up.crossVectors(right, dir).normalize();
   }
 
-  const depthStep = isFlat ? 0.5 : 3.0;
+  const depthStep = isFlat ? 0.5 : INTERNAL_RING_DEPTH_STEP;
   // Widen ring as more siblings share the orbit (e.g. 6 BDT branch nodes).
-  const radius = isFlat ? 4.0 : 1.8 * Math.max(1, Math.sqrt(totalNodeCount / 4));
+  const radius = isFlat ? 4.0 : internalRingRadius(totalNodeCount);
   const childCenter = deptPos.clone().add(dir.clone().multiplyScalar(depthStep));
 
   return childCenter
@@ -94,6 +102,56 @@ export function computeDraftChildNodePosition(
     .add(up.clone().multiplyScalar(Math.sin(angle) * ringRadius));
 }
 
+/**
+ * Plain framing: camera pulled back along `dir` with a subtle upward tilt,
+ * looking straight at `targetPos` so it lands on screen centre.
+ *
+ * Note `shiftRightAmount` moves camera and orbit target together, which does
+ * not reframe the subject — it slides it off screen centre by that distance.
+ * Its basis vector is also `cross(dir, worldUp)`, the opposite of the
+ * `cross(worldUp, dir)` three.js treats as screen-right, so positive values
+ * push the subject left. Pass 0 to centre.
+ */
+export function frameNodeView(
+  targetPos: THREE.Vector3,
+  dir: THREE.Vector3,
+  distance: number,
+  shiftRightAmount: number = 0
+): { camPos: THREE.Vector3; orbitTarget: THREE.Vector3 } {
+  let localUp = new THREE.Vector3(0, 1, 0);
+  if (Math.abs(dir.dot(localUp)) > 0.99) localUp.set(1, 0, 0);
+  const right = new THREE.Vector3().crossVectors(dir, localUp).normalize();
+  const up = new THREE.Vector3().crossVectors(right, dir).normalize();
+
+  // Subtle upward tilt angle so the node is framed at a cinematic 3D angle
+  const tiltOffset = up.clone().multiplyScalar(distance * 0.14);
+  const camPos = targetPos.clone().add(dir.clone().multiplyScalar(distance)).add(tiltOffset);
+  const orbitTarget = targetPos.clone();
+
+  if (shiftRightAmount !== 0) {
+    const shiftVec = right.clone().multiplyScalar(shiftRightAmount);
+    camPos.add(shiftVec);
+    orbitTarget.add(shiftVec);
+  }
+
+  return { camPos, orbitTarget };
+}
+
+/**
+ * Distance at which an internal ring of `nodeCount` nodes fills `fill` of the
+ * viewport's shorter half-axis. Replaces guessing the pull-back from the node
+ * count alone, which left small rings distant and large rings overflowing.
+ */
+export function ringFitDistance(
+  nodeCount: number,
+  vFovDeg: number,
+  aspect: number,
+  fill: number,
+): number {
+  const tanHalf = Math.tan((vFovDeg / 2) * (Math.PI / 180)) * Math.min(1, aspect);
+  return INTERNAL_RING_DEPTH_STEP + internalRingRadius(nodeCount) / (tanHalf * fill);
+}
+
 export function computeCameraFraming(
   targetPos: THREE.Vector3,
   dir: THREE.Vector3,
@@ -101,16 +159,19 @@ export function computeCameraFraming(
   baseZoomDist: number,
   shiftRightAmount: number = 0
 ): { camPos: THREE.Vector3; orbitTarget: THREE.Vector3 } {
-  let camPos = targetPos.clone().add(dir.clone().multiplyScalar(baseZoomDist));
-  let orbitTarget = targetPos.clone();
+  if (childrenCount !== 2) {
+    return frameNodeView(targetPos, dir, baseZoomDist, shiftRightAmount);
+  }
 
-  if (childrenCount === 2) {
-    let localUp = new THREE.Vector3(0, 1, 0);
-    if (Math.abs(dir.dot(localUp)) > 0.99) localUp.set(1, 0, 0);
-    const right = new THREE.Vector3().crossVectors(dir, localUp).normalize();
-    const up = new THREE.Vector3().crossVectors(right, dir).normalize();
+  let localUp = new THREE.Vector3(0, 1, 0);
+  if (Math.abs(dir.dot(localUp)) > 0.99) localUp.set(1, 0, 0);
+  const right = new THREE.Vector3().crossVectors(dir, localUp).normalize();
+  const up = new THREE.Vector3().crossVectors(right, dir).normalize();
 
-    // Scale shifts based on baseZoomDist (e.g. 10 -> 7.5, -2.2, 1.0)
+  let camPos: THREE.Vector3;
+  let orbitTarget: THREE.Vector3;
+
+  {
     const ratio = baseZoomDist / 10.0;
     const dist = baseZoomDist * 0.75;
     const upShift = -2.2 * ratio;
@@ -124,10 +185,6 @@ export function computeCameraFraming(
   }
 
   if (shiftRightAmount !== 0) {
-    const localUp = new THREE.Vector3(0, 1, 0);
-    if (Math.abs(dir.dot(localUp)) > 0.99) localUp.set(1, 0, 0);
-    const right = new THREE.Vector3().crossVectors(dir, localUp).normalize();
-    
     const shiftVec = right.clone().multiplyScalar(shiftRightAmount);
     camPos.add(shiftVec);
     orbitTarget.add(shiftVec);

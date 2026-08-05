@@ -14,6 +14,7 @@ import { getAllSubdomains, type DbSubdomain } from '../lib/db/subdomains';
 import { getActiveCompanies } from '../lib/db/companies';
 import { getAllLocalCompanies } from '../lib/localCompanies';
 import { listReferenceCompanies, type ReferenceCompany } from '../lib/db/referenceCompanies';
+import { getCompanyTag } from '../lib/useSavedWorkflows';
 import type { DbCompany } from '../lib/supabase';
 
 /* ──────────────────────────────────────────────────
@@ -29,6 +30,7 @@ export interface UniverseCompany {
   stage?: string;
   isLive: boolean;
   referenceCompanyId?: string;
+  classification?: 'competitor' | 'customer' | 'collaborator' | null;
   departments?: { id: string; name: string; headcount?: number; focus?: string; metrics?: Record<string, number> }[];
   raw?: DbCompany;
 }
@@ -104,6 +106,7 @@ export function buildUniverseData(args: {
       stage: c.stage,
       employees: c.employees,
       isLive: true,
+      classification: getCompanyTag(`live-${c.id}`, c.name, null, null),
       departments: [],
       raw: c,
     });
@@ -112,12 +115,14 @@ export function buildUniverseData(args: {
   // 2. Reference companies (backend-researched public companies)
   for (const rc of referenceCompanies) {
     if (!rc.subdomainId) continue;
+    const companyName = rc.name || new URL(rc.sourceUrl).hostname.replace(/^www\./, '');
     addToSub(rc.subdomainId, {
       id: `ref-${rc.id}`,
-      name: rc.name || new URL(rc.sourceUrl).hostname.replace(/^www\./, ''),
+      name: companyName,
       description: rc.description ?? undefined,
       isLive: false,
       referenceCompanyId: rc.id,
+      classification: getCompanyTag(`ref-${rc.id}`, companyName, rc.id, rc.classification),
     });
   }
 

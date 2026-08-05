@@ -50,6 +50,12 @@ interface InternalNodeProps {
   revealDelayMs?: number;
   entryDuration?: number;
   entryEase?: string;
+  /** Slot index within this node's ring, used to stagger the reveal. */
+  entryIndex?: number;
+  /** Extra hold before this ring unfolds, so a camera flight can land first. */
+  entryLeadInMs?: number;
+  /** Per-slot offset so siblings appear one after another rather than at once. */
+  entryStaggerMs?: number;
   /** When true, place the node at its target immediately (session restore). */
   skipEntryAnimation?: boolean;
 }
@@ -77,6 +83,9 @@ export function InternalNode({
   revealDelayMs = 320,
   entryDuration = 1.1,
   entryEase = 'power3.out',
+  entryIndex = 0,
+  entryLeadInMs = 0,
+  entryStaggerMs = 0,
   skipEntryAnimation = false,
 }: InternalNodeProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -87,7 +96,7 @@ export function InternalNode({
 
   const radii = [0.25, 0.20, 0.15, 0.12, 0.09];
   const isLevel1 = node.nodeLevel === 'level1';
-  const radius = isLevel1 ? radii[0] * 1.4 : (radii[depth] || 0.05);
+  const radius = isLevel1 ? radii[0] : (radii[depth] || 0.05);
   const isInactive = !isDraft && isVirtualErpNextNodeLocked(node);
 
   const isMeActiveCenter = selectedPath.length > 0 && selectedPath[selectedPath.length - 1] === node.id;
@@ -209,7 +218,14 @@ export function InternalNode({
       groupRef.current.scale.setScalar(0);
     }
 
-    const revealDelay = revealDelayMs / 1000;
+    // The lead-in and stagger apply only to the ring that is being revealed by
+    // this selection — this node's own ring sits one level below the current
+    // path. Drilling past it, or backing out to it, replays the unfold; nodes
+    // deeper in the tree keep the plain delay so navigation stays responsive.
+    const isRevealingRing = selectedPath.length === pathContext.length;
+    const revealDelay = isRevealingRing
+      ? (revealDelayMs + entryLeadInMs + entryIndex * entryStaggerMs) / 1000
+      : revealDelayMs / 1000;
 
     const posTween = gsap.to(groupRef.current!.position, {
       x: targetPos.x,
@@ -245,6 +261,8 @@ export function InternalNode({
     startPos.x, startPos.y, startPos.z,
     targetPos.x, targetPos.y, targetPos.z,
     isDraft, entryDuration, entryEase, revealDelayMs,
+    entryIndex, entryLeadInMs, entryStaggerMs,
+    selectedPath.length, pathContext.length,
     isVisible, isHiddenParent, isMeActiveCenter, skipEntryAnimation,
   ]);
 
@@ -358,12 +376,10 @@ export function InternalNode({
           radius={radius}
           opacity={isDraft ? 0.85 : isHiddenParent ? 0.0 : isInactive ? 0.25 : 1.0}
           glowIntensity={
-            isDraft ? 2.8
+            isDraft ? 0.25
             : isHiddenParent ? 0
             : isInactive ? 0.1
-            : isMeActiveCenter ? 3.5
-            : isLevel1 ? 1.2
-            : 0.2
+            : 0.25
           }
           halo={false}
           depthWrite={!isHiddenParent}
@@ -541,6 +557,9 @@ export function InternalNode({
             revealDelayMs={revealDelayMs}
             entryDuration={entryDuration}
             entryEase={entryEase}
+            entryIndex={i}
+            entryLeadInMs={entryLeadInMs}
+            entryStaggerMs={entryStaggerMs}
           />
         );
       })}

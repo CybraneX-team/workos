@@ -56,6 +56,7 @@ import { DragWorkspaceOverlay } from '../components/workspace/DragWorkspaceOverl
 import { NodeChatPanel } from '../components/planet/NodeChatPanel';
 import { CompanyTagDropdown } from '../components/planet/CompanyTagDropdown';
 import type { CompanyTag } from '../lib/useSavedWorkflows';
+import { getCompanyTag } from '../lib/useSavedWorkflows';
 import { useVoice } from '../context/VoiceContext';
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -1404,6 +1405,113 @@ export default function Universe3DPage() {
     }
   }, [hoverTarget]);
 
+  /** Bumped whenever a classification event fires, so stored tags are re-read */
+  const [companyTagVersion, setCompanyTagVersion] = useState(0);
+  /** Optimistic tag for the company just (un)classified, before the graph refetches */
+  const [companyTagOverride, setCompanyTagOverride] = useState<{ key: string; tag: CompanyTag | null } | null>(null);
+
+  /**
+   * Planet meshes carry a snapshot of the company taken when the scene was built,
+   * so `hoverTarget.company.classification` goes stale as soon as the tag changes.
+   * Resolve the company again from the current universe graph before rendering the
+   * hover card, and fall back to the locally stored tag.
+   */
+  const hoveredCompany = useMemo(() => {
+    const hovered = hoverTarget?.company;
+    if (!hovered) return null;
+
+    let live: typeof hovered | undefined;
+    for (const ind of data?.industries ?? []) {
+      for (const sd of ind.subdomains ?? []) {
+        live = sd.companies?.find(c =>
+          c.id === hovered.id ||
+          (hovered.referenceCompanyId && c.referenceCompanyId === hovered.referenceCompanyId) ||
+          (!!c.name && !!hovered.name && c.name.toLowerCase().trim() === hovered.name.toLowerCase().trim())
+        );
+        if (live) break;
+      }
+      if (live) break;
+    }
+
+    const merged = live ? { ...hovered, ...live } : hovered;
+    const referenceCompanyId = merged.referenceCompanyId
+      ?? (typeof merged.id === 'string' && merged.id.startsWith('ref-') ? merged.id.slice(4) : undefined);
+
+    const overrideKeys = [merged.id, merged.referenceCompanyId, referenceCompanyId, merged.name?.toLowerCase().trim()];
+    const hasOverride = !!companyTagOverride && overrideKeys.includes(companyTagOverride.key);
+
+    return {
+      ...merged,
+      referenceCompanyId,
+      classification: hasOverride
+        ? companyTagOverride!.tag
+        : getCompanyTag(merged.id, merged.name, referenceCompanyId, merged.classification ?? null),
+    };
+    // companyTagVersion re-resolves the tag after a classification event
+  }, [hoverTarget, data, companyTagVersion, companyTagOverride]);
+
+  const handleCompanyClassificationChange = useCallback((companyId?: string, newTag?: CompanyTag | null) => {
+    if (!companyId) return;
+
+    setHoverTarget(prev => {
+      if (prev && prev.company && (prev.company.id === companyId || prev.company.referenceCompanyId === companyId || `ref-${prev.company.referenceCompanyId}` === companyId)) {
+        return {
+          ...prev,
+          company: {
+            ...prev.company,
+            classification: newTag ?? null,
+          },
+        };
+      }
+      return prev;
+    });
+
+    setCompanyTagOverride({ key: companyId, tag: newTag ?? null });
+    setCompanyTagVersion(v => v + 1);
+    refreshUniverse();
+  }, [refreshUniverse]);
+
+  useEffect(() => {
+    const handleClassified = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const refId = detail?.referenceCompanyId;
+      const coId = detail?.companyId;
+      const coName = detail?.companyName;
+      const tag = detail?.tag ?? detail?.classification ?? null;
+
+      setHoverTarget(prev => {
+        if (prev?.company) {
+          const match =
+            (refId && (prev.company.referenceCompanyId === refId || prev.company.id === `ref-${refId}`)) ||
+            (coId && prev.company.id === coId) ||
+            (coName && prev.company.name && prev.company.name.toLowerCase() === coName.toLowerCase());
+
+          if (match) {
+            return {
+              ...prev,
+              company: {
+                ...prev.company,
+                classification: tag,
+              },
+            };
+          }
+        }
+        return prev;
+      });
+
+      const overrideKey = coId ?? (refId ? `ref-${refId}` : null) ?? (coName ? coName.toLowerCase().trim() : null);
+      if (overrideKey) setCompanyTagOverride({ key: overrideKey, tag });
+      setCompanyTagVersion(v => v + 1);
+      refreshUniverse();
+    };
+    window.addEventListener('reference_company_classified', handleClassified);
+    window.addEventListener('company_tag_changed', handleClassified);
+    return () => {
+      window.removeEventListener('reference_company_classified', handleClassified);
+      window.removeEventListener('company_tag_changed', handleClassified);
+    };
+  }, [refreshUniverse]);
+
   /** The 3D sun button fires this callback via UniverseController */
   const handleCreateFromSun = useCallback((industry: any, subdomain: any) => {
     handleAddCompany(industry, subdomain);
@@ -1950,12 +2058,17 @@ export default function Universe3DPage() {
         >
           <div className="bg-black/80 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-2xl">
             <h3 className="text-xs font-bold text-white mb-1.5 px-1 truncate text-center">
-              {hoverTarget.company?.name}
+              {hoveredCompany?.name ?? hoverTarget.company?.name}
             </h3>
             <CompanyTagDropdown
-              companyId={hoverTarget.company?.id}
-              companyName={hoverTarget.company?.name}
+              companyId={hoveredCompany?.id ?? hoverTarget.company?.id}
+              companyName={hoveredCompany?.name ?? hoverTarget.company?.name}
               industryColor={hoverTarget.industry?.color}
+              referenceCompanyId={hoveredCompany?.referenceCompanyId}
+              activeClassification={hoveredCompany?.classification}
+              onClassificationChange={(newTag) => {
+                handleCompanyClassificationChange(hoveredCompany?.id ?? hoverTarget.company?.id, newTag);
+              }}
             />
           </div>
         </div>

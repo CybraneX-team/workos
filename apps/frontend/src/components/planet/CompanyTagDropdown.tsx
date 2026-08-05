@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Check, Loader2 } from 'lucide-react';
 import {
   COMPANY_TAG_LABELS,
   COMPANY_TAG_ICONS,
   COMPANY_TAG_COLORS,
+  getCompanyTag,
+  saveCompanyTag,
   type CompanyTag,
 } from '../../lib/useSavedWorkflows';
 import { setReferenceCompanyClassification } from '../../lib/db/referenceCompanies';
@@ -45,7 +47,27 @@ export function CompanyTagDropdown({
     };
   }, [menuOpen]);
 
-  const activeTag = activeClassification as CompanyTag | null | undefined;
+  const effectiveReferenceId = referenceCompanyId ?? (typeof _companyId === 'string' && _companyId.startsWith('ref-') ? _companyId.slice(4) : undefined);
+  
+  const [tagUpdateTrigger, setTagUpdateTrigger] = useState(0);
+
+  useEffect(() => {
+    const handleSync = () => setTagUpdateTrigger(c => c + 1);
+    window.addEventListener('company_tag_changed', handleSync);
+    window.addEventListener('reference_company_classified', handleSync);
+    window.addEventListener('workflows_updated', handleSync);
+    return () => {
+      window.removeEventListener('company_tag_changed', handleSync);
+      window.removeEventListener('reference_company_classified', handleSync);
+      window.removeEventListener('workflows_updated', handleSync);
+    };
+  }, []);
+
+  const activeTag = useMemo(() => {
+    // tagUpdateTrigger dependency forces re-evaluation on window events
+    void tagUpdateTrigger;
+    return getCompanyTag(_companyId, _companyName, effectiveReferenceId, activeClassification);
+  }, [_companyId, _companyName, effectiveReferenceId, activeClassification, tagUpdateTrigger]);
 
   const handleTag = async (tag: CompanyTag, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -53,26 +75,23 @@ export function CompanyTagDropdown({
 
     const newTag = activeTag === tag ? null : tag;
 
-    if (!referenceCompanyId) {
-      // No reference company yet — notify parent but can't persist
-      onClassificationChange?.(newTag);
-      return;
-    }
+    // 1. Save locally immediately so UI updates instantly across all views/components
+    saveCompanyTag(_companyId, _companyName, newTag, effectiveReferenceId);
+    onClassificationChange?.(newTag);
 
-    setSaving(true);
-    try {
-      const result = await setReferenceCompanyClassification(referenceCompanyId, newTag);
-      onClassificationChange?.(newTag);
-      // Trigger a context refresh if the parent hasn't subscribed to onClassificationChange
-      if (!onClassificationChange) {
+    // 2. If a backend reference company ID exists, sync to DB as well
+    if (effectiveReferenceId) {
+      setSaving(true);
+      try {
+        const result = await setReferenceCompanyClassification(effectiveReferenceId, newTag);
         window.dispatchEvent(new CustomEvent('reference_company_classified', {
-          detail: { referenceCompanyId, classification: newTag, classifyJob: result.classifyJob },
+          detail: { referenceCompanyId: effectiveReferenceId, classification: newTag, classifyJob: result.classifyJob },
         }));
+      } catch (err) {
+        console.error('[CompanyTagDropdown] classification update failed', err);
+      } finally {
+        setSaving(false);
       }
-    } catch (err) {
-      console.error('[CompanyTagDropdown] classification update failed', err);
-    } finally {
-      setSaving(false);
     }
   };
 

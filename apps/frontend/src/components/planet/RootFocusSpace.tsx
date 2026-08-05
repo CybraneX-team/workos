@@ -25,14 +25,20 @@ const WAVE_SEGMENTS = 48;
 const CARD_COLUMN_X = 5.6;
 const CARD_ROW_GAP = 3.6;
 
-function computeCardPosition(rootPos: THREE.Vector3, index: number, count: number): THREE.Vector3 {
+function computeCardPosition(
+  rootPos: THREE.Vector3,
+  index: number,
+  count: number,
+  cardX: number = CARD_COLUMN_X,
+  rowGapY: number = CARD_ROW_GAP
+): THREE.Vector3 {
   const leftCount = Math.ceil(count / 2);
   const isLeft = index < leftCount;
   const rowIndex = isLeft ? index : index - leftCount;
   const rowCount = isLeft ? leftCount : count - leftCount;
 
-  const x = (isLeft ? -1 : 1) * CARD_COLUMN_X;
-  const y = (rowIndex - (rowCount - 1) / 2) * CARD_ROW_GAP;
+  const x = (isLeft ? -1 : 1) * cardX;
+  const y = (rowIndex - (rowCount - 1) / 2) * rowGapY;
 
   return rootPos
     .clone()
@@ -428,6 +434,9 @@ function BranchCard({ branch, pos, rootPos, color, delayMs, hidden = false, focu
 
   const astaFont = 'Asta Sans, sans-serif, system-ui';
 
+  const cardWidth = Math.min(260, Math.max(225, Math.round(size.width * 0.17)));
+  const scaleFactor = size.width < 1400 ? 0.88 : size.width >= 2000 ? 1.05 : 1.0;
+
   return (
     <group ref={groupRef} position={pos}>
       <Html center zIndexRange={[100, 0]}>
@@ -440,7 +449,7 @@ function BranchCard({ branch, pos, rootPos, color, delayMs, hidden = false, focu
           style={{
             position: 'relative',
             boxSizing: 'border-box',
-            width: 260,
+            width: cardWidth,
             height: 'auto',
             padding: 6,
             borderRadius: 12,
@@ -456,7 +465,7 @@ function BranchCard({ branch, pos, rootPos, color, delayMs, hidden = false, focu
             flexDirection: 'column',
             gap: 4,
             opacity: mounted ? 1 : 0,
-            transform: `scale(${hovered && !dragging ? 1.03 : mounted ? 1 : 0.85}) translateY(${mounted ? 0 : 10}px)`,
+            transform: `scale(${hovered && !dragging ? 1.03 * scaleFactor : mounted ? scaleFactor : 0.85 * scaleFactor}) translateY(${mounted ? 0 : 10}px)`,
             transition: dragging
               ? 'none'
               : 'opacity 0.5s ease, transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s ease, border-color 0.25s ease',
@@ -831,6 +840,9 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
 
   const astaFont = 'Asta Sans, sans-serif, system-ui';
 
+  const cardWidth = Math.min(260, Math.max(225, Math.round(size.width * 0.17)));
+  const scaleFactor = size.width < 1400 ? 0.88 : size.width >= 2000 ? 1.05 : 1.0;
+
   return (
     <group ref={groupRef} position={pos}>
       <Html center zIndexRange={[100, 0]}>
@@ -843,7 +855,7 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
           style={{
             position: 'relative',
             boxSizing: 'border-box',
-            width: 260,
+            width: cardWidth,
             height: 'auto',
             padding: 6,
             borderRadius: 12,
@@ -859,7 +871,7 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
             flexDirection: 'column',
             gap: 4,
             opacity: mounted ? 1 : 0,
-            transform: `scale(${hovered && !dragging ? 1.03 : mounted ? 1 : 0.82}) translate(${mounted ? '0px, 0px' : isLeft ? '20px, 10px' : '-20px, 10px'})`,
+            transform: `scale(${hovered && !dragging ? 1.03 * scaleFactor : mounted ? scaleFactor : 0.82 * scaleFactor}) translate(${mounted ? '0px, 0px' : isLeft ? '20px, 10px' : '-20px, 10px'})`,
             transition: dragging
               ? 'none'
               : 'opacity 0.55s cubic-bezier(0.16,1,0.3,1), transform 0.55s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s ease, border-color 0.25s ease',
@@ -1162,17 +1174,21 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
                 </div>
               </div>
 
-              {/* Inner Body Frame */}
+              {/* Inner Body Frame (Middle Layer Box) */}
               <div
+                onClick={() => {
+                  if (!isEditing) setIsEditing(true);
+                }}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'flex-start',
-                  padding: '14px 14px 10px',
+                  padding: '12px 14px 10px',
                   gap: 12,
                   background: 'rgba(0, 0, 0, 0.25)',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  border: 'none',
                   borderRadius: 8,
+                  cursor: isEditing ? 'text' : 'pointer',
                 }}
               >
                 {isEditing ? (
@@ -1196,10 +1212,10 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
                       fontWeight: 400,
                       color: 'rgba(255, 255, 255, 0.88)',
                       fontFamily: astaFont,
-                      background: 'rgba(0, 0, 0, 0.2)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: 6,
-                      padding: '8px 10px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: 0,
+                      padding: 0,
                       outline: 'none',
                       resize: 'none',
                       boxSizing: 'border-box',
@@ -1218,7 +1234,7 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
                       wordBreak: 'break-word',
                       whiteSpace: 'pre-wrap',
                       cursor: 'pointer',
-                      minHeight: '40px',
+                      minHeight: '80px',
                     }}
                   >
                     {note.text || <span style={{ color: 'rgba(255, 255, 255, 0.35)', fontStyle: 'italic' }}>Empty note — tap to edit</span>}
@@ -1243,6 +1259,75 @@ function NoteCard({ note, pos, rootPos, color, delayMs, isInitialEditing = false
               </div>
             </>
           )}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+interface NoteIndicatorNodeProps {
+  pos: THREE.Vector3;
+  color: string;
+  count: number;
+  label?: string;
+  isLeft: boolean;
+  hidden?: boolean;
+  onClick: () => void;
+}
+
+function NoteIndicatorNode({ pos, color, count, label, hidden = false, onClick }: NoteIndicatorNodeProps) {
+  const [hovered, setHovered] = useState(false);
+  const astaFont = 'Asta Sans, sans-serif, system-ui';
+
+  if (hidden) return null;
+
+  return (
+    <group position={pos}>
+      <Html center zIndexRange={[90, 0]}>
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          title={`Click to view ${count} note${count > 1 ? 's' : ''}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 10px',
+            borderRadius: 20,
+            background: hovered ? 'rgba(22, 18, 36, 0.95)' : 'rgba(12, 12, 22, 0.85)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: `1.5px solid ${hovered ? color : `${color}88`}`,
+            boxShadow: hovered
+              ? `0 0 20px ${color}66, 0 8px 20px rgba(0,0,0,0.8)`
+              : `0 0 10px ${color}33, 0 4px 12px rgba(0,0,0,0.6)`,
+            cursor: 'pointer',
+            transform: hovered ? 'scale(1.08)' : 'scale(1)',
+            transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: 3,
+              background: `${color}33`,
+              border: `1px solid ${color}`,
+              display: 'grid',
+              placeItems: 'center',
+            }}
+          >
+            <FileText style={{ width: 9, height: 9, color: color }} />
+          </div>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#ffffff', fontFamily: astaFont }}>
+            {label ? (label.length > 14 ? `${label.slice(0, 14)}...` : label) : `${count} note${count > 1 ? 's' : ''}`}
+          </span>
         </div>
       </Html>
     </group>
@@ -1343,9 +1428,18 @@ export function RootFocusSpace({ root, rootPos, color, expandProgressRef, onCard
 
   const branches = root.branches;
 
+  const { viewport } = useThree();
+
+  // Dynamic frustum-relative 3D offsets for responsive layout across 13", 15", 20", 25", 27" screens
+  const cardX = Math.max(3.0, Math.min(4.8, viewport.width * 0.28));
+  const rowGapY = Math.max(2.4, Math.min(3.6, viewport.height * 0.34));
+
+  const leftFocusX = -Math.max(2.6, Math.min(4.2, viewport.width * 0.25));
+  const rightFocusX = Math.max(2.6, Math.min(4.2, viewport.width * 0.25));
+
   // Calculate position map for branch cards and attached note cards
-  const { branchPositions, notePositionEntries } = useMemo(() => {
-    const bPositions = branches.map((_, i) => computeCardPosition(rootPos, i, branches.length));
+  const { branchPositions, notePositionEntries, branchNotesMap } = useMemo(() => {
+    const bPositions = branches.map((_, i) => computeCardPosition(rootPos, i, branches.length, cardX, rowGapY));
     const posMap = new Map<string, THREE.Vector3>();
 
     branches.forEach((b, i) => {
@@ -1353,20 +1447,18 @@ export function RootFocusSpace({ root, rootPos, color, expandProgressRef, onCard
     });
 
     const entries: { note: UserRootNote; pos: THREE.Vector3; parentPos: THREE.Vector3 }[] = [];
+    const bNotesMap = new Map<string, UserRootNote[]>();
 
-    // Group notes by parentCardId to stack sibling notes attached to the same parent card
-    const notesByParent = new Map<string, UserRootNote[]>();
     userNotes.forEach(n => {
-      const list = notesByParent.get(n.parentCardId) || [];
+      const list = bNotesMap.get(n.parentCardId) || [];
       list.push(n);
-      notesByParent.set(n.parentCardId, list);
+      bNotesMap.set(n.parentCardId, list);
     });
 
-    notesByParent.forEach((notes, parentId) => {
+    bNotesMap.forEach((notes, parentId) => {
       const parentPos = posMap.get(parentId) || rootPos;
       const isLeft = parentPos.x < rootPos.x;
-      const offsetDistX = 14.0; // Keep note cards completely out of the initial screen view
-      const rowGapY = 3.6;
+      const offsetDistX = Math.max(3.0, Math.min(4.2, viewport.width * 0.25));
 
       notes.forEach((n, idx) => {
         const x = parentPos.x + (isLeft ? -offsetDistX : offsetDistX);
@@ -1377,9 +1469,9 @@ export function RootFocusSpace({ root, rootPos, color, expandProgressRef, onCard
       });
     });
 
-    return { branchPositions: bPositions, notePositionEntries: entries };
+    return { branchPositions: bPositions, notePositionEntries: entries, branchNotesMap: bNotesMap };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root.id, branches.length, userNotes]);
+  }, [root.id, branches.length, userNotes, rootPos, cardX, rowGapY, viewport.width]);
 
   return (
     <group>
@@ -1397,9 +1489,43 @@ export function RootFocusSpace({ root, rootPos, color, expandProgressRef, onCard
         />
       ))}
 
-      {/* Wave Lines for Note Cards (connecting parent card to attached note card) */}
+      {/* Overview Note Indicators (connected line + badge node leading to attached notes when in overview mode) */}
+      {branches.map((branch, i) => {
+        const notes = branchNotesMap.get(branch.id);
+        if (!notes || notes.length === 0) return null;
+
+        const branchPos = branchPositions[i];
+        const isLeft = branchPos.x < rootPos.x;
+        const indicatorPos = branchPos.clone().add(new THREE.Vector3(isLeft ? -2.6 : 2.6, 0, 0));
+        const isHidden = narrativeParentId !== null;
+
+        return (
+          <group key={`note-indicator-group-${branch.id}`}>
+            <WaveLine
+              rootPos={branchPos}
+              cardPos={indicatorPos}
+              color={color}
+              expandProgressRef={expandProgressRef}
+              hidden={isHidden}
+              noteTooltip={{ title: notes[0]?.title || 'Notes', text: `${notes.length} note${notes.length > 1 ? 's' : ''} attached — click to view` }}
+              onClick={() => setNarrativeParentId(branch.id)}
+            />
+            <NoteIndicatorNode
+              pos={indicatorPos}
+              color={color}
+              count={notes.length}
+              label={notes[0]?.title || 'Note'}
+              isLeft={isLeft}
+              hidden={isHidden}
+              onClick={() => setNarrativeParentId(branch.id)}
+            />
+          </group>
+        );
+      })}
+
+      {/* Wave Lines for Note Cards (connecting parent card to attached note card in narrative mode) */}
       {notePositionEntries.map(({ note, pos, parentPos }) => {
-        const isHidden = narrativeParentId !== null && note.parentCardId !== narrativeParentId;
+        const isHidden = narrativeParentId === null || note.parentCardId !== narrativeParentId;
         return (
           <WaveLine
             key={`wave-note-${note.id}`}
@@ -1414,13 +1540,11 @@ export function RootFocusSpace({ root, rootPos, color, expandProgressRef, onCard
         );
       })}
 
-      {/* Branch Cards — the focused one animates to a fixed spot to the left of
-          root, root-relative (never an absolute world coordinate), so it lands
-          wherever the camera is already framed regardless of this root's ring position. */}
+      {/* Branch Cards — focused branch animates smoothly to leftFocusX */}
       {branches.map((branch, i) => {
         const isHidden = narrativeParentId !== null && branch.id !== narrativeParentId;
         const isActiveFocus = focusedBranchId === branch.id;
-        const focusPos = isActiveFocus ? rootPos.clone().add(new THREE.Vector3(-4.2, 0, 3.2)) : null;
+        const focusPos = isActiveFocus ? rootPos.clone().add(new THREE.Vector3(leftFocusX, 0, 3.2)) : null;
 
         return (
           <BranchCard
@@ -1443,15 +1567,13 @@ export function RootFocusSpace({ root, rootPos, color, expandProgressRef, onCard
         );
       })}
 
-      {/* User Note Cards (attached to parent cards) — focused siblings keep their
-          relative vertical stacking offset so multiple notes on the same branch
-          stay legible instead of collapsing onto one spot. */}
+      {/* User Note Cards — shown only during narrative focus, hidden during overview */}
       {notePositionEntries.map(({ note, pos, parentPos }) => {
-        const isHidden = narrativeParentId !== null && note.parentCardId !== narrativeParentId;
+        const isHidden = narrativeParentId === null || note.parentCardId !== narrativeParentId;
         const isActiveFocus = focusedBranchId === note.parentCardId;
         const relativeY = pos.y - parentPos.y;
         const focusPos = isActiveFocus
-          ? rootPos.clone().add(new THREE.Vector3(4.2, relativeY, 3.2))
+          ? rootPos.clone().add(new THREE.Vector3(rightFocusX, relativeY, 3.2))
           : null;
 
         return (

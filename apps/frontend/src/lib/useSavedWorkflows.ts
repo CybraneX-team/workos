@@ -138,6 +138,79 @@ function buildKey(item: Omit<SavedWorkflowItem, 'id' | 'savedAt' | 'note'>): str
   ].join('::');
 }
 
+const TAGS_STORAGE_KEY = 'company_planet_tags_v2';
+
+export function getStoredCompanyTags(): Record<string, CompanyTag> {
+  try {
+    const raw = localStorage.getItem(TAGS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getCompanyTag(
+  companyId?: string | null,
+  companyName?: string | null,
+  referenceCompanyId?: string | null,
+  dbClassification?: CompanyTag | null
+): CompanyTag | null {
+  if (dbClassification) return dbClassification;
+
+  const tags = getStoredCompanyTags();
+  if (companyId && tags[companyId]) return tags[companyId];
+  if (referenceCompanyId && tags[referenceCompanyId]) return tags[referenceCompanyId];
+  if (referenceCompanyId && tags[`ref-${referenceCompanyId}`]) return tags[`ref-${referenceCompanyId}`];
+  if (companyId && companyId.startsWith('ref-') && tags[companyId.slice(4)]) return tags[companyId.slice(4)];
+  if (companyName && tags[companyName.toLowerCase().trim()]) return tags[companyName.toLowerCase().trim()];
+
+  // Fallback to saved workflows items
+  const savedItems = loadFromStorage();
+  const match = savedItems.find(i =>
+    ((companyId && i.companyId === companyId) ||
+     (referenceCompanyId && (i.referenceCompanyId === referenceCompanyId || i.companyId === `ref-${referenceCompanyId}`)) ||
+     (companyName && i.companyName && i.companyName.toLowerCase().trim() === companyName.toLowerCase().trim())) && i.planetTag
+  );
+
+  return match?.planetTag ?? null;
+}
+
+export function saveCompanyTag(
+  companyId: string,
+  companyName: string,
+  tag: CompanyTag | null,
+  referenceCompanyId?: string | null
+): void {
+  const tags = getStoredCompanyTags();
+
+  const keysToUpdate = [
+    companyId,
+    referenceCompanyId ? referenceCompanyId : null,
+    referenceCompanyId ? `ref-${referenceCompanyId}` : null,
+    companyId.startsWith('ref-') ? companyId.slice(4) : null,
+    companyName ? companyName.toLowerCase().trim() : null,
+  ].filter(Boolean) as string[];
+
+  for (const key of keysToUpdate) {
+    if (tag) {
+      tags[key] = tag;
+    } else {
+      delete tags[key];
+    }
+  }
+
+  try {
+    localStorage.setItem(TAGS_STORAGE_KEY, JSON.stringify(tags));
+  } catch {
+    /* quota */
+  }
+
+  window.dispatchEvent(new CustomEvent('company_tag_changed', {
+    detail: { companyId, companyName, referenceCompanyId, tag },
+  }));
+  window.dispatchEvent(new Event('workflows_updated'));
+}
+
 // ── Grouped view helpers ──────────────────────────────────────────────────────
 
 export interface SavedWorkflowGroup {

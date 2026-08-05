@@ -7,6 +7,8 @@ export interface SearchResultItem {
   industryId?: string;
   subdomainId?: string;
   companyId?: string;
+  referenceCompanyId?: string;
+  classification?: 'competitor' | 'customer' | 'collaborator' | null;
 }
 
 class TrieNode {

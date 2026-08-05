@@ -182,6 +182,7 @@ export function RootInternalNodeScene({
             glowIntensity={2.8}
             depthWrite={true}
             speed={1.2}
+            halo={true}
           />
           {/* Invisible click target on center orb */}
           <mesh

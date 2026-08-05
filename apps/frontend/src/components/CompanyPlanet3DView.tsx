@@ -8,7 +8,7 @@ import { gsap } from 'gsap';
 import type { CompanyPlanetContext } from '../data/companyPlanetRoots';
 import { getPlanetNodesAtPath, canDrillInto } from '../data/companyPlanetRoots';
 import { PlasmaSphere } from './PolytopeShared';
-import { useSavedWorkflows, COMPANY_TAG_COLORS } from '../lib/useSavedWorkflows';
+import { COMPANY_TAG_COLORS, getCompanyTag } from '../lib/useSavedWorkflows';
 import { RootFocusSpace } from './planet/RootFocusSpace';
 import { computeInternalNodePosition, computeCameraFraming } from './polytope/internalNodeLayout';
 import type { UExternalNode } from '../lib/universalPolytopeData';
@@ -109,7 +109,6 @@ function SceneContent({
   const isDragging = useDragWorkspaceStore(s => s.isDragging);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [isPolytopeHovered, setIsPolytopeHovered] = useState(false);
   const [focusRootId, setFocusRootId] = useState<string | null>(null);
   const [internalNodesVisible, setInternalNodesVisible] = useState(false);
   const [isZoomingIn, setIsZoomingIn] = useState(false);
@@ -718,12 +717,7 @@ function SceneContent({
       }
     });
 
-    if (planetPolytopeGroupRef.current) {
-      const isPaused = focusRootId != null || insideRootPolytope || isWorkspaceOpen || hoveredId !== null || isPolytopeHovered || isDragging;
-      if (!isPaused) {
-        planetPolytopeGroupRef.current.rotation.y += 0.0025;
-      }
-    }
+    // IDT does not rotate; slow auto-rotation is disabled here (BDT universal polytope rotates in Scene.tsx).
   });
 
   return (
@@ -741,8 +735,6 @@ function SceneContent({
 
       <group
         ref={planetPolytopeGroupRef}
-        onPointerOver={() => setIsPolytopeHovered(true)}
-        onPointerOut={() => setIsPolytopeHovered(false)}
       >
         {/* Edges Removed */}
 
@@ -897,11 +889,12 @@ function SceneContent({
 }
 
 export default function CompanyPlanet3DView(props: CompanyPlanet3DViewProps) {
-  const { items } = useSavedWorkflows();
-  const savedItem = items.find(
-    i => i.level === 'planet' && i.companyId === props.context.companyId && i.role === props.context.role
+  const activeTag = getCompanyTag(
+    props.context.companyId,
+    props.context.companyName,
+    props.context.referenceCompanyId,
+    props.context.classification,
   );
-  const activeTag = savedItem?.planetTag;
   const coreColor = activeTag ? COMPANY_TAG_COLORS[activeTag] : props.industryColor || '#C1AEFF';
 
   return (

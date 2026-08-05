@@ -55,6 +55,8 @@ export interface UniversalPolytopeProps {
   readOnly?: boolean;
   /** BDT: project leaves open the action workspace side panel */
   bdtWorkspaceLeaves?: boolean;
+  /** BDT: arc the camera around to the focused department and unfold its nodes */
+  cinematicFocus?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -88,6 +90,7 @@ export default function UniversalPolytope({
   voiceIntensityRef,
   readOnly = false,
   bdtWorkspaceLeaves = false,
+  cinematicFocus = false,
 }: UniversalPolytopeProps) {
   const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -143,6 +146,7 @@ export default function UniversalPolytope({
           onCoreSurfaceComplete={onCoreSurfaceComplete}
           voiceIntensityRef={voiceIntensityRef}
           bdtWorkspaceLeaves={bdtWorkspaceLeaves}
+          cinematicFocus={cinematicFocus}
         />
       </Canvas>
 

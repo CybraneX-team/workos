@@ -17,18 +17,62 @@ import {
   findNodeAtPath,
   computeDraftChildNodePosition,
   computeCameraFraming,
+  frameNodeView,
+  ringFitDistance,
   isValidInternalPath,
   deptZoomDistance,
 } from './internalNodeLayout';
 import type { CoreWorkspacePhase } from '../../lib/coreWorkspaceTransition';
 import { CORE_DIVE_DURATION_S, CORE_SURFACE_DURATION_S } from '../../lib/coreWorkspaceTransition';
 import { useDragWorkspaceStore } from '../../lib/useDragWorkspaceStore';
+import { cancelOrbitalFlight, flyCameraOrbital } from './cameraFlight';
 import {
   CORE_AI_MAX_CAMERA_DISTANCE,
   POLYTOPE_EXIT_SCROLL_DELTA,
 } from './constants';
 
 const DEPT_ZOOM_DISTANCE = 10;
+
+// ── Cinematic focus timings (BDT only) ───────────────────────────────────────
+/** Camera swing when a department is opened from the hull or the sidebar. */
+const FOCUS_DEPT_FLIGHT_S = 1.8;
+/** Camera swing when drilling into / out of an internal node. */
+const FOCUS_DRILL_FLIGHT_S = 1.35;
+/**
+ * Internal nodes hold back until the camera swing is mostly done, then unfold
+ * one after another instead of all snapping into place at once.
+ */
+const FOCUS_REVEAL_LEAD_IN_MS = 620;
+const FOCUS_REVEAL_STAGGER_MS = 85;
+
+/**
+ * Framing offsets, shared by every route into a given level.
+ *
+ * Opening a department by clicking the hull used shift 0, opening it from the
+ * sidebar used -2.8, and backing out of an internal node used -3.2 — so the
+ * same logical view was framed three different ways and closing never returned
+ * you to where opening had put you. These are the single source of truth.
+ */
+/**
+ * Zero centres the focused node. `computeCameraFraming` shifts `camPos` and
+ * `orbitTarget` by the same vector, and OrbitControls centres `orbitTarget` —
+ * so a shift does not reframe anything, it just slides the subject off screen
+ * centre by that distance. (It also runs the wrong way: the parameter is named
+ * `shiftRightAmount` but its basis vector is `cross(dir, worldUp)`, the
+ * opposite of the `cross(worldUp, dir)` three.js uses for screen-right.)
+ *
+ * The department vertex, its internal ring centre and the camera are collinear
+ * along `dir`, so centring the department centres the whole ring with it.
+ */
+const DEPT_VIEW_SHIFT = 0;
+const NODE_VIEW_SHIFT = 0;
+/** Leaf nodes are offset deliberately to clear the action workspace drawer. */
+const LEAF_VIEW_SHIFT = 2.5;
+const LEAF_ZOOM = 4.0;
+/** Fraction of the viewport's shorter half-axis the internal ring should fill. */
+const DEPT_RING_FILL = 0.58;
+/** Floor on the department pull-back so tiny rings cannot pull the camera in. */
+const MIN_DEPT_ZOOM = 8;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +115,12 @@ export interface SceneProps {
   voiceIntensityRef?: MutableRefObject<number>;
   /** When true, project leaves also trigger workspace camera framing (BDT route). */
   bdtWorkspaceLeaves?: boolean;
+  /**
+   * BDT route: hold the hull still while a department is focused, swing the
+   * camera around on an arc instead of cutting a straight line to it, and
+   * unfold the internal nodes in a staggered reveal once the camera lands.
+   */
+  cinematicFocus?: boolean;
 }
 
 function workspaceLeafCheck(node: UInternalNode | null | undefined, bdt: boolean): boolean {
@@ -168,6 +218,7 @@ export function Scene({
   onCoreSurfaceComplete,
   voiceIntensityRef,
   bdtWorkspaceLeaves = false,
+  cinematicFocus = false,
 }: SceneProps) {
   const isDragging = useDragWorkspaceStore(s => s.isDragging);
   const [isPolytopeHovered, setIsPolytopeHovered] = useState(false);
@@ -207,6 +258,109 @@ export function Scene({
   const orbitRef = useRef<any>(null);
   const polytopeGroupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
+
+  /**
+   * Set the instant a focus is requested, before React commits `selectedId`.
+   * The hull must stop spinning on that same frame — every camera target is
+   * computed from the hull's rotation at request time, so any further rotation
+   * would slide the department out from under the camera mid-flight.
+   */
+  const focusFreezeRef = useRef(false);
+
+  /**
+   * Node positions are authored in hull-local space. Most callers can treat
+   * them as world positions because the hull rotation snaps to zero while a
+   * department is open — but the cinematic route holds the hull still, so the
+   * rotation has to be applied for the camera to aim at the right place.
+   */
+  const toWorld = useCallback((v: THREE.Vector3) => (
+    cinematicFocus && polytopeGroupRef.current
+      ? v.clone().applyEuler(polytopeGroupRef.current.rotation)
+      : v.clone()
+  ), [cinematicFocus]);
+
+  /**
+   * Single entry point for camera moves so the cinematic route can swap in an
+   * orbital arc without changing any call site's framing maths.
+   */
+  const moveCamera = useCallback((
+    camPos: THREE.Vector3,
+    orbitTarget: THREE.Vector3,
+    duration: number,
+    ease: string,
+    cinematicDuration: number = duration,
+  ) => {
+    const orbit = orbitRef.current;
+    if (!orbit) return;
+    if (cinematicFocus) {
+      flyCameraOrbital(camera, orbit, camPos, orbitTarget, {
+        duration: cinematicDuration,
+        ease: 'power2.inOut',
+      });
+      return;
+    }
+    gsap.to(orbit.target, {
+      x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration, ease,
+    });
+    gsap.to(camera.position, {
+      x: camPos.x, y: camPos.y, z: camPos.z, duration, ease,
+    });
+  }, [camera, cinematicFocus]);
+
+  /**
+   * Department-level framing. `legacyShift` preserves each call site's original
+   * offset for non-cinematic routes; the cinematic route collapses them all to
+   * one value so open and close agree.
+   */
+  const frameDepartmentView = useCallback((
+    worldPos: THREE.Vector3,
+    internalCount: number,
+    legacyShift: number,
+  ) => {
+    const dir = worldPos.clone().normalize();
+    if (!cinematicFocus) {
+      return computeCameraFraming(
+        worldPos, dir, internalCount,
+        deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE), legacyShift,
+      );
+    }
+    // Pull back far enough for the whole internal ring to sit in frame, rather
+    // than guessing from the node count. `frameNodeView` also sidesteps the
+    // two-children special case, which pulls 25% closer and nudges the orbit
+    // target upward — a department with exactly two nodes ended up inside its
+    // own ring and off centre.
+    const persp = camera as THREE.PerspectiveCamera;
+    const distance = Math.max(MIN_DEPT_ZOOM, ringFitDistance(
+      internalCount,
+      persp.isPerspectiveCamera ? persp.fov : 45,
+      persp.isPerspectiveCamera ? persp.aspect : 16 / 9,
+      DEPT_RING_FILL,
+    ));
+    return frameNodeView(worldPos, dir, distance, DEPT_VIEW_SHIFT);
+  }, [camera, cinematicFocus]);
+
+  /** Internal-node framing, unified the same way. */
+  const frameInternalView = useCallback((
+    worldPos: THREE.Vector3,
+    parentNode: UInternalNode | null,
+    deptInternalCount: number,
+    legacyShift: number,
+    legacyZoom: number,
+  ) => {
+    const isLeaf = isLeafInternalNode(parentNode, bdtWorkspaceLeaves);
+    const dir = worldPos.clone().normalize();
+    if (!cinematicFocus) {
+      return computeCameraFraming(
+        worldPos, dir, parentNode?.children?.length ?? 0, legacyZoom, legacyShift,
+      );
+    }
+    return frameNodeView(
+      worldPos,
+      dir,
+      isLeaf ? LEAF_ZOOM : deptZoomDistance(deptInternalCount, DEPT_ZOOM_DISTANCE),
+      isLeaf ? LEAF_VIEW_SHIFT : NODE_VIEW_SHIFT,
+    );
+  }, [cinematicFocus, bdtWorkspaceLeaves]);
 
   // ── Exit intent (zoom out from overview → parent view e.g. planet roots) ──
   const onExitIntentRef = useRef(onExitIntent);
@@ -319,6 +473,8 @@ export function Scene({
     setSelectedInternalPath([]);
     onPathChange([]);
     cameraHistoryRef.current = [];
+    focusFreezeRef.current = false;
+    cancelOrbitalFlight(camera);
     if (orbitRef.current) {
       gsap.to(orbitRef.current.target, { x: 0, y: 0, z: 0, duration: 1.4, ease: 'power3.inOut' });
     }
@@ -331,6 +487,8 @@ export function Scene({
 
   const runCoreDiveAnimation = () => {
     const token = ++coreAnimTokenRef.current;
+    focusFreezeRef.current = false;
+    cancelOrbitalFlight(camera);
     gsap.killTweensOf(camera.position);
     if (orbitRef.current) gsap.killTweensOf(orbitRef.current.target);
     if (orbitRef.current) {
@@ -365,6 +523,7 @@ export function Scene({
 
   const runCoreSurfaceAnimation = () => {
     const token = ++coreAnimTokenRef.current;
+    cancelOrbitalFlight(camera);
     gsap.killTweensOf(camera.position);
     if (orbitRef.current) gsap.killTweensOf(orbitRef.current.target);
     const saved = savedOverviewRef.current;
@@ -484,35 +643,49 @@ export function Scene({
 
     if (selectedId === null) return;
     if (deptIdx === -1) return;
-    const deptPos = ACTIVE_NODE_POSITIONS[deptIdx];
     const internalCount = ACTIVE_NODES[deptIdx].internalNodes.length;
     const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
 
+    const rawDeptPos = ACTIVE_NODE_POSITIONS[deptIdx];
+    const deptPos = polytopeGroupRef.current
+      ? rawDeptPos.clone().applyEuler(polytopeGroupRef.current.rotation)
+      : rawDeptPos.clone();
+
     if (validatedPath.length === 0) {
       if (orbitRef.current && deptPos) {
-        const dir = deptPos.clone().normalize();
-        const { camPos, orbitTarget } = computeCameraFraming(deptPos, dir, internalCount, zoom);
-        gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.2, ease: 'power2.inOut' });
-        gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.2, ease: 'power2.inOut' });
+        const { camPos, orbitTarget } = frameDepartmentView(deptPos, internalCount, -2.8);
+        focusFreezeRef.current = true;
+        moveCamera(camPos, orbitTarget, 1.35, 'power3.inOut', FOCUS_DEPT_FLIGHT_S);
       }
     } else {
-      const targetPos = findNodePosition(deptPos, ACTIVE_NODES[deptIdx].internalNodes, validatedPath);
+      const rawTargetPos = findNodePosition(rawDeptPos, ACTIVE_NODES[deptIdx].internalNodes, validatedPath);
+      const targetPos = rawTargetPos && polytopeGroupRef.current
+        ? rawTargetPos.clone().applyEuler(polytopeGroupRef.current.rotation)
+        : rawTargetPos;
       const parentNode = findNodeAtPath(ACTIVE_NODES[deptIdx].internalNodes, validatedPath);
       if (targetPos && orbitRef.current) {
-        const dir = targetPos.clone().normalize();
         const isLeaf = isLeafInternalNode(parentNode, bdtWorkspaceLeaves);
-        const shift = isLeaf ? 2.5 : 0.0;
-        const leafZoom = isLeaf ? 4.0 : zoom;
-        const { camPos, orbitTarget } = computeCameraFraming(targetPos, dir, parentNode?.children?.length ?? 0, leafZoom, shift);
-        gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.0, ease: 'power2.inOut' });
-        gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.0, ease: 'power2.inOut' });
+        const { camPos, orbitTarget } = frameInternalView(
+          targetPos, parentNode, internalCount, isLeaf ? 2.5 : -1.5, isLeaf ? 4.0 : zoom,
+        );
+        focusFreezeRef.current = true;
+        moveCamera(camPos, orbitTarget, 1.1, 'power3.inOut', FOCUS_DRILL_FLIGHT_S);
       }
     }
-  }, [selectedInternalPathProps, selectedId, ACTIVE_NODES, ACTIVE_NODE_POSITIONS, camera, selectedInternalPath, bdtWorkspaceLeaves]);
+  }, [selectedInternalPathProps, selectedId, ACTIVE_NODES, ACTIVE_NODE_POSITIONS, camera, selectedInternalPath, bdtWorkspaceLeaves, moveCamera, frameDepartmentView, frameInternalView]);
 
+  const historyDeptRef = useRef<string | null>(null);
   useEffect(() => {
     setBackInfo(null);
-    cameraHistoryRef.current = [];
+    // This effect also runs whenever the path prop changes, and it used to wipe
+    // the camera history every time — so by the time the sidebar back button
+    // fired, the breadcrumb it walks was always empty and back collapsed
+    // straight to the department root. The history belongs to a department, so
+    // only clear it when the department actually changes.
+    if (!cinematicFocus || historyDeptRef.current !== selectedId) {
+      cameraHistoryRef.current = [];
+      historyDeptRef.current = selectedId;
+    }
     if (selectedId === null) {
       // A parent-supplied deep-link path arrives before the scene's department
       // selection. Preserve it until flyToDepartment synchronizes selectedId.
@@ -525,6 +698,10 @@ export function Scene({
   useEffect(() => {
     if (selectedId === null && orbitRef.current) {
       setSelectedInternalPath([]);
+      // Releasing the freeze here lets the hull resume spinning from its current
+      // angle, so pulling back out is continuous rather than a snap to zero.
+      focusFreezeRef.current = false;
+      cancelOrbitalFlight(camera);
       gsap.to(orbitRef.current.target, { x: 0, y: 0, z: 0, duration: 1.5, ease: 'power3.inOut' });
       const currentDir = camera.position.clone().normalize();
       const targetCamPos = currentDir.multiplyScalar(INITIAL_CAMERA_DISTANCE);
@@ -541,14 +718,13 @@ export function Scene({
       setSelectedInternalPath([]);
       onPathChange([]);
       const extNodeIdx = ACTIVE_NODES.findIndex(n => n.id === parentId);
-      const extPos = EXTERNAL_NODE_POSITIONS[extNodeIdx];
+      const extPos = EXTERNAL_NODE_POSITIONS[extNodeIdx]
+        ? toWorld(EXTERNAL_NODE_POSITIONS[extNodeIdx])
+        : null;
       if (orbitRef.current && extPos) {
-        const dir = extPos.clone().normalize();
         const internalCount = ACTIVE_NODES[extNodeIdx].internalNodes.length;
-        const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
-        const { camPos, orbitTarget } = computeCameraFraming(extPos, dir, internalCount, zoom);
-        gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.2, ease: 'power2.inOut' });
-        gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.2, ease: 'power2.inOut' });
+        const { camPos, orbitTarget } = frameDepartmentView(extPos, internalCount, -3.2);
+        moveCamera(camPos, orbitTarget, 1.35, 'power3.inOut', FOCUS_DRILL_FLIGHT_S);
       }
     } else {
       if (orbitRef.current) {
@@ -563,21 +739,30 @@ export function Scene({
       if (orbitRef.current) {
         const extNodeIdx = ACTIVE_NODES.findIndex(n => n.id === parentId);
         const parentNode = findNodeAtPath(ACTIVE_NODES[extNodeIdx].internalNodes, path);
-        const dir = pos.clone().normalize();
+        const worldPos = toWorld(pos);
         const isLeaf = isLeafInternalNode(parentNode, bdtWorkspaceLeaves);
-        const shift = isLeaf ? 2.5 : 0.0;
-        const zoom = isLeaf ? 4.0 : 10;
-        const { camPos, orbitTarget } = computeCameraFraming(pos, dir, parentNode?.children?.length ?? 0, zoom, shift);
-        gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.0, ease: 'power2.inOut' });
-        gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.0, ease: 'power2.inOut' });
+        const { camPos, orbitTarget } = frameInternalView(
+          worldPos,
+          parentNode,
+          ACTIVE_NODES[extNodeIdx].internalNodes.length,
+          isLeaf ? 2.5 : 0.0,
+          isLeaf ? 4.0 : 10,
+        );
+        moveCamera(camPos, orbitTarget, 1.0, 'power2.inOut', FOCUS_DRILL_FLIGHT_S);
       }
     }
   };
 
   // ── Sidebar back-step request ─────────────────────────────────────────────
   useEffect(() => {
-    if (!requestBackStep || requestBackStep === prevBackStepRef.current) return;
+    if (requestBackStep === undefined || requestBackStep === prevBackStepRef.current) return;
+    // The parent resets this counter to 0 on every department change. The old
+    // guard bailed out on 0 *without* recording it, so the ref kept the stale
+    // high-water mark: the next press in a new department produced the same
+    // number it had already seen and was silently dropped.
+    const previousStep = prevBackStepRef.current;
     prevBackStepRef.current = requestBackStep;
+    if (requestBackStep === 0 || requestBackStep < previousStep) return;
 
     const history = cameraHistoryRef.current;
     if (history.length > 0) {
@@ -586,31 +771,18 @@ export function Scene({
       setSelectedInternalPath(prev.path);
       onPathChange(prev.path);
       if (orbitRef.current) {
-        gsap.to(orbitRef.current.target, {
-          x: prev.orbitTarget.x, y: prev.orbitTarget.y, z: prev.orbitTarget.z,
-          duration: 1.0, ease: 'power2.inOut',
-        });
-        gsap.to(camera.position, {
-          x: prev.camPos.x, y: prev.camPos.y, z: prev.camPos.z,
-          duration: 1.0, ease: 'power2.inOut',
-        });
+        moveCamera(prev.camPos, prev.orbitTarget, 1.0, 'power2.inOut', FOCUS_DRILL_FLIGHT_S);
       }
     } else {
       setSelectedInternalPath([]);
       onPathChange([]);
       if (selectedId && orbitRef.current) {
         const extIdx = ACTIVE_NODES.findIndex(n => n.id === selectedId);
-        const extPos = ACTIVE_NODE_POSITIONS[extIdx];
+        const extPos = ACTIVE_NODE_POSITIONS[extIdx] ? toWorld(ACTIVE_NODE_POSITIONS[extIdx]) : null;
         if (extPos) {
-          const dir = extPos.clone().normalize();
           const internalCount = ACTIVE_NODES[extIdx].internalNodes.length;
-          const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
-          const { camPos, orbitTarget } = computeCameraFraming(extPos, dir, internalCount, zoom);
-          gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.2, ease: 'power2.inOut' });
-          gsap.to(camera.position, {
-            x: camPos.x, y: camPos.y, z: camPos.z,
-            duration: 1.2, ease: 'power2.inOut',
-          });
+          const { camPos, orbitTarget } = frameDepartmentView(extPos, internalCount, -3.2);
+          moveCamera(camPos, orbitTarget, 1.35, 'power3.inOut', FOCUS_DEPT_FLIGHT_S);
         }
       }
     }
@@ -671,9 +843,20 @@ export function Scene({
       );
     }
     if (polytopeGroupRef.current) {
-      const isPaused = selectedId !== null || hoveredId !== null || isPolytopeHovered || isDragging || isCoreTransitioning;
-      if (!isPaused) {
+      const isInternalNodeActive = selectedInternalPath.length > 0 || (selectedInternalPathProps?.length ?? 0) > 0;
+      const isDepartmentActive = selectedId !== null;
+      const isUserInteracting = hoveredId !== null || isPolytopeHovered || isDragging || isCoreTransitioning;
+      const isSelected = isDepartmentActive || isInternalNodeActive;
+
+      const isFocusFrozen = cinematicFocus && focusFreezeRef.current;
+      const shouldRotate = !isSelected && !isUserInteracting && !isFocusFrozen;
+      if (shouldRotate) {
         polytopeGroupRef.current.rotation.y += 0.0025;
+      } else if (isSelected && !cinematicFocus) {
+        // Cinematic focus holds the hull wherever it was instead of unwinding
+        // it to zero, which is what made the focused department slide away from
+        // the camera the moment it was opened.
+        polytopeGroupRef.current.rotation.y = THREE.MathUtils.lerp(polytopeGroupRef.current.rotation.y, 0, 0.08);
       }
     }
   });
@@ -766,6 +949,10 @@ export function Scene({
     const dept = ACTIVE_NODES[idx];
     const validatedPath = isValidInternalPath(dept.internalNodes, internalPath) ? internalPath : [];
 
+    // Freeze before the framing maths run so the hull cannot drift underneath
+    // the camera between this click and the commit of `selectedId`.
+    focusFreezeRef.current = true;
+
     setSelectedId(deptId);
     setSelectedInternalPath(validatedPath);
     onPathChange(validatedPath);
@@ -777,12 +964,8 @@ export function Scene({
       : pos;
 
     if (validatedPath.length === 0) {
-      const internalCount = dept.internalNodes.length;
-      const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
-      const dir = worldPos.clone().normalize();
-      const { camPos, orbitTarget } = computeCameraFraming(worldPos, dir, internalCount, zoom);
-      gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.5, ease: 'power3.inOut' });
-      gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.5, ease: 'power3.inOut' });
+      const { camPos, orbitTarget } = frameDepartmentView(worldPos, dept.internalNodes.length, 0);
+      moveCamera(camPos, orbitTarget, 1.5, 'power3.inOut', FOCUS_DEPT_FLIGHT_S);
       return;
     }
 
@@ -792,39 +975,35 @@ export function Scene({
     const targetPos = polytopeGroupRef.current
       ? rawTargetPos.clone().applyEuler(polytopeGroupRef.current.rotation)
       : rawTargetPos;
-    const dir = targetPos.clone().normalize();
     const isLeaf = isLeafInternalNode(parentNode, bdtWorkspaceLeaves);
-    const shift = isLeaf ? 2.5 : 0.0;
-    const zoom = isLeaf ? 4.0 : deptZoomDistance(dept.internalNodes.length, DEPT_ZOOM_DISTANCE);
-    const { camPos, orbitTarget } = computeCameraFraming(
+    const { camPos, orbitTarget } = frameInternalView(
       targetPos,
-      dir,
-      parentNode?.children?.length ?? 0,
-      zoom,
-      shift,
+      parentNode,
+      dept.internalNodes.length,
+      isLeaf ? 2.5 : 0.0,
+      isLeaf ? 4.0 : deptZoomDistance(dept.internalNodes.length, DEPT_ZOOM_DISTANCE),
     );
-    gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.0, ease: 'power2.inOut' });
-    gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.0, ease: 'power2.inOut' });
-  }, [ACTIVE_NODES, ACTIVE_NODE_POSITIONS, camera, onPathChange, setSelectedId, bdtWorkspaceLeaves]);
+    moveCamera(camPos, orbitTarget, 1.0, 'power2.inOut', FOCUS_DRILL_FLIGHT_S);
+  }, [ACTIVE_NODES, ACTIVE_NODE_POSITIONS, onPathChange, setSelectedId, bdtWorkspaceLeaves, moveCamera, frameDepartmentView, frameInternalView]);
 
   const handleNodeClick = (id: string, pos: THREE.Vector3) => {
     if (selectedId === id) {
       setSelectedId(null);
     } else {
+      // Stop the hull on this frame; every target below is derived from its
+      // current rotation and must stay valid for the whole camera swing.
+      focusFreezeRef.current = true;
       setSelectedId(id);
       setSelectedInternalPath([]);
       onPathChange([]);
       if (orbitRef.current) {
         const nodeObj = ACTIVE_NODES.find(n => n.id === id);
         const internalCount = nodeObj?.internalNodes.length ?? 0;
-        const zoom = deptZoomDistance(internalCount, DEPT_ZOOM_DISTANCE);
         const worldPos = polytopeGroupRef.current
           ? pos.clone().applyEuler(polytopeGroupRef.current.rotation)
           : pos;
-        const dir = worldPos.clone().normalize();
-        const { camPos, orbitTarget } = computeCameraFraming(worldPos, dir, internalCount, zoom);
-        gsap.to(orbitRef.current.target, { x: orbitTarget.x, y: orbitTarget.y, z: orbitTarget.z, duration: 1.5, ease: 'power3.inOut' });
-        gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.5, ease: 'power3.inOut' });
+        const { camPos, orbitTarget } = frameDepartmentView(worldPos, internalCount, 0);
+        moveCamera(camPos, orbitTarget, 1.5, 'power3.inOut', FOCUS_DEPT_FLIGHT_S);
       }
     }
   };
@@ -845,6 +1024,7 @@ export function Scene({
     prevSelectRequestRef.current = { id: requestSelectDeptId, nonce };
 
     if (requestSelectDeptId === null) {
+      focusFreezeRef.current = false;
       setSelectedId(null);
       setSelectedInternalPath([]);
       onPathChange([]);
@@ -963,6 +1143,9 @@ export function Scene({
               draftChildNode={draftChild}
               draftMember={draftMember && draftMember.deptId === node.id ? draftMember : null}
               draftMemberScreenPosRef={draftMemberScreenPosRef}
+              entryLeadInMs={cinematicFocus ? FOCUS_REVEAL_LEAD_IN_MS : 0}
+              entryStaggerMs={cinematicFocus ? FOCUS_REVEAL_STAGGER_MS : 0}
+              depthCue={cinematicFocus}
             />
           );
         })}

@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, type MutableRefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
@@ -331,6 +331,8 @@ export function PlasmaSphere({
   depthWrite = true,
   speed = 1,
   halo = true,
+  opacityRef,
+  glowIntensityRef,
 }: {
   color: string;
   radius: number;
@@ -340,6 +342,13 @@ export function PlasmaSphere({
   speed?: number;
   /** Volumetric bloom shell — off for internal branch/action nodes */
   halo?: boolean;
+  /**
+   * Per-frame overrides. Supplying these lets a caller animate the sphere every
+   * frame (e.g. depth cueing as the hull rotates) without re-rendering React.
+   * When omitted the static `opacity` / `glowIntensity` props are used.
+   */
+  opacityRef?: MutableRefObject<number>;
+  glowIntensityRef?: MutableRefObject<number>;
 }) {
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const haloRef = useRef<THREE.ShaderMaterial>(null);
@@ -347,14 +356,16 @@ export function PlasmaSphere({
 
   useFrame((state) => {
     const t = state.clock.elapsedTime * speed;
+    const liveOpacity = opacityRef ? opacityRef.current : opacity;
+    const liveGlow = glowIntensityRef ? glowIntensityRef.current : glowIntensity;
     if (materialRef.current) {
       materialRef.current.uniforms.uTime.value = t;
-      materialRef.current.uniforms.uOpacity.value = opacity;
-      materialRef.current.uniforms.uGlowIntensity.value = glowIntensity;
+      materialRef.current.uniforms.uOpacity.value = liveOpacity;
+      materialRef.current.uniforms.uGlowIntensity.value = liveGlow;
       materialRef.current.uniforms.uColor.value.copy(col);
     }
     if (halo && haloRef.current) {
-      haloRef.current.uniforms.uOpacity.value = opacity * 0.35;
+      haloRef.current.uniforms.uOpacity.value = liveOpacity * 0.35;
       haloRef.current.uniforms.uColor.value.copy(col);
     }
   });

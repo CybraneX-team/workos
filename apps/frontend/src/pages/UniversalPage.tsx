@@ -196,6 +196,17 @@ export default function UniversalPage() {
   const selectionFromScene = useRef(false);
   const sidebarPathAuthority = useRef<string[] | null>(null);
   const sidebarPathAuthorityTimer = useRef<number | null>(null);
+  /**
+   * Drop a pending sidebar path claim so later navigation is not rejected.
+   * Plain function, not a hook — this component has conditional returns above.
+   */
+  const clearSidebarPathAuthority = () => {
+    sidebarPathAuthority.current = null;
+    if (sidebarPathAuthorityTimer.current !== null) {
+      window.clearTimeout(sidebarPathAuthorityTimer.current);
+      sidebarPathAuthorityTimer.current = null;
+    }
+  };
 
   // Camera reset trigger — increment to fly back to overview
   const polytopeResetTrigger = 0;
@@ -406,6 +417,12 @@ export default function UniversalPage() {
     if (id === null) {
       setInternalPath([]);
       setRequestSelectDeptId(null);
+      // The nonce must move even when the id does not. After the scene selects a
+      // department on its own (a click on the hull), requestSelectDeptId is
+      // already null here, so setting it to null again is a no-op React bails
+      // out of — and the scene never hears the deselect. Bumping the nonce makes
+      // the request unambiguous.
+      setSelectDeptNonce(n => n + 1);
       setInternalBackStep(0);
     } else {
       if (internalPathOverride) {
@@ -525,6 +542,7 @@ export default function UniversalPage() {
             onCoreSurfaceComplete={handleCoreSurfaceComplete}
             voiceIntensityRef={intensityRef}
             bdtWorkspaceLeaves
+            cinematicFocus
           />
         )}
       </div>
@@ -549,10 +567,16 @@ export default function UniversalPage() {
           <PolytopeSidePanel
             departments={displayDepartments}
             selectedDeptId={resolvedSelectedDeptId}
-            onDeptSelect={(id) => handleSidebarDeptSelect(id)}
+            onDeptSelect={(id) => { clearSidebarPathAuthority(); handleSidebarDeptSelect(id); }}
             selectedInternalPath={resolvedInternalPath}
             onRefreshProductPortfolio={refreshProductPortfolio}
-            onInternalBack={() => setInternalBackStep(c => c + 1)}
+            onInternalBack={() => {
+              // A back press supersedes any pending sidebar pick. Without this the
+              // authority guard rejects the scene's `onPathChange([])` for up to
+              // two seconds after picking a node, so back appeared to do nothing.
+              clearSidebarPathAuthority();
+              setInternalBackStep(c => c + 1);
+            }}
             onNodeSelect={(path) => {
               const authoritativePath = [...path];
               sidebarPathAuthority.current = authoritativePath;

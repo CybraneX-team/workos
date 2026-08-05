@@ -49,7 +49,16 @@ export function UniverseSidePanel({
   const listKey = `${currentLevel}-${navPath.map(e => e.id).join('-')}`;
 
   let sectionLabel = 'GALAXIES';
-  let items: { id: string; name: string; color?: string; meta?: string; type?: string; onClick?: () => void }[] = [];
+  let items: {
+    id: string;
+    name: string;
+    color?: string;
+    meta?: string;
+    type?: string;
+    referenceCompanyId?: string;
+    classification?: 'competitor' | 'customer' | 'collaborator' | null;
+    onClick?: () => void;
+  }[] = [];
   let onItemClick = (_id: string) => {};
 
   const isSearchActive = searchQuery.trim().length > 0;
@@ -86,6 +95,8 @@ export function UniverseSidePanel({
               industryId: ind.id,
               subdomainId: sub.id,
               companyId: co.id,
+              referenceCompanyId: co.referenceCompanyId,
+              classification: co.classification,
             });
           });
         });
@@ -104,6 +115,8 @@ export function UniverseSidePanel({
       color: r.color,
       meta: r.meta,
       type: r.type,
+      referenceCompanyId: (r as any).referenceCompanyId,
+      classification: (r as any).classification,
       onClick: () => {
         if (r.type === 'industry') controllerRef.current?.routeTo('industry', r.industryId!);
         else if (r.type === 'subdomain') {
@@ -142,6 +155,8 @@ export function UniverseSidePanel({
       color: industry.color,
       meta: co.employees ? `${co.employees.toLocaleString()} emp` : (co.stage ?? ''),
       type: 'company',
+      referenceCompanyId: co.referenceCompanyId,
+      classification: co.classification,
     }));
     onItemClick = id => controllerRef.current?.zoomToCompany(industry.id, subdomain.id, id);
   }
@@ -212,6 +227,8 @@ export function UniverseSidePanel({
                   companyId={item.id} 
                   companyName={item.name} 
                   industryColor={item.color} 
+                  referenceCompanyId={item.referenceCompanyId}
+                  activeClassification={item.classification}
                 />
               </div>
             )}
