@@ -147,8 +147,8 @@ TOKEN=$(az acr login --name startupdigitaltwin123 --expose-token --query accessT
 #    docker compose -f pwd.yml up -d --no-deps backend frontend queue-long queue-short \
 #      scheduler websocket db redis-cache redis-queue
 #    docker compose -f pwd.yml exec -T backend bash -c 'ls -1 apps > sites/apps.txt'
-#    for each existing site: docker compose -f pwd.yml exec -T backend bench --site <site> migrate
 #    for each existing site: docker compose -f pwd.yml exec -T backend bench --site <site> install-app workos_frappe_integration
+#    for each existing site: docker compose -f pwd.yml exec -T backend bench --site <site> migrate
 #    for each existing site: docker compose -f pwd.yml exec -T backend bench --site <site> clear-cache
 ```
 
