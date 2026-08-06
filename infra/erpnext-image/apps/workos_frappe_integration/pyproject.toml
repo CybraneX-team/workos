@@ -1,6 +1,6 @@
 [project]
 name = "workos_frappe_integration"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cybranex-owned ERPNext and Frappe CRM integration hooks"
 readme = "README.md"
 requires-python = ">=3.10"

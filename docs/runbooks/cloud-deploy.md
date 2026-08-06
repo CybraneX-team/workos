@@ -101,7 +101,7 @@ first-party integration app.
 
 ```bash
 az acr build --registry startupdigitaltwin123 \
-  --image erpnext-crm:v16.27.1-erpnext16.28.0-crm1.79.0-workos1 \
+  --image erpnext-crm:v16.27.1-erpnext16.28.0-crm1.79.0-workos2 \
   --file infra/erpnext-image/Containerfile infra/erpnext-image
 ```
 
