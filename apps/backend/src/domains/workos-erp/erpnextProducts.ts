@@ -80,7 +80,9 @@ async function portfolioFor(companyId: string): Promise<CatalogPortfolio> {
   const reads = await Promise.allSettled([
     getErpNextRecords(creds, 'Item Group', ['item_group_name', 'parent_item_group', 'modified'], 500, [], 1000),
     getErpNextRecords(creds, 'Item', ['item_code', 'item_name', 'item_group', 'disabled', 'modified'], 1000, [], 1000),
-    getErpNextRecords(creds, 'Item Price', ['item_code', 'price_list_rate'], 1000, [], 2000),
+    // The control-plane contract caps an individual page at 1,000 rows. Keep
+    // this at the cap: `getErpNextRecords` paginates up to the preceding limit.
+    getErpNextRecords(creds, 'Item Price', ['item_code', 'price_list_rate'], 1000, [], 1000),
   ]);
   const warnings = reads.flatMap((result, index) => result.status === 'rejected' ? [`${['Item Group', 'Item', 'Item Price'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`] : []);
   const rows = reads.map(result => result.status === 'fulfilled' ? result.value : []) as [ErpNextGenericRecord[], ErpNextGenericRecord[], ErpNextGenericRecord[]];

@@ -153,6 +153,56 @@ export async function verifySetup(creds: TenantCredentials, expectedCompanyName:
   }
 }
 
+/**
+ * Activate the two same-site settings required for Frappe CRM to hand a won
+ * deal to ERPNext. Installing both apps is not sufficient: CRM owns the deal
+ * action and product bridge, while ERPNext separately refuses Customer writes
+ * until its CRM Settings switch is enabled.
+ *
+ * This deliberately uses the standard Won status created by CRM's setup hook.
+ * Failing loudly when that fixture is absent is safer than silently wiring
+ * customer creation to an arbitrary pipeline status.
+ */
+export async function activateSameSiteCrmIntegration(
+  creds: TenantCredentials,
+  companyName: string,
+): Promise<void> {
+  const won = await request<{ data?: { name?: string } }>(
+    creds,
+    'GET',
+    '/api/resource/CRM%20Deal%20Status/Won',
+  );
+  if (won.data?.name !== 'Won') throw new Error('crm_won_deal_status_missing');
+
+  await request(creds, 'PUT', '/api/resource/CRM%20Settings/CRM%20Settings', {
+    enable_frappe_crm_data_synchronization: 1,
+  });
+  await request(creds, 'PUT', '/api/resource/ERPNext%20CRM%20Settings/ERPNext%20CRM%20Settings', {
+    enabled: 1,
+    sync_products: 1,
+    is_erpnext_in_different_site: 0,
+    erpnext_company: companyName,
+    create_customer_on_status_change: 1,
+    deal_status: 'Won',
+  });
+
+  const [erpSettings, crmSettings, quotationScript] = await Promise.all([
+    request<{ data?: Record<string, unknown> }>(creds, 'GET', '/api/resource/ERPNext%20CRM%20Settings/ERPNext%20CRM%20Settings'),
+    request<{ data?: Record<string, unknown> }>(creds, 'GET', '/api/resource/CRM%20Settings/CRM%20Settings'),
+    request<{ data?: { enabled?: number | boolean } }>(creds, 'GET', '/api/resource/CRM%20Form%20Script/Create%20Quotation%20from%20CRM%20Deal'),
+  ]);
+  if (
+    !erpSettings.data?.enabled
+    || erpSettings.data.erpnext_company !== companyName
+    || erpSettings.data.deal_status !== 'Won'
+    || !erpSettings.data.create_customer_on_status_change
+    || !crmSettings.data?.enable_frappe_crm_data_synchronization
+    || !quotationScript.data?.enabled
+  ) {
+    throw new Error('crm_erpnext_integration_verification_failed');
+  }
+}
+
 export async function applyBranding(creds: TenantCredentials): Promise<void> {
   const updates: Array<[string, string, Record<string, unknown>]> = [
     ['Desktop Icon', 'ERPNext', { label: 'WorkOS' }],

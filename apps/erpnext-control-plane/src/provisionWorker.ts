@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { env } from './config.js';
 import { pool } from './db.js';
 import { encrypt } from './crypto.js';
-import { applyBranding, completeSetup, verifySetup, type TenantCredentials } from './frappe/client.js';
+import { activateSameSiteCrmIntegration, applyBranding, completeSetup, verifySetup, type TenantCredentials } from './frappe/client.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -69,13 +69,27 @@ function commandFailure(stage: ProvisioningStage, error: unknown): ProvisioningF
   return new ProvisioningFailure(details, true, !(stage === 'create_site' && failure.code === 75));
 }
 
-async function runLocalCompose(stage: Extract<ProvisioningStage, 'inspect_sites' | 'create_site' | 'generate_admin_keys'>, args: string[], timeout: number) {
+function logProvisionEvent(event: string, job: Job, fields: Record<string, string | number | boolean | null | undefined> = {}) {
+  console.info(`[erpnext-worker] ${event}`, {
+    jobId: job.id,
+    companyId: job.company_id,
+    attempt: job.attempts,
+    ...fields,
+  });
+}
+
+async function runLocalCompose(job: Job, stage: Extract<ProvisioningStage, 'inspect_sites' | 'create_site' | 'generate_admin_keys'>, args: string[], timeout: number) {
+  const startedAt = Date.now();
+  logProvisionEvent('local_command_started', job, { stage, timeoutMs: timeout });
   try {
-    return await execFileAsync('docker', ['compose', '-f', 'pwd.yml', 'exec', '-T', 'backend', ...args], {
+    const result = await execFileAsync('docker', ['compose', '-f', 'pwd.yml', 'exec', '-T', 'backend', ...args], {
       cwd: env.FRAPPE_DOCKER_DIR,
       timeout,
     });
+    logProvisionEvent('local_command_completed', job, { stage, elapsedMs: Date.now() - startedAt });
+    return result;
   } catch (error) {
+    logProvisionEvent('local_command_failed', job, { stage, elapsedMs: Date.now() - startedAt, error: boundedDiagnostic(error) });
     throw commandFailure(stage, error);
   }
 }
@@ -101,8 +115,9 @@ function isoDate(value: Date | string | null): string | null {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 }
 
-async function localProvision(slug: string) {
+async function localProvision(job: Job) {
   if (!env.FRAPPE_DOCKER_DIR) throw new Error('frappe_docker_dir_not_configured');
+  const slug = job.company_slug;
   const siteName = `erp-${slug}.localhost`;
   // The lock and timeout must live *inside* the backend container. Killing the
   // outer docker CLI alone leaves bench running and causes later attempts to
@@ -114,10 +129,10 @@ flock -n -E 75 "$lock" sh -c '
   set -eu
   site="$1"; root="$2"; admin="$3"
   if bench list-sites | grep -Fqx "$site"; then exit 0; fi
-  exec timeout --signal=TERM --kill-after=30s 25m bench new-site "$site" --mariadb-user-host-login-scope=% --mariadb-root-password "$root" --admin-password "$admin" --install-app erpnext --install-app crm
+  exec timeout --signal=TERM --kill-after=30s 25m bench new-site "$site" --mariadb-user-host-login-scope=% --mariadb-root-password "$root" --admin-password "$admin" --install-app erpnext --install-app crm --install-app workos_frappe_integration
 ' workos-site-create "$site" "$root" "$admin"`;
   try {
-    await runLocalCompose('create_site', [
+    await runLocalCompose(job, 'create_site', [
       'sh', '-lc', createSiteScript,
       'workos-site-create', `/tmp/workos-site-${siteName}.lock`, siteName,
       env.FRAPPE_DB_ROOT_PASSWORD ?? 'admin', env.FRAPPE_SITE_ADMIN_PASSWORD ?? 'admin',
@@ -128,11 +143,11 @@ flock -n -E 75 "$lock" sh -c '
     }
     throw error;
   }
-  const { stdout: installedApps } = await runLocalCompose('inspect_sites', ['bench', '--site', siteName, 'list-apps', '--format', 'json'], 60_000);
-  if (!['frappe', 'erpnext', 'crm'].every(app => installedApps.includes(`"${app}"`))) {
+  const { stdout: installedApps } = await runLocalCompose(job, 'inspect_sites', ['bench', '--site', siteName, 'list-apps', '--format', 'json'], 60_000);
+  if (!['frappe', 'erpnext', 'crm', 'workos_frappe_integration'].every(app => installedApps.includes(`"${app}"`))) {
     throw new ProvisioningFailure('stage=create_site; error=site_missing_required_apps');
   }
-  const { stdout } = await runLocalCompose('generate_admin_keys', ['bench', '--site', siteName,
+  const { stdout } = await runLocalCompose(job, 'generate_admin_keys', ['bench', '--site', siteName,
     'execute', 'frappe.core.doctype.user.user.generate_keys', '--kwargs', JSON.stringify({ user: 'Administrator' })],
   60_000);
   let keys: { api_key: string; api_secret: string };
@@ -149,17 +164,27 @@ flock -n -E 75 "$lock" sh -c '
   return { siteName, apiUrl: url, deskUrl: url, apiKey: keys.api_key, apiSecret: keys.api_secret };
 }
 
-async function remoteProvision(slug: string) {
+async function remoteProvision(job: Job) {
+  const slug = job.company_slug;
   const provisionUrl = env.ERPNEXT_PROVISION_URL;
   const provisionSecret = env.ERPNEXT_PROVISION_SECRET;
   if (!provisionUrl || !provisionSecret) throw new Error('remote_provisioning_not_configured');
-  const response = await atStage('remote_provision', () => fetch(`${provisionUrl.replace(/\/$/, '')}/provision`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provisionSecret}` },
-    // The remote shim bounds site creation inside its backend container at 25
-    // minutes. The caller must wait longer than that bound or it recreates the
-    // old orphan-process failure by abandoning a still-live remote request.
-    body: JSON.stringify({ slug }), signal: AbortSignal.timeout(27 * 60_000),
-  }));
+  const startedAt = Date.now();
+  logProvisionEvent('remote_request_started', job, { stage: 'remote_provision', timeoutMs: 27 * 60_000 });
+  let response: Response;
+  try {
+    response = await atStage('remote_provision', () => fetch(`${provisionUrl.replace(/\/$/, '')}/provision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provisionSecret}` },
+      // The remote shim bounds site creation inside its backend container at 25
+      // minutes. The caller must wait longer than that bound or it recreates the
+      // old orphan-process failure by abandoning a still-live remote request.
+      body: JSON.stringify({ slug }), signal: AbortSignal.timeout(27 * 60_000),
+    }));
+    logProvisionEvent('remote_request_completed', job, { stage: 'remote_provision', httpStatus: response.status, elapsedMs: Date.now() - startedAt });
+  } catch (error) {
+    logProvisionEvent('remote_request_failed', job, { stage: 'remote_provision', elapsedMs: Date.now() - startedAt, error: boundedDiagnostic(error) });
+    throw error;
+  }
   let body: { siteName?: string; apiKey?: string; apiSecret?: string; error?: string };
   try {
     body = await response.json() as { siteName?: string; apiKey?: string; apiSecret?: string };
@@ -185,6 +210,20 @@ async function pick(): Promise<Job | null> {
 async function setStage(job: Job, stage: ProvisioningStage): Promise<void> {
   await pool.query(`update erpnext.provision_jobs set current_stage=$3,stage_started_at=now(),heartbeat_at=now(),updated_at=now()
     where id=$1 and locked_by=$2 and status='running'`, [job.id, env.WORKER_ID, stage]);
+  logProvisionEvent('stage_started', job, { stage });
+}
+
+async function runProvisionStage<T>(job: Job, stage: ProvisioningStage, operation: () => Promise<T>): Promise<T> {
+  await setStage(job, stage);
+  const startedAt = Date.now();
+  try {
+    const result = await operation();
+    logProvisionEvent('stage_completed', job, { stage, elapsedMs: Date.now() - startedAt });
+    return result;
+  } catch (error) {
+    logProvisionEvent('stage_failed', job, { stage, elapsedMs: Date.now() - startedAt, error: boundedDiagnostic(error) });
+    throw error;
+  }
 }
 
 function startLeaseHeartbeat(job: Job): () => void {
@@ -199,7 +238,10 @@ function startLeaseHeartbeat(job: Job): () => void {
 
 async function run(job: Job) {
   const stopHeartbeat = startLeaseHeartbeat(job);
+  const startedAt = Date.now();
+  let activeStage: ProvisioningStage | 'claimed' = 'claimed';
   await pool.query(`insert into erpnext.tenants(environment,company_id,status) values($1,$2,'provisioning') on conflict(environment,company_id) do update set status='provisioning',last_error=null,updated_at=now()`, [env.ERPNEXT_ENV, job.company_id]);
+  logProvisionEvent('provisioning_started', job, { environment: env.ERPNEXT_ENV });
   try {
     const fyStartDate = isoDate(job.fy_start_date);
     const fyEndDate = isoDate(job.fy_end_date);
@@ -214,29 +256,33 @@ async function run(job: Job) {
       throw error;
     }
 
-    await setStage(job, env.ERPNEXT_ENV === 'local' ? 'create_site' : 'remote_provision');
-    const provisioned = env.ERPNEXT_ENV === 'local' ? await localProvision(job.company_slug) : await remoteProvision(job.company_slug);
+    activeStage = env.ERPNEXT_ENV === 'local' ? 'create_site' : 'remote_provision';
+    const provisioned = await runProvisionStage(job, activeStage, () => env.ERPNEXT_ENV === 'local' ? localProvision(job) : remoteProvision(job));
     const creds: TenantCredentials = provisioned;
     // Setup before branding: the wizard writes Website Settings and workspaces, so
     // branding applied first would be overwritten. Both precede status='ready', so
     // 'ready' means the tenant is actually usable — resolveErpNextCreds() and the
     // BDT's erpConnected gate key off that.
-    await setStage(job, 'complete_setup');
-    await atStage('complete_setup', () => completeSetup(creds, {
+    activeStage = 'complete_setup';
+    await runProvisionStage(job, activeStage, async () => {
+      await atStage('complete_setup', () => completeSetup(creds, {
       companyName, country, currency,
       fyStartDate, fyEndDate, timezone: job.timezone,
-    }));
-    await atStage('complete_setup', () => verifySetup(creds, companyName));
-    await setStage(job, 'apply_branding');
-    await atStage('apply_branding', () => applyBranding(creds));
+      }));
+      await atStage('complete_setup', () => verifySetup(creds, companyName));
+      await atStage('complete_setup', () => activateSameSiteCrmIntegration(creds, companyName));
+    });
+    activeStage = 'apply_branding';
+    await runProvisionStage(job, activeStage, () => atStage('apply_branding', () => applyBranding(creds)));
     await pool.query(`update erpnext.tenants set status='ready',site_name=$3,api_url=$4,desk_url=$5,api_key_enc=$6,api_secret_enc=$7,last_error=null,updated_at=now() where environment=$1 and company_id=$2`,
       [env.ERPNEXT_ENV, job.company_id, provisioned.siteName, provisioned.apiUrl, provisioned.deskUrl, encrypt(provisioned.apiKey), encrypt(provisioned.apiSecret)]);
     await pool.query(`update erpnext.provision_jobs set status='complete',current_stage='complete',completed_at=now(),locked_by=null,locked_until=null,last_error=null,heartbeat_at=now(),updated_at=now() where id=$1`, [job.id]);
+    logProvisionEvent('provisioning_completed', job, { elapsedMs: Date.now() - startedAt });
   } catch (error) {
     const message = error instanceof ProvisioningFailure
       ? error.diagnostic
       : `stage=unknown; error=${boundedDiagnostic(error instanceof Error ? error.message : error)}`;
-    console.error('[erpnext-worker] provisioning failed', { companyId: job.company_id, attempt: job.attempts, error: message });
+    console.error('[erpnext-worker] provisioning failed', { jobId: job.id, companyId: job.company_id, attempt: job.attempts, stage: activeStage, elapsedMs: Date.now() - startedAt, error: message });
     // A job whose setup args are missing can never succeed by being retried, so
     // honour an explicit retryable=false the way the backend outbox does.
     const provisionFailure = error as ProvisioningFailure;

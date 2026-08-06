@@ -22,9 +22,23 @@ const ONDEMAND_DOMAIN_RE = /^([a-z0-9-]{1,63})\.erp\.os\.cybranex\.com$/;
 function parseGenerateKeysOutput(stdout) {
   const parsed = JSON.parse(stdout.trim());
   if (!parsed.api_key || !parsed.api_secret) {
-    throw new Error(`generate_keys_unexpected_output:${stdout.slice(0, 200)}`);
+    throw new Error(`generate_keys_unexpected_output; stdout_length=${stdout.length}`);
   }
   return { apiKey: parsed.api_key, apiSecret: parsed.api_secret };
+}
+
+function safeDiagnostic(value, maxLength = 360) {
+  let text = String(value ?? '');
+  for (const secret of [PROVISION_SECRET, FRAPPE_DB_ROOT_PASSWORD, FRAPPE_SITE_ADMIN_PASSWORD].filter(Boolean)) {
+    text = text.replaceAll(secret, '[redacted]');
+  }
+  text = text
+    .replace(/(Authorization:\s*Bearer\s+)[^\s]+/gi, '$1[redacted]')
+    .replace(/(--(?:admin-password|mariadb-root-password)\s+)[^\s]+/gi, '$1[redacted]')
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
 
 async function siteExists(siteName) {
@@ -34,7 +48,8 @@ async function siteExists(siteName) {
       'test', '-d', `sites/${siteName}`,
     ], { cwd: FRAPPE_DOCKER_DIR, timeout: 10_000 });
     return true;
-  } catch {
+  } catch (error) {
+    if (error && error.code !== 1) console.warn('[provision-shim] site_exists_check_failed', { siteName, error: safeDiagnostic(error) });
     return false;
   }
 }
@@ -45,8 +60,9 @@ async function siteHasRequiredApps(siteName) {
       'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
       'bench', '--site', siteName, 'list-apps', '--format', 'json',
     ], { cwd: FRAPPE_DOCKER_DIR, timeout: 60_000 });
-    return ['frappe', 'erpnext', 'crm'].every((app) => stdout.includes(`"${app}"`));
-  } catch {
+    return ['frappe', 'erpnext', 'crm', 'workos_frappe_integration'].every((app) => stdout.includes(`"${app}"`));
+  } catch (error) {
+    console.warn('[provision-shim] required_apps_check_failed', { siteName, error: safeDiagnostic(error) });
     return false;
   }
 }
@@ -61,7 +77,7 @@ flock -n -E 75 "$lock" sh -c '
   set -eu
   site="$1"; root="$2"; admin="$3"
   if bench list-sites | grep -Fqx "$site"; then exit 0; fi
-  exec timeout --signal=TERM --kill-after=30s 25m bench new-site "$site" --mariadb-user-host-login-scope=% --mariadb-root-password "$root" --admin-password "$admin" --install-app erpnext --install-app crm
+  exec timeout --signal=TERM --kill-after=30s 25m bench new-site "$site" --mariadb-user-host-login-scope=% --mariadb-root-password "$root" --admin-password "$admin" --install-app erpnext --install-app crm --install-app workos_frappe_integration
 ' workos-site-create "$site" "$root" "$admin"`;
   return execFileAsync('docker', [
     'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
@@ -101,15 +117,25 @@ app.post('/provision', async (req, res) => {
     return res.status(400).json({ error: 'invalid_slug' });
   }
   const siteName = `erp-${slug}.localhost`;
+  const startedAt = Date.now();
+  console.info('[provision-shim] provision_started', { siteName });
 
   try {
-    if (!(await siteExists(siteName))) {
+    const exists = await siteExists(siteName);
+    console.info('[provision-shim] site_checked', { siteName, exists });
+    if (!exists) {
+      const createStartedAt = Date.now();
+      console.info('[provision-shim] create_site_started', { siteName });
       await createSite(siteName);
+      console.info('[provision-shim] create_site_completed', { siteName, elapsedMs: Date.now() - createStartedAt });
     }
     if (!(await siteHasRequiredApps(siteName))) {
+      console.warn('[provision-shim] required_apps_missing', { siteName, elapsedMs: Date.now() - startedAt });
       return res.status(409).json({ error: 'site_incomplete', message: 'Site exists but ERPNext/CRM installation is incomplete.' });
     }
+    console.info('[provision-shim] required_apps_verified', { siteName, elapsedMs: Date.now() - startedAt });
 
+    const keysStartedAt = Date.now();
     const { stdout } = await execFileAsync('docker', [
       'compose', '-f', 'pwd.yml', 'exec', '-T', BACKEND_SERVICE,
       'bench', '--site', siteName, 'execute',
@@ -118,13 +144,16 @@ app.post('/provision', async (req, res) => {
     ], { cwd: FRAPPE_DOCKER_DIR, timeout: 60_000 });
 
     const { apiKey, apiSecret } = parseGenerateKeysOutput(stdout);
+    console.info('[provision-shim] admin_keys_generated', { siteName, elapsedMs: Date.now() - keysStartedAt });
+    console.info('[provision-shim] provision_completed', { siteName, elapsedMs: Date.now() - startedAt });
     res.json({ siteName, apiKey, apiSecret });
   } catch (err) {
-    console.error('provision failed', err);
+    const diagnostic = safeDiagnostic(err?.message || err);
+    console.error('[provision-shim] provision_failed', { siteName, elapsedMs: Date.now() - startedAt, error: diagnostic });
     if (err && err.code === 75) {
       return res.status(409).json({ error: 'provision_in_progress', message: 'Another site creation process holds this tenant lock.' });
     }
-    res.status(500).json({ error: 'provision_failed', message: String(err.message || err).slice(0, 500) });
+    res.status(500).json({ error: 'provision_failed', message: diagnostic });
   }
 });
 

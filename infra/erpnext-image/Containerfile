@@ -1,12 +1,13 @@
-# Custom Frappe image: ERPNext + Frappe CRM baked into the image layer.
+# Custom Frappe image: ERPNext + Frappe CRM + Cybranex integration app baked
+# into the image layer.
 #
 # Why this exists: Frappe apps live in the image's filesystem, NOT in the
-# `sites`/`logs` volumes. A runtime `bench get-app crm` inside a running
+# `sites`/`logs` volumes. A runtime app installation inside a running
 # container is lost on the next `docker compose up`. Both the local stack
 # (infra/erpnext/pwd.yml, a frappe_docker clone) and the production VM
 # (/home/erpadmin/frappe_docker/pwd.yml on erpnext-vm) run the stock
-# `frappe/erpnext` image, so `crm` must be baked in here and both stacks
-# repointed at the result.
+# `frappe/erpnext` image, so `crm` and `workos_frappe_integration` must be
+# baked in here and both stacks repointed at the result.
 #
 # Derived from frappe_docker's `images/layered/Containerfile`, with two
 # deliberate changes:
@@ -27,18 +28,22 @@
 #
 # Build (amd64, in ACR — the VM is amd64 and local dev machines are arm64):
 #   az acr build --registry startupdigitaltwin123 \
-#     --image erpnext-crm:v16.26.1-crm1 \
+#     --image erpnext-crm:v16.27.1-erpnext16.28.0-crm1.79.0-workos1 \
 #     --file Containerfile infra/erpnext-image
 #
-# Keep ERPNEXT_VERSION in sync with the erpnext branch pinned in apps.json.
+# Keep the commit checks and semantic image tag in sync with the release tags in
+# apps.json whenever an upstream app is intentionally upgraded.
 
-ARG FRAPPE_BRANCH=version-16
-ARG FRAPPE_IMAGE_PREFIX=frappe
-ARG ERPNEXT_VERSION=v16.26.1
+ARG FRAPPE_BRANCH=v16.27.1
+# These are linux/amd64 manifests, the architecture used by the ERPNext VM and
+# ACR build. Updating an upstream base must be an intentional source change.
+ARG FRAPPE_BUILD_IMAGE=frappe/build@sha256:042176fb8d2ab72159089cf0ac5c8a99ec48a1b5069d2330e74045f5c85daa00
+ARG FRAPPE_BASE_IMAGE=frappe/base@sha256:aeb47f360624c7f4fa2592f188b35cf5ebefe720fdf80d67203fdc5e757227dc
+ARG ERPNEXT_UPSTREAM_IMAGE=frappe/erpnext@sha256:d076aa3f472f2dbda2d4ab4c6f02429765ec33a3f07741eff2e87a74787dc135
 
-FROM ${FRAPPE_IMAGE_PREFIX}/build:${FRAPPE_BRANCH} AS builder
+FROM ${FRAPPE_BUILD_IMAGE} AS builder
 
-ARG FRAPPE_BRANCH=version-16
+ARG FRAPPE_BRANCH=v16.27.1
 ARG FRAPPE_PATH=https://github.com/frappe/frappe
 # Change CACHE_BUST to force a rebuild when app branches have moved but no
 # build input in this directory has changed.
@@ -47,6 +52,7 @@ ARG CACHE_BUST=""
 USER frappe
 
 COPY --chown=frappe:frappe apps.json /opt/frappe/apps.json
+COPY --chown=frappe:frappe apps/workos_frappe_integration /opt/frappe/workos_frappe_integration
 
 RUN : "${CACHE_BUST}" && \
   bench init \
@@ -58,14 +64,21 @@ RUN : "${CACHE_BUST}" && \
     --skip-redis-config-generation \
     --verbose \
     /home/frappe/frappe-bench && \
+  test "$(git -C apps/frappe rev-parse HEAD)" = "f33ac3f00ab818e21b25ddbec93efb653fd9aa1b" && \
+  test "$(git -C apps/erpnext rev-parse HEAD)" = "de591661b9ba0bd3f62ac25b99b5c85c723515f6" && \
+  test "$(git -C apps/crm rev-parse HEAD)" = "301228c6910c8ace45d916a79cf8831704dd387e" && \
+  cd /home/frappe/frappe-bench && \
+  cp -R /opt/frappe/workos_frappe_integration apps/workos_frappe_integration && \
+  ./env/bin/pip install --no-deps -e apps/workos_frappe_integration && \
+  printf '%s\\n' frappe erpnext crm workos_frappe_integration > sites/apps.txt && \
   cd /home/frappe/frappe-bench && \
   echo "{}" > sites/common_site_config.json && \
   find apps -mindepth 1 -path "*/.git" | xargs rm -fr
 
 # Only used as a source for the upstream entrypoint/start scripts.
-FROM ${FRAPPE_IMAGE_PREFIX}/erpnext:${ERPNEXT_VERSION} AS upstream
+FROM ${ERPNEXT_UPSTREAM_IMAGE} AS upstream
 
-FROM ${FRAPPE_IMAGE_PREFIX}/base:${FRAPPE_BRANCH} AS backend
+FROM ${FRAPPE_BASE_IMAGE} AS backend
 
 USER frappe
 

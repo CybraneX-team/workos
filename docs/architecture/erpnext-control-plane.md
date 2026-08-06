@@ -4,7 +4,7 @@ Status: implemented for local development **and deployed to Azure** (2026-07-20)
 The cloud deployment is documented in `../runbooks/cloud-deploy.md`; this document
 describes the architecture and boundaries, which are unchanged by that deployment.
 
-Last verified: 2026-07-29 (fresh local tenant provisioning, setup verification, SSO, and user reconciliation).
+Last verified: 2026-08-06 (provisioning observability code typechecked; fresh local tenant provisioning, setup verification, SSO, and user reconciliation last exercised 2026-07-29).
 
 ## Purpose
 
@@ -46,7 +46,7 @@ The only shared ERP package is `@cybranex/erpnext-contracts`, because both appli
 1. Company creation in `apps/backend/src/routes/companies.ts` enqueues three coalesced commands: `provision_tenant`, `configure_sso`, and `reconcile_users`.
 2. The WorkOS outbox worker claims only rows matching `ERPNEXT_TARGET_ENV`.
 3. The control-plane persists a provision job and tenant state before returning `202`.
-4. Its worker records the active stage and heartbeat, creates or reuses the Frappe site under a per-site container lock, verifies installed apps, generates Administrator API keys, **completes and verifies ERPNext's setup wizard**, applies branding, encrypts credentials, and marks the tenant ready.
+4. Its worker records the active stage and heartbeat, creates or reuses the Frappe site under a per-site container lock, verifies installed apps, generates Administrator API keys, **completes and verifies ERPNext's setup wizard and activates the same-site CRM↔ERPNext hand-off**, applies branding, encrypts credentials, and marks the tenant ready.
 5. SSO and user commands may initially retry with `tenant_not_ready`; they converge after the tenant reaches `ready`.
 
 On a provisioning failure, the worker stores a bounded, redacted diagnostic in both
@@ -57,6 +57,12 @@ stderr; generated credentials and configured secret values are never persisted.
 The safe tenant-status response exposes `provisioningStage` only while a provision job is
 active. The Settings page polls its authenticated backend status endpoint every five seconds
 while the tenant is provisioning; it never receives credentials or raw diagnostics.
+
+The worker emits structured lifecycle events for claim, stage start/completion/failure,
+safe local-command/remote-request duration, and final completion/failure. The checked-in
+remote-shim source emits the equivalent site lifecycle events after it is deployed to the
+VM. Neither side logs command arguments, passwords, bearer tokens, generated API keys,
+or raw command output.
 
 Both local provisioning and the checked-in remote-shim source use a per-site container lock,
 an inner `timeout`, an installed-app verification, and only then generate credentials. The
@@ -94,6 +100,18 @@ The company's locale facts (`companyName`, `country`, `currency`, fiscal-year da
 (migration `002`) because the worker claims the job long after the request. The
 control-plane does **not** read `public.companies` — the backend resolves them in
 `companySetupFacts()` (`apps/backend/src/lib/erpnextOutbox.ts`).
+
+### CRM↔ERPNext hand-off activation
+
+Installing both apps is insufficient for a usable CRM commercial flow. After setup, the
+control-plane activates and verifies both same-site singleton settings before marking a
+tenant ready: ERPNext `CRM Settings.enable_frappe_crm_data_synchronization` permits the
+native Customer write; Frappe CRM `ERPNext CRM Settings` enables product synchronization,
+selects the tenant Company, and maps the standard `Won` CRM Deal status to Customer creation.
+Saving the latter also creates the CRM Deal quotation action and its required custom fields.
+The worker verifies both switches, the Company/status mapping, and the `Create Quotation from
+CRM Deal` form script. A missing standard `Won` status fails provisioning explicitly rather
+than silently selecting a different sales stage.
 
 ### User and role reconciliation
 
@@ -194,10 +212,11 @@ compared — it derives ICP fit from firmographics rather than reading a stored
 tier, which is why it is marked `partial` rather than fully supported.
 
 Frappe apps live in the **image layer**, not in the `sites`/`logs` volumes, so
-`crm` cannot be added at runtime — a `bench get-app` inside a running container
-is lost on the next `docker compose up`. Both stacks therefore run a custom
-image built from `infra/erpnext-image/` (`apps.json` + `Containerfile`) and
-published to ACR as `startupdigitaltwin123.azurecr.io/erpnext-crm`:
+`crm` and `workos_frappe_integration` cannot be added at runtime — a `bench
+get-app` inside a running container is lost on the next `docker compose up`.
+Both stacks therefore run a custom image built from `infra/erpnext-image/`
+(`apps.json`, `Containerfile`, and the Cybranex-owned Frappe app) and published
+to ACR as `startupdigitaltwin123.azurecr.io/erpnext-crm`:
 
 - local: `../infra/erpnext/pwd.yml` (a `frappe_docker` clone, sibling of this repo);
 - remote: `/home/erpadmin/frappe_docker/pwd.yml` on the `erpnext-vm` Azure VM.
@@ -217,10 +236,18 @@ Two consequences of apps living in the image layer:
   the image also bumped the framework version — a `bench migrate`.
 
 The CRM-to-ledger hand-off is Frappe CRM's own first-party integration ("ERPNext CRM
-Settings", enabled per site in Desk), which creates a native `Customer`/`Quotation` from a
-won `CRM Deal`. It is not custom code in this repository. Note the resulting name
+Settings", activated by provisioning and also controllable per site in Desk), which creates a
+native `Customer`/`Quotation` from a won `CRM Deal`. The Cybranex-owned
+`workos_frappe_integration` app refreshes CRM Product catalogue prices after an ERPNext Item
+Price change; it delegates price resolution and Item-to-Product mapping to the installed CRM
+app, rather than patching CRM source. Note the resulting name
 collision: ERPNext's native `CRM Settings` singleton is a **different** doctype from
 Frappe CRM's `ERPNext CRM Settings` singleton.
+
+When this integration app is deployed to an existing site, the rollout procedure must include
+`bench --site <site> install-app workos_frappe_integration` and
+`bench --site <site> clear-cache`; Frappe caches its `doc_events` registry and will otherwise
+continue to use the pre-patch hook list.
 
 ## Local and remote isolation
 
