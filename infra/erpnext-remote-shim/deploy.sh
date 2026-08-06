@@ -51,13 +51,16 @@ if [[ "$INSTANCE_STATE" != *"VM running"* || "$INSTANCE_STATE" != *"Ready"* ]]; 
   exit 1
 fi
 
-VM_INFO="$(az vm show -d \
+PUBLIC_IP="$(az vm show -d \
   -g "$RESOURCE_GROUP" \
   -n "$VM_NAME" \
-  --query "[publicIps,fqdns]" \
+  --query publicIps \
   -o tsv)"
-PUBLIC_IP="$(awk '{print $1}' <<<"$VM_INFO")"
-VM_FQDN="$(awk '{print $2}' <<<"$VM_INFO")"
+VM_FQDN="$(az vm show -d \
+  -g "$RESOURCE_GROUP" \
+  -n "$VM_NAME" \
+  --query fqdns \
+  -o tsv)"
 
 if [[ -z "$PUBLIC_IP" || -z "$VM_FQDN" ]]; then
   echo "Could not resolve the VM public IP and FQDN." >&2
