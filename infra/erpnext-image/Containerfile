@@ -64,9 +64,9 @@ RUN : "${CACHE_BUST}" && \
     --skip-redis-config-generation \
     --verbose \
     /home/frappe/frappe-bench && \
-  test "$(git -C apps/frappe rev-parse HEAD)" = "f33ac3f00ab818e21b25ddbec93efb653fd9aa1b" && \
-  test "$(git -C apps/erpnext rev-parse HEAD)" = "de591661b9ba0bd3f62ac25b99b5c85c723515f6" && \
-  test "$(git -C apps/crm rev-parse HEAD)" = "301228c6910c8ace45d916a79cf8831704dd387e" && \
+  test "$(git -C /home/frappe/frappe-bench/apps/frappe rev-parse HEAD)" = "f33ac3f00ab818e21b25ddbec93efb653fd9aa1b" && \
+  test "$(git -C /home/frappe/frappe-bench/apps/erpnext rev-parse HEAD)" = "de591661b9ba0bd3f62ac25b99b5c85c723515f6" && \
+  test "$(git -C /home/frappe/frappe-bench/apps/crm rev-parse HEAD)" = "301228c6910c8ace45d916a79cf8831704dd387e" && \
   cd /home/frappe/frappe-bench && \
   cp -R /opt/frappe/workos_frappe_integration apps/workos_frappe_integration && \
   ./env/bin/pip install --no-deps -e apps/workos_frappe_integration && \
