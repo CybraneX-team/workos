@@ -27,7 +27,6 @@ import {
 const SPHERE_RADIUS = 1.55;
 const RING_RADIUS = 1.15;
 const NODE_RADIUS = 0.115;
-const FLOW_PULSES = 18;
 
 // ── Additive glow sprite ─────────────────────────────────────────────────────
 // A radial-gradient canvas texture blended additively. Works here because the
@@ -123,62 +122,24 @@ function CycleSphere() {
   );
 }
 
-// ── The cycle ring + directional flow ────────────────────────────────────────
+// ── The cycle ring ───────────────────────────────────────────────────────────
 
-/**
- * The ring itself plus pulses travelling along it in ONE direction.
- *
- * The direction is the whole point: without moving pulses this reads as a
- * radial menu of five departments. With them it reads as a loop where value
- * flows Product → Marketing → Sales → Finance → Success → back to Product,
- * which is what the spec means by a supercycle.
- */
-function CycleFlow({ nodes, dimmed }: { nodes: SupercycleNode[]; dimmed: boolean }) {
-  const pulsesRef = useRef<THREE.Group>(null);
-  const offsetRef = useRef(0);
-
+function CycleFlow({ dimmed }: { dimmed: boolean }) {
   const torusGeometry = useMemo(
     () => new THREE.TorusGeometry(RING_RADIUS, 0.006, 8, 128),
     [],
   );
 
-  // Pulse colour is sampled from the node it is currently approaching, so the
-  // flow visibly carries each department's colour into the next.
-  const pulseColors = useMemo(
-    () => Array.from({ length: FLOW_PULSES }, (_, i) => nodes[i % nodes.length]?.color ?? '#4fd8ff'),
-    [nodes],
-  );
-
-  useFrame((_, delta) => {
-    offsetRef.current = (offsetRef.current + delta * 0.06) % 1;
-    const group = pulsesRef.current;
-    if (!group) return;
-    group.children.forEach((child, i) => {
-      const t = (i / FLOW_PULSES + offsetRef.current) % 1;
-      const angle = t * Math.PI * 2 - Math.PI / 2;
-      child.position.set(Math.cos(angle) * RING_RADIUS, 0, Math.sin(angle) * RING_RADIUS);
-    });
-  });
-
   return (
-    <group>
-      <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
-        <meshBasicMaterial
-          color="#4fd8ff"
-          transparent
-          opacity={dimmed ? 0.12 : 0.4}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
-      <group ref={pulsesRef}>
-        {pulseColors.map((color, i) => (
-          <group key={i}>
-            <Glow color={color} scale={dimmed ? 0.09 : 0.16} />
-          </group>
-        ))}
-      </group>
-    </group>
+    <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
+      <meshBasicMaterial
+        color="#4fd8ff"
+        transparent
+        opacity={dimmed ? 0.12 : 0.4}
+        depthWrite={false}
+        toneMapped={false}
+      />
+    </mesh>
   );
 }
 
@@ -438,7 +399,7 @@ export function SupercycleScene({
   return (
     <group>
       <CycleSphere />
-      <CycleFlow nodes={nodes} dimmed={selectedNode !== null} />
+      <CycleFlow dimmed={selectedNode !== null} />
       {selectedNode === null && <SupercycleCore health={health} />}
 
       {nodes.map((n, i) => (
