@@ -229,6 +229,7 @@ export function Scene({
   const diveBlendRef = useRef({ value: 0 });
   const savedOverviewRef = useRef<{ camPos: THREE.Vector3; orbitTarget: THREE.Vector3 } | null>(null);
   const coreAnimTokenRef = useRef(0);
+  const coreOverlayGroupRef = useRef<THREE.Group>(null);
   const isCoreTransitioning =
     coreWorkspacePhase === 'diving-in' ||
     coreWorkspacePhase === 'workspace' ||
@@ -846,12 +847,15 @@ export function Scene({
     }
     if (coreGroupRef.current) {
       const deepScale = selectedId !== null ? 0.0 : 1.0;
-      const diveScale = 1.0;
+      const diveScale = 1 - THREE.MathUtils.smoothstep(dive, 0.08, 0.82);
       const targetScale = deepScale * diveScale;
-      coreGroupRef.current.scale.lerp(
-        new THREE.Vector3(targetScale, targetScale, targetScale),
-        0.12
-      );
+      coreGroupRef.current.scale.setScalar(Math.max(targetScale, 0.001));
+      coreGroupRef.current.visible = targetScale > 0.002;
+    }
+    if (coreOverlayGroupRef.current) {
+      const overlayScale = THREE.MathUtils.smoothstep(dive, 0.18, 0.94);
+      coreOverlayGroupRef.current.scale.setScalar(Math.max(overlayScale, 0.001));
+      coreOverlayGroupRef.current.visible = overlayScale > 0.002;
     }
     if (polytopeGroupRef.current) {
       const isInternalNodeActive = selectedInternalPath.length > 0 || (selectedInternalPathProps?.length ?? 0) > 0;
@@ -1064,7 +1068,9 @@ export function Scene({
       <directionalLight position={[10, 10, 10]} intensity={1} />
 
       <group ref={polytopeGroupRef} onPointerMissed={handlePointerMissed}>
-        {coreOverlay}
+        <group ref={coreOverlayGroupRef} visible={false}>
+          {coreOverlay}
+        </group>
         <group visible={!isSupercycleInteractive}>
           <group ref={coreGroupRef}>
             <OrgCore
