@@ -234,6 +234,12 @@ export function Scene({
     coreWorkspacePhase === 'workspace' ||
     coreWorkspacePhase === 'surfacing';
   const isSupercycleInteractive = coreWorkspacePhase === 'workspace' && coreOverlay != null;
+
+  useEffect(() => {
+    if (!isSupercycleInteractive) return;
+    setHoveredId(null);
+    setIsPolytopeHovered(false);
+  }, [isSupercycleInteractive, setHoveredId]);
   // ── Derive geometry ───────────────────────────────────────────────────────
   // Draft dept is included so the convex hull + shader preview the exact final state.
   const {
@@ -1059,29 +1065,30 @@ export function Scene({
 
       <group ref={polytopeGroupRef} onPointerMissed={handlePointerMissed}>
         {coreOverlay}
-        <group ref={coreGroupRef}>
-          <OrgCore
-            dimmed={selectedId !== null && coreWorkspacePhase === 'idle'}
-            companyName={companyName}
-            industryName={industryName}
-            subdomainName={subdomainName}
-            isDeepDrillDown={isDeepDrillDown}
-            showWorkspaceCta={
-              enableCoreWorkspace &&
-              isCoreZoomedIn &&
-              coreWorkspacePhase === 'idle' &&
-              !selectedId &&
-              !isDeepDrillDown &&
-              !draftDept
-            }
-            coreClickEnabled={isCoreZoomedIn}
-            onClick={enableCoreWorkspace ? handleCoreClick : undefined}
-            voiceIntensityRef={voiceIntensityRef}
-            showVoicePlasma={!coreOverlay}
-            hideCompanyName={coreWorkspacePhase !== 'idle'}
-            coreWorkspacePhase={coreWorkspacePhase}
-          />
-        </group>
+        <group visible={!isSupercycleInteractive}>
+          <group ref={coreGroupRef}>
+            <OrgCore
+              dimmed={selectedId !== null && coreWorkspacePhase === 'idle'}
+              companyName={companyName}
+              industryName={industryName}
+              subdomainName={subdomainName}
+              isDeepDrillDown={isDeepDrillDown}
+              showWorkspaceCta={
+                enableCoreWorkspace &&
+                isCoreZoomedIn &&
+                coreWorkspacePhase === 'idle' &&
+                !selectedId &&
+                !isDeepDrillDown &&
+                !draftDept
+              }
+              coreClickEnabled={isCoreZoomedIn}
+              onClick={enableCoreWorkspace ? handleCoreClick : undefined}
+              voiceIntensityRef={voiceIntensityRef}
+              showVoicePlasma={!coreOverlay}
+              hideCompanyName={coreWorkspacePhase !== 'idle'}
+              coreWorkspacePhase={coreWorkspacePhase}
+            />
+          </group>
 
         {ACTIVE_NODES.map((node, i) => {
           const pos = ACTIVE_NODE_POSITIONS[i];
@@ -1157,27 +1164,28 @@ export function Scene({
           );
         })}
 
-        {/* Translucent spectral shell */}
-        <mesh
-          geometry={facesGeometry}
-          onPointerOver={() => setIsPolytopeHovered(true)}
-          onPointerOut={() => setIsPolytopeHovered(false)}
-        >
-          <shaderMaterial
-            ref={facesMatRef}
-            vertexShader={vertexShader}
-            fragmentShader={fragmentShader}
-            uniforms={{
-              uOpacity: { value: selectedId !== null ? 0.05 : 0.22 },
-              uCameraPos: { value: new THREE.Vector3() },
-            }}
-            transparent
-            side={THREE.DoubleSide}
-            blending={THREE.AdditiveBlending}
-            vertexColors
-            depthWrite={false}
-          />
-        </mesh>
+          {/* Translucent spectral shell */}
+          <mesh
+            geometry={facesGeometry}
+            onPointerOver={() => setIsPolytopeHovered(true)}
+            onPointerOut={() => setIsPolytopeHovered(false)}
+          >
+            <shaderMaterial
+              ref={facesMatRef}
+              vertexShader={vertexShader}
+              fragmentShader={fragmentShader}
+              uniforms={{
+                uOpacity: { value: selectedId !== null ? 0.05 : 0.22 },
+                uCameraPos: { value: new THREE.Vector3() },
+              }}
+              transparent
+              side={THREE.DoubleSide}
+              blending={THREE.AdditiveBlending}
+              vertexColors
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
       </group>
 
       <OrbitControls
