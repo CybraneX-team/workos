@@ -1,4 +1,4 @@
-import { useState, useCallback, type MutableRefObject } from 'react';
+import { useState, useCallback, type MutableRefObject, type ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import type { UExternalNode, UInternalNode } from '../../lib/universalPolytopeData';
 import { usePolytopeStore, type PolytopeStoreScope } from '../../lib/usePolytopeStore';
@@ -57,6 +57,8 @@ export interface UniversalPolytopeProps {
   bdtWorkspaceLeaves?: boolean;
   /** BDT: arc the camera around to the focused department and unfold its nodes */
   cinematicFocus?: boolean;
+  /** Rendered inside the polytope scene at the origin (the core's interior). */
+  coreOverlay?: ReactNode;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ export default function UniversalPolytope({
   onCoreClickIntent,
   onCoreDiveComplete,
   onCoreSurfaceComplete,
+  coreOverlay,
   storeScope = 'twin',
   voiceIntensityRef,
   readOnly = false,
@@ -144,6 +147,7 @@ export default function UniversalPolytope({
           onCoreClickIntent={onCoreClickIntent}
           onCoreDiveComplete={onCoreDiveComplete}
           onCoreSurfaceComplete={onCoreSurfaceComplete}
+          coreOverlay={coreOverlay}
           voiceIntensityRef={voiceIntensityRef}
           bdtWorkspaceLeaves={bdtWorkspaceLeaves}
           cinematicFocus={cinematicFocus}

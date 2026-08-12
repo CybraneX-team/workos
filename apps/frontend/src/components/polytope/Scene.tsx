@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useEffect, useCallback, type MutableRefObject } from 'react';
+import { useRef, useState, useMemo, useEffect, useCallback, type MutableRefObject, type ReactNode } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Sparkles, Billboard, Text } from '@react-three/drei';
 import * as THREE from 'three';
@@ -121,6 +121,9 @@ export interface SceneProps {
    * unfold the internal nodes in a staggered reveal once the camera lands.
    */
   cinematicFocus?: boolean;
+  /** Rendered at the origin once the core dive is under way. Kept as an opaque
+   *  slot so Scene knows nothing about what lives inside the core. */
+  coreOverlay?: ReactNode;
 }
 
 function workspaceLeafCheck(node: UInternalNode | null | undefined, bdt: boolean): boolean {
@@ -212,6 +215,7 @@ export function Scene({
   draftMemberScreenPosRef,
   selectedInternalPathProps,
   enableCoreWorkspace = false,
+  coreOverlay,
   coreWorkspacePhase = 'idle',
   onCoreClickIntent,
   onCoreDiveComplete,
@@ -1053,6 +1057,7 @@ export function Scene({
       <directionalLight position={[10, 10, 10]} intensity={1} />
 
       <group ref={polytopeGroupRef} onPointerMissed={handlePointerMissed}>
+        {coreOverlay}
         <group ref={coreGroupRef}>
           <OrgCore
             dimmed={selectedId !== null && coreWorkspacePhase === 'idle'}

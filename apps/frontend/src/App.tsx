@@ -43,6 +43,8 @@ import IncubatorCohorts from './pages/incubator/IncubatorCohorts';
 import IncubatorCohortDetail from './pages/incubator/IncubatorCohortDetail';
 import IncubatorSettings from './pages/incubator/IncubatorSettings';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
+import PMS3DApp from './pages/PMS3D/PMS3DApp';
+import NewPMSApp from './pages/NewPMS/NewPMSApp';
 import { VoiceProvider } from './context/VoiceContext';
 
 
@@ -105,6 +107,27 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<RootRoute />} />
         <Route path="/landing" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  }
+
+  // /3d-pms — standalone interactive 3D project-management prototype (own
+  // account creation + dummy in-memory backend, no AuthGuard/TopBar from the
+  // main app shell).
+  if (location.pathname.startsWith('/3d-pms')) {
+    return (
+      <Routes>
+        <Route path="/3d-pms/*" element={<PMS3DApp />} />
+      </Routes>
+    );
+  }
+
+  // /new-pms — same task-management UI as /3d-pms, but the 3D canvas is a
+  // fresh empty scene being built from scratch (see pages/NewPMS/App.tsx).
+  if (location.pathname.startsWith('/new-pms')) {
+    return (
+      <Routes>
+        <Route path="/new-pms/*" element={<NewPMSApp />} />
       </Routes>
     );
   }

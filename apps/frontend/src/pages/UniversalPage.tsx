@@ -8,6 +8,17 @@ import type { UExternalNode, UInternalNode } from '../lib/usePolytopeStore';
 import { useAuth } from '../lib/auth';
 import { useCompany } from '../lib/db/companies';
 import type { CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
+import type { CoreDestination } from '../lib/coreWorkspaceTransition';
+import { SupercycleScene } from '../components/supercycle/SupercycleScene';
+import {
+  DEFAULT_ARCHETYPE,
+  SAMPLE_INSTANCES,
+  SUPERCYCLE_ARCHETYPES,
+  SUPERCYCLE_ARCHETYPE_LIST,
+  SUPERCYCLE_LABEL,
+  type SupercycleArchetypeId,
+  type SupercycleInstance,
+} from '../lib/supercycleData';
 import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
@@ -314,17 +325,54 @@ export default function UniversalPage() {
     setSelectDeptNonce((value) => value + 1);
   }, [focusKey, paidAcquisitionDepartmentId, paidAcquisitionPathKey]);
 
-  // Core workspace/Voice AI zoom state
+  // Core dive state. `coreDestination` records WHERE the dive is heading —
+  // the supercycle sphere (clicking the core) or Voice AI (its own button).
   const [corePhase, setCorePhase] = useState<CoreWorkspacePhase>('idle');
+  const [coreDestination, setCoreDestination] = useState<CoreDestination>('supercycle');
   const isPolytopeInteractive = corePhase === 'idle';
 
+  const diveToCore = useCallback((destination: CoreDestination) => {
+    setCoreDestination(destination);
+    setCorePhase((phase) => (phase === 'idle' ? 'diving-in' : phase));
+  }, []);
+
+  const surfaceFromCore = useCallback(() => {
+    setCorePhase((phase) => (phase === 'workspace' ? 'surfacing' : phase));
+  }, []);
+
+  // ── Supercycle (inside the core) ──────────────────────────────────────────
+  const [archetypeId, setArchetypeId] = useState<SupercycleArchetypeId>(DEFAULT_ARCHETYPE);
+  const [selectedCycleNodeId, setSelectedCycleNodeId] = useState<string | null>(null);
+  const archetype = SUPERCYCLE_ARCHETYPES[archetypeId];
+  const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
+  const selectedCycleNode = archetype.nodes.find((n) => n.id === selectedCycleNodeId) ?? null;
+
+  // Placeholder until instances come from real opportunities. Filtered to the
+  // loaded archetype so switching business model doesn't leave tokens parked
+  // on nodes that no longer exist.
+  const supercycleInstances = useMemo<SupercycleInstance[]>(
+    () => SAMPLE_INSTANCES.filter((i) => archetype.nodes.some((n) => n.id === i.nodeId)),
+    [archetype],
+  );
+
+  /** An instance is one running case — the hand-off point down into execution
+   *  (Hypercube → org view / islands). Not wired yet; that layer comes next. */
+  const handleOpenInstance = useCallback((instance: SupercycleInstance) => {
+    console.info('[supercycle] open instance →', instance.label);
+  }, []);
+
+  // Voice keeps driving the dive, but ONLY while voice is the destination.
+  // Previously this effect ran unconditionally, which meant any dive was
+  // treated as a voice session and ending voice yanked you back out of
+  // whatever you were actually looking at.
   useEffect(() => {
+    if (coreDestination !== 'voice') return;
     if (voiceState === 'idle' && corePhase === 'workspace') {
       setCorePhase('surfacing');
     } else if (voiceState !== 'idle' && corePhase === 'idle') {
       setCorePhase('diving-in');
     }
-  }, [voiceState, corePhase]);
+  }, [voiceState, corePhase, coreDestination]);
 
   useLayoutEffect(() => {
     // We no longer unmount/remount the canvas or reset state on path change.
@@ -478,9 +526,13 @@ export default function UniversalPage() {
 
 
 
+  // Clicking the core now opens the Revenue & Growth supercycle rather than
+  // Voice AI. Voice moved to its own control (see the toolbar button below) so
+  // the core can mean one thing: dive into the organisation's value loop.
   const handleCoreClickIntent = useCallback(() => {
-    toggle();
-  }, [toggle]);
+    setSelectedCycleNodeId(null);
+    diveToCore('supercycle');
+  }, [diveToCore]);
 
   const handleCoreDiveComplete = useCallback(() => {
     if (corePhase === 'diving-in') {
@@ -543,6 +595,17 @@ export default function UniversalPage() {
             voiceIntensityRef={intensityRef}
             bdtWorkspaceLeaves
             cinematicFocus
+            coreOverlay={
+              showSupercycle ? (
+                <SupercycleScene
+                  archetype={archetype}
+                  instances={supercycleInstances}
+                  selectedNodeId={selectedCycleNodeId}
+                  onSelectNode={setSelectedCycleNodeId}
+                  onOpenInstance={handleOpenInstance}
+                />
+              ) : undefined
+            }
           />
         )}
       </div>
@@ -559,6 +622,73 @@ export default function UniversalPage() {
         >
           &larr; Back to Polytope
         </button>
+      )}
+
+      {/* Voice AI trigger. The core used to open Voice; now it opens the
+          supercycle, so Voice needs its own control. */}
+      {isPolytopeInteractive && voiceState === 'idle' && (
+        <button
+          onClick={() => { setCoreDestination('voice'); toggle(); }}
+          className="fixed top-20 right-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-purple-500/30"
+          style={{ background: 'rgba(0,0,0,0.55)', borderColor: 'rgba(148,163,184,0.1)' }}
+        >
+          Voice AI
+        </button>
+      )}
+
+      {/* ── Supercycle chrome (inside the core) ── */}
+      {showSupercycle && corePhase !== 'surfacing' && (
+        <>
+          <button
+            onClick={() => (selectedCycleNode ? setSelectedCycleNodeId(null) : surfaceFromCore())}
+            className="fixed top-20 left-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-cyan-400/30"
+            style={{ background: 'rgba(0,0,0,0.55)', borderColor: 'rgba(148,163,184,0.1)' }}
+          >
+            &larr; {selectedCycleNode ? SUPERCYCLE_LABEL : 'Back to Polytope'}
+          </button>
+
+          <div
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg border backdrop-blur-md text-center pointer-events-none"
+            style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
+          >
+            <div className="text-[10px] tracking-[3px] uppercase" style={{ color: '#4fd8ff' }}>
+              {selectedCycleNode ? selectedCycleNode.subCycle.label : 'Supercycle'}
+            </div>
+            <div className="text-sm font-semibold text-slate-100">
+              {selectedCycleNode ? selectedCycleNode.label : SUPERCYCLE_LABEL}
+            </div>
+            {selectedCycleNode && (
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {selectedCycleNode.subNodes.map((s) => s.label).join(' · ')}
+              </div>
+            )}
+          </div>
+
+          {/* Business-model picker. Same ring, different labels — the point of
+              section 8 of the spec is that these stay comparable. */}
+          {!selectedCycleNode && (
+            <div
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex gap-1 p-1.5 rounded-xl border backdrop-blur-md"
+              style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
+            >
+              {SUPERCYCLE_ARCHETYPE_LIST.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => { setArchetypeId(a.id); setSelectedCycleNodeId(null); }}
+                  title={a.revenueModel}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={
+                    a.id === archetypeId
+                      ? { background: 'rgba(79,216,255,0.16)', color: '#4fd8ff' }
+                      : { color: '#8b96ab' }
+                  }
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Left sidebar panel — hidden when create panel is shown ── */}
