@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @cybranex/shared-types build",
+    "predev": "pnpm --filter \"backend^...\" build",
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
