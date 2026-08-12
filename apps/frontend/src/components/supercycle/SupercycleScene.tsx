@@ -197,19 +197,18 @@ function CycleNode({
           <meshBasicMaterial color={node.color} transparent opacity={opacity} toneMapped={false} />
         </mesh>
         <Glow color={node.color} scale={NODE_RADIUS * (dimmed ? 5 : 8)} />
-        {/* Health collar — a thin ring whose colour is the node's health, kept
-            separate from the node's own identity colour so "which department"
-            and "how is it doing" never get confused. */}
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[NODE_RADIUS * 1.7, 0.008, 8, 32]} />
-          <meshBasicMaterial
-            color={healthColor(health)}
-            transparent
-            opacity={opacity}
-            depthWrite={false}
-            toneMapped={false}
-          />
-        </mesh>
+        {!selected && (
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[NODE_RADIUS * 1.7, 0.008, 8, 32]} />
+            <meshBasicMaterial
+              color={healthColor(health)}
+              transparent
+              opacity={opacity}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
+        )}
       </group>
 
       <Billboard position={[0, NODE_RADIUS * 2.9, 0]}>
@@ -284,15 +283,19 @@ function SubCycleTrack({
   instances,
   onOpenInstance,
   open,
+  health,
 }: {
   node: SupercycleNode;
   instances: SupercycleInstance[];
   onOpenInstance: (instance: SupercycleInstance) => void;
   open: boolean;
+  health: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const contentsRef = useRef<THREE.Group>(null);
   const stages = node.subCycle.stages;
   const trackRadius = 0.72;
+  const collapsedScale = (NODE_RADIUS * 1.7) / trackRadius;
 
   const torusGeometry = useMemo(
     () => new THREE.TorusGeometry(trackRadius, 0.005, 8, 96),
@@ -301,46 +304,50 @@ function SubCycleTrack({
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const target = open ? 1 : 0.001;
+    const target = open ? 1 : collapsedScale;
     const next = THREE.MathUtils.damp(groupRef.current.scale.x, target, 7, delta);
     groupRef.current.scale.setScalar(next);
-    groupRef.current.visible = open || next > 0.01;
+    groupRef.current.visible = open || next > collapsedScale + 0.006;
+    if (contentsRef.current) {
+      contentsRef.current.visible = open && next > collapsedScale + 0.08;
+    }
   });
 
   return (
-    <group ref={groupRef} scale={0.001}>
+    <group ref={groupRef} scale={collapsedScale}>
       <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
-        <meshBasicMaterial color={node.color} transparent opacity={0.35} depthWrite={false} toneMapped={false} />
+        <meshBasicMaterial color={healthColor(health)} transparent opacity={0.8} depthWrite={false} toneMapped={false} />
       </mesh>
 
-      {stages.map((stage, i) => {
-        const pos = slotPosition(i, stages.length, trackRadius);
-        return (
-          <group key={stage} position={pos}>
-            <mesh>
-              <sphereGeometry args={[0.035, 16, 16]} />
-              <meshBasicMaterial color={node.color} toneMapped={false} />
-            </mesh>
-            <Glow color={node.color} scale={0.22} />
-            <Billboard position={[0, 0.11, 0]}>
-              <Text
-                fontSize={0.05}
-                color="#cfd8e8"
-                anchorX="center"
-                anchorY="middle"
-                outlineWidth={0.003}
-                outlineColor="#05070f"
-              >
-                {stage}
-              </Text>
-            </Billboard>
-          </group>
-        );
-      })}
+      <group ref={contentsRef} visible={false}>
+        {stages.map((stage, i) => {
+          const pos = slotPosition(i, stages.length, trackRadius);
+          return (
+            <group key={stage} position={pos}>
+              <mesh>
+                <sphereGeometry args={[0.035, 16, 16]} />
+                <meshBasicMaterial color={node.color} toneMapped={false} />
+              </mesh>
+              <Glow color={node.color} scale={0.22} />
+              <Billboard position={[0, 0.11, 0]}>
+                <Text
+                  fontSize={0.05}
+                  color="#cfd8e8"
+                  anchorX="center"
+                  anchorY="middle"
+                  outlineWidth={0.003}
+                  outlineColor="#05070f"
+                >
+                  {stage}
+                </Text>
+              </Billboard>
+            </group>
+          );
+        })}
 
       {/* Live instances parked on their current stage. Several on the same
           stage are fanned outward so they don't occupy the same point. */}
-      {instances.map((instance) => {
+        {instances.map((instance) => {
         const sameStage = instances.filter((i) => i.stageIndex === instance.stageIndex);
         const orderInStage = sameStage.indexOf(instance);
         const fan = trackRadius + 0.13 + orderInStage * 0.1;
@@ -379,7 +386,8 @@ function SubCycleTrack({
             </Billboard>
           </group>
         );
-      })}
+        })}
+      </group>
     </group>
   );
 }
@@ -458,6 +466,7 @@ export function SupercycleScene({
             instances={instances.filter((i) => i.nodeId === displayedNode.id)}
             onOpenInstance={onOpenInstance}
             open={selectedNode?.id === displayedNode.id}
+            health={nodeHealth(displayedNode.id, instances)}
           />
         </group>
       )}
