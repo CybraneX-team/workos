@@ -233,6 +233,7 @@ export function Scene({
     coreWorkspacePhase === 'diving-in' ||
     coreWorkspacePhase === 'workspace' ||
     coreWorkspacePhase === 'surfacing';
+  const isSupercycleInteractive = coreWorkspacePhase === 'workspace' && coreOverlay != null;
   // ── Derive geometry ───────────────────────────────────────────────────────
   // Draft dept is included so the convex hull + shader preview the exact final state.
   const {
@@ -1182,10 +1183,10 @@ export function Scene({
       <OrbitControls
         ref={orbitRef}
         makeDefault
-        minDistance={5}
-        maxDistance={65}
+        minDistance={isSupercycleInteractive ? 2.4 : 5}
+        maxDistance={isSupercycleInteractive ? 8 : 65}
         enablePan={false}
-        enabled={coreWorkspacePhase === 'idle' && !isDragging}
+        enabled={(coreWorkspacePhase === 'idle' || isSupercycleInteractive) && !isDragging}
       />
     </>
   );
