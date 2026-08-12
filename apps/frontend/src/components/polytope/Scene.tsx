@@ -1076,6 +1076,7 @@ export function Scene({
             coreClickEnabled={isCoreZoomedIn}
             onClick={enableCoreWorkspace ? handleCoreClick : undefined}
             voiceIntensityRef={voiceIntensityRef}
+            showVoicePlasma={!coreOverlay}
             hideCompanyName={coreWorkspacePhase !== 'idle'}
             coreWorkspacePhase={coreWorkspacePhase}
           />

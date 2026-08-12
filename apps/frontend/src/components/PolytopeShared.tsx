@@ -21,6 +21,7 @@ export function OrgCore({
   onClick,
   hideCompanyName = false,
   coreWorkspacePhase = 'idle',
+  showVoicePlasma = true,
 }: {
   dimmed: boolean;
   companyName: string;
@@ -35,6 +36,8 @@ export function OrgCore({
   voiceIntensityRef?: React.MutableRefObject<number> | undefined;
   hideCompanyName?: boolean;
   coreWorkspacePhase?: string;
+  /** Voice visualisation is mounted only when the core dive targets Voice AI. */
+  showVoicePlasma?: boolean;
 }) {
   const meshRef  = useRef<THREE.Group>(null);
   const isHoveringCoreRef = useRef(false);
@@ -88,12 +91,14 @@ export function OrgCore({
              coreWorkspacePhase={coreWorkspacePhase}
           />
         </group>
-        <VoicePlasmaWeb
-          coreWorkspacePhase={coreWorkspacePhase}
-          voiceIntensityRef={voiceIntensityRef}
-          radius={1.2}
-          count={8000}
-        />
+        {showVoicePlasma && (
+          <VoicePlasmaWeb
+            coreWorkspacePhase={coreWorkspacePhase}
+            voiceIntensityRef={voiceIntensityRef}
+            radius={1.2}
+            count={8000}
+          />
+        )}
       </group>
       
       {/* 3D Text floating on top of the core */}
@@ -138,7 +143,7 @@ export function OrgCore({
               outlineColor="#0f172a"
               outlineOpacity={0.55}
             >
-              Click to interact with WorkOS AI
+              Click to explore Revenue &amp; Growth
             </Text>
           </group>
         </Billboard>
