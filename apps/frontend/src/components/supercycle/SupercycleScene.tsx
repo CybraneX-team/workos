@@ -11,7 +11,7 @@
 // on screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Billboard, Text } from '@react-three/drei';
@@ -283,11 +283,14 @@ function SubCycleTrack({
   node,
   instances,
   onOpenInstance,
+  open,
 }: {
   node: SupercycleNode;
   instances: SupercycleInstance[];
   onOpenInstance: (instance: SupercycleInstance) => void;
+  open: boolean;
 }) {
+  const groupRef = useRef<THREE.Group>(null);
   const stages = node.subCycle.stages;
   const trackRadius = 0.72;
 
@@ -296,8 +299,16 @@ function SubCycleTrack({
     [],
   );
 
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    const target = open ? 1 : 0.001;
+    const next = THREE.MathUtils.damp(groupRef.current.scale.x, target, 7, delta);
+    groupRef.current.scale.setScalar(next);
+    groupRef.current.visible = open || next > 0.01;
+  });
+
   return (
-    <group>
+    <group ref={groupRef} scale={0.001}>
       <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
         <meshBasicMaterial color={node.color} transparent opacity={0.35} depthWrite={false} toneMapped={false} />
       </mesh>
@@ -392,12 +403,38 @@ export function SupercycleScene({
   onSelectNode,
   onOpenInstance,
 }: SupercycleSceneProps) {
+  const contentRef = useRef<THREE.Group>(null);
+  const [displayedNodeId, setDisplayedNodeId] = useState<string | null>(selectedNodeId);
   const nodes = archetype.nodes;
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const displayedNode = nodes.find((n) => n.id === displayedNodeId) ?? null;
+  const selectedIndex = selectedNode ? nodes.findIndex((n) => n.id === selectedNode.id) : -1;
+  const displayedIndex = displayedNode ? nodes.findIndex((n) => n.id === displayedNode.id) : -1;
+  const selectedPosition = selectedIndex >= 0 ? slotPosition(selectedIndex, nodes.length) : null;
+  const displayedPosition = displayedIndex >= 0 ? slotPosition(displayedIndex, nodes.length) : null;
   const health = useMemo(() => supercycleHealth(nodes, instances), [nodes, instances]);
 
+  useEffect(() => {
+    if (selectedNodeId) setDisplayedNodeId(selectedNodeId);
+  }, [selectedNodeId]);
+
+  useFrame((_, delta) => {
+    const content = contentRef.current;
+    if (!content) return;
+    const targetScale = selectedPosition ? 1.5 : 1;
+    const nextScale = THREE.MathUtils.damp(content.scale.x, targetScale, 4.8, delta);
+    content.scale.setScalar(nextScale);
+
+    const targetPosition = selectedPosition
+      ? selectedPosition.clone().multiplyScalar(-targetScale)
+      : new THREE.Vector3();
+    content.position.x = THREE.MathUtils.damp(content.position.x, targetPosition.x, 4.8, delta);
+    content.position.y = THREE.MathUtils.damp(content.position.y, targetPosition.y, 4.8, delta);
+    content.position.z = THREE.MathUtils.damp(content.position.z, targetPosition.z, 4.8, delta);
+  });
+
   return (
-    <group>
+    <group ref={contentRef}>
       <CycleSphere />
       <CycleFlow dimmed={selectedNode !== null} />
       {selectedNode === null && <SupercycleCore health={health} />}
@@ -414,12 +451,15 @@ export function SupercycleScene({
         />
       ))}
 
-      {selectedNode && (
-        <SubCycleTrack
-          node={selectedNode}
-          instances={instances.filter((i) => i.nodeId === selectedNode.id)}
-          onOpenInstance={onOpenInstance}
-        />
+      {displayedNode && displayedPosition && (
+        <group position={displayedPosition}>
+          <SubCycleTrack
+            node={displayedNode}
+            instances={instances.filter((i) => i.nodeId === displayedNode.id)}
+            onOpenInstance={onOpenInstance}
+            open={selectedNode?.id === displayedNode.id}
+          />
+        </group>
       )}
     </group>
   );
