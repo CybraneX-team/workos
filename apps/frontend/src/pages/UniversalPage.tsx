@@ -10,15 +10,17 @@ import { useCompany } from '../lib/db/companies';
 import type { CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
 import type { CoreDestination } from '../lib/coreWorkspaceTransition';
 import { SupercycleScene } from '../components/supercycle/SupercycleScene';
+import type { SupercycleRouteStyle } from '../components/supercycle/SupercycleScene';
+import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleEditor';
 import {
   DEFAULT_ARCHETYPE,
-  SAMPLE_INSTANCES,
   SUPERCYCLE_ARCHETYPES,
   SUPERCYCLE_ARCHETYPE_LIST,
   SUPERCYCLE_LABEL,
   type SupercycleArchetypeId,
   type SupercycleInstance,
 } from '../lib/supercycleData';
+import { instanceHealth, usePmsStore } from '../lib/usePmsStore';
 import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
@@ -38,6 +40,7 @@ export default function UniversalPage() {
   const { user, profile, canRead, canWrite, role: authRole } = useAuth();
   const canCreateDepartments = canWrite('twin') && canWrite('team');
   const { company } = useCompany(profile?.company_id);
+  const pms = usePmsStore(profile?.company_id);
   const store = usePolytopeStore('bdt');
   const [productPortfolio, setProductPortfolio] = useState<ErpNextCatalogPortfolio | null>(null);
   const { sendContextUpdate, voiceState, toggle, intensityRef } = useVoice();
@@ -343,23 +346,30 @@ export default function UniversalPage() {
   // ── Supercycle (inside the core) ──────────────────────────────────────────
   const [archetypeId, setArchetypeId] = useState<SupercycleArchetypeId>(DEFAULT_ARCHETYPE);
   const [selectedCycleNodeId, setSelectedCycleNodeId] = useState<string | null>(null);
+  const [selectedValueCycleId, setSelectedValueCycleId] = useState<string | null>(null);
+  const [cycleRouteStyle, setCycleRouteStyle] = useState<SupercycleRouteStyle>('curved');
   const archetype = SUPERCYCLE_ARCHETYPES[archetypeId];
+  const valueCycles = pms.state.cycles.filter((cycle) => cycle.archetypeId === archetypeId);
+  const selectedValueCycle = valueCycles.find((cycle) => cycle.id === selectedValueCycleId) ?? null;
   const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
   const selectedCycleNode = archetype.nodes.find((n) => n.id === selectedCycleNodeId) ?? null;
 
-  // Placeholder until instances come from real opportunities. Filtered to the
-  // loaded archetype so switching business model doesn't leave tokens parked
-  // on nodes that no longer exist.
   const supercycleInstances = useMemo<SupercycleInstance[]>(
-    () => SAMPLE_INSTANCES.filter((i) => archetype.nodes.some((n) => n.id === i.nodeId)),
-    [archetype],
+    () => pms.state.instances
+      .filter((instance) => archetype.nodes.some((node) => node.id === instance.departmentNodeId))
+      .map((instance) => ({
+        id: instance.id,
+        label: instance.name,
+        nodeId: instance.departmentNodeId,
+        stageIndex: instance.stageIndex,
+        health: instanceHealth(instance.id, pms.state),
+      })),
+    [archetype, pms.state],
   );
 
-  /** An instance is one running case — the hand-off point down into execution
-   *  (Hypercube → org view / islands). Not wired yet; that layer comes next. */
   const handleOpenInstance = useCallback((instance: SupercycleInstance) => {
-    console.info('[supercycle] open instance →', instance.label);
-  }, []);
+    navigate(`/pms?view=hypercube&instance=${encodeURIComponent(instance.id)}`);
+  }, [navigate]);
 
   // Voice keeps driving the dive, but ONLY while voice is the destination.
   // Previously this effect ran unconditionally, which meant any dive was
@@ -531,6 +541,7 @@ export default function UniversalPage() {
   // the core can mean one thing: dive into the organisation's value loop.
   const handleCoreClickIntent = useCallback(() => {
     setSelectedCycleNodeId(null);
+    setSelectedValueCycleId(null);
     diveToCore('supercycle');
   }, [diveToCore]);
 
@@ -603,6 +614,10 @@ export default function UniversalPage() {
                   selectedNodeId={selectedCycleNodeId}
                   onSelectNode={setSelectedCycleNodeId}
                   onOpenInstance={handleOpenInstance}
+                  cycles={valueCycles}
+                  selectedCycleId={selectedValueCycleId}
+                  onSelectCycle={(cycleId) => { setSelectedValueCycleId(cycleId); setSelectedCycleNodeId(null); }}
+                  routeStyle={cycleRouteStyle}
                 />
               ) : undefined
             }
@@ -652,10 +667,10 @@ export default function UniversalPage() {
             style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
           >
             <div className="text-[10px] tracking-[3px] uppercase" style={{ color: '#4fd8ff' }}>
-              {selectedCycleNode ? selectedCycleNode.subCycle.label : 'Supercycle'}
+              {selectedCycleNode ? selectedCycleNode.subCycle.label : selectedValueCycle ? 'Selected cycle' : 'Supercycle'}
             </div>
             <div className="text-sm font-semibold text-slate-100">
-              {selectedCycleNode ? selectedCycleNode.label : SUPERCYCLE_LABEL}
+              {selectedCycleNode ? selectedCycleNode.label : selectedValueCycle?.name ?? SUPERCYCLE_LABEL}
             </div>
             {selectedCycleNode && (
               <div className="text-[10px] text-slate-400 mt-0.5">
@@ -663,6 +678,57 @@ export default function UniversalPage() {
               </div>
             )}
           </div>
+
+          {selectedCycleNode && (
+            <button
+              onClick={() => {
+                const name = window.prompt(`Name this ${selectedCycleNode.subCycle.label} live instance`);
+                if (!name?.trim()) return;
+                pms.setArchetype(archetypeId);
+                pms.createInstance({
+                  name: name.trim(),
+                  departmentNodeId: selectedCycleNode.id,
+                  templateId: selectedCycleNode.subCycle.id,
+                  stageIndex: 0,
+                  status: 'active',
+                });
+              }}
+              className="fixed top-20 right-36 z-[60] rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 backdrop-blur-md transition hover:bg-cyan-400/20"
+            >
+              + New live instance
+            </button>
+          )}
+
+          <SupercycleCycleEditor
+            cycles={valueCycles}
+            departments={archetype.nodes}
+            onCreate={(draft) => {
+              const cycleId = pms.createCycle({ ...draft, archetypeId });
+              setSelectedValueCycleId(cycleId);
+            }}
+            onUpdate={(cycleId, draft) => pms.updateCycle(cycleId, draft)}
+            onDelete={(cycleId) => {
+              pms.deleteCycle(cycleId);
+              if (selectedValueCycleId === cycleId) setSelectedValueCycleId(null);
+            }}
+          />
+
+          <div className="fixed right-6 top-32 z-[70] flex rounded-lg border border-white/10 bg-black/65 p-1 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-xl">
+            {(['curved', 'spherical'] as const).map((style) => (
+              <button key={style} onClick={() => setCycleRouteStyle(style)} className={`rounded-md px-2.5 py-1.5 transition ${cycleRouteStyle === style ? 'bg-cyan-300 text-slate-950' : 'text-slate-500 hover:text-white'}`}>
+                {style === 'spherical' ? 'Circular' : 'Curved'}
+              </button>
+            ))}
+          </div>
+
+          {!selectedCycleNode && valueCycles.length > 0 && (
+            <div className="fixed bottom-20 left-1/2 z-[60] flex -translate-x-1/2 gap-1.5 rounded-xl border border-white/10 bg-black/65 p-1.5 backdrop-blur-xl">
+              {valueCycles.map((cycle) => {
+                const active = selectedValueCycleId === cycle.id;
+                return <button key={cycle.id} onClick={() => setSelectedValueCycleId(active ? null : cycle.id)} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-medium transition" style={{ background: active ? `${cycle.color}22` : 'transparent', color: active ? cycle.color : '#7c879b' }}><span className="h-2 w-2 rounded-full" style={{ background: cycle.color, boxShadow: active ? `0 0 10px ${cycle.color}` : 'none' }} />{cycle.name}</button>;
+              })}
+            </div>
+          )}
 
           {/* Business-model picker. Same ring, different labels — the point of
               section 8 of the spec is that these stay comparable. */}
@@ -674,7 +740,7 @@ export default function UniversalPage() {
               {SUPERCYCLE_ARCHETYPE_LIST.map((a) => (
                 <button
                   key={a.id}
-                  onClick={() => { setArchetypeId(a.id); setSelectedCycleNodeId(null); }}
+                  onClick={() => { setArchetypeId(a.id); pms.setArchetype(a.id); setSelectedCycleNodeId(null); setSelectedValueCycleId(null); }}
                   title={a.revenueModel}
                   className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
                   style={

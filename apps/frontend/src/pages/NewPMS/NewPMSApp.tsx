@@ -11,7 +11,7 @@ const ARCADE_STYLESHEETS = [
   "/task-arcade-css/cinematic.css",
 ];
 
-function useArcadeStylesheets() {
+export function useArcadeStylesheets() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {

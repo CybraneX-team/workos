@@ -1835,15 +1835,23 @@ function hypercubeFaceGrid(half: number, divisions: number): Float32Array {
   return new Float32Array(points);
 }
 
-function HypercubeCell({ position, color }: { position: [number, number, number]; color: string }) {
+function HypercubeCell({ position, color, label, onOpen, interactive = true }: { position: [number, number, number]; color: string; label: string; onOpen: () => void; interactive?: boolean }) {
   return (
-    <group position={position}>
+    <group
+      position={position}
+      onClick={interactive ? (event) => { event.stopPropagation(); onOpen(); } : undefined}
+      onPointerOver={interactive ? (event) => { event.stopPropagation(); document.body.style.cursor = "pointer"; } : undefined}
+      onPointerOut={interactive ? (event) => { event.stopPropagation(); document.body.style.cursor = "auto"; } : undefined}
+    >
       <GlowCube size={HYPERCUBE_CELL_HALF * 2} color={color} />
+      <Text position={[0, HYPERCUBE_CELL_HALF + 1.2, 0]} fontSize={1.1} color="#ffffff" anchorX="center">
+        {label}
+      </Text>
     </group>
   );
 }
 
-function HypercubeScene({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
+export function NewPmsHypercubeModel({ onOpenDepartment = () => {}, interactive = true }: { onOpenDepartment?: () => void; interactive?: boolean }) {
   const cells = useMemo(() => hypercubeCellPositions(), []);
   const gridGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
@@ -1856,28 +1864,6 @@ function HypercubeScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCon
 
   return (
     <>
-      {/* Near-black backdrop — additive glow needs somewhere dark to build
-          up against, see the GlowSprite comment. */}
-      <color attach="background" args={[SPACE_BG]} />
-      <fog attach="fog" args={[SPACE_FOG, 45, 120]} />
-      <Starfield spread={110} seed={9021} />
-      <OrthographicCamera makeDefault position={[34, 26, 34]} zoom={12} />
-      <OrbitControls
-        ref={controlsRef}
-        makeDefault
-        enableDamping
-        dampingFactor={0.05}
-        target={[0, 0, 0]}
-        minPolarAngle={0.25}
-        maxPolarAngle={1.35}
-        minZoom={7}
-        maxZoom={28}
-        enablePan={false}
-        autoRotate
-        autoRotateSpeed={0.3}
-      />
-      <ambientLight intensity={0.6} />
-
       <lineSegments geometry={gridGeometry} raycast={NO_RAYCAST}>
         <lineBasicMaterial
           color={HYPERCUBE_SHELL_COLOR}
@@ -1896,8 +1882,22 @@ function HypercubeScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCon
 
       {cells.map((position, index) => {
         const department = HYPERCUBE_DEPARTMENTS[index % HYPERCUBE_DEPARTMENTS.length];
-        return <HypercubeCell key={department.label} position={position} color={department.color} />;
+        return <HypercubeCell key={department.label} position={position} color={department.color} label={department.label} onOpen={onOpenDepartment} interactive={interactive} />;
       })}
+    </>
+  );
+}
+
+function HypercubeScene({ controlsRef, onOpenDepartment }: { controlsRef: React.RefObject<OrbitControlsImpl | null>; onOpenDepartment: () => void }) {
+  return (
+    <>
+      <color attach="background" args={[SPACE_BG]} />
+      <fog attach="fog" args={[SPACE_FOG, 45, 120]} />
+      <Starfield spread={110} seed={9021} />
+      <OrthographicCamera makeDefault position={[34, 26, 34]} zoom={12} />
+      <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.05} target={[0, 0, 0]} minPolarAngle={0.25} maxPolarAngle={1.35} minZoom={7} maxZoom={28} enablePan={false} autoRotate autoRotateSpeed={0.3} />
+      <ambientLight intensity={0.6} />
+      <NewPmsHypercubeModel onOpenDepartment={onOpenDepartment} />
     </>
   );
 }
@@ -2108,17 +2108,19 @@ function GalleryWorld({
   scrollProgress,
   viewMode,
   controlsRef,
+  onOpenDepartment,
 }: {
   selected: IslandId | null;
   onSelect: (id: IslandId) => void;
   scrollProgress: number;
   viewMode: GalleryViewMode;
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  onOpenDepartment: () => void;
 }) {
   // Org Admin is a completely separate scene (a ring of small pods, not the
   // vertical stack) — bypass the stack/camera-rig machinery below entirely.
   if (viewMode === "orgAdmin") return <OrgAdminScene controlsRef={controlsRef} />;
-  if (viewMode === "hypercube") return <HypercubeScene controlsRef={controlsRef} />;
+  if (viewMode === "hypercube") return <HypercubeScene controlsRef={controlsRef} onOpenDepartment={onOpenDepartment} />;
 
   const departmentView = viewMode === "department";
   const focused = selected !== null;
@@ -2472,7 +2474,10 @@ function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const [activeTab, setActiveTab] = useState<AppTab>("world");
+  const initialPmsView = new URLSearchParams(window.location.search).get("view");
+  const [activeTab, setActiveTab] = useState<AppTab>(() =>
+    ["gallery", "department", "org", "orgAdmin", "hypercube"].includes(initialPmsView ?? "") ? "gallery" : "world",
+  );
 
   // The gallery tab's <Canvas> mounts fresh each time it's switched to,
   // inside a conditionally-rendered section — react-three-fiber's resize
@@ -2488,7 +2493,11 @@ function App() {
 
   const [gallerySelected, setGallerySelected] = useState<IslandId | null>(null);
   const [galleryScrollProgress, setGalleryScrollProgress] = useState(0);
-  const [galleryViewMode, setGalleryViewMode] = useState<GalleryViewMode>("gallery");
+  const [galleryViewMode, setGalleryViewMode] = useState<GalleryViewMode>(() => {
+    if (initialPmsView === "org") return "orgAdmin";
+    if (initialPmsView === "department" || initialPmsView === "hypercube") return initialPmsView;
+    return "gallery";
+  });
   const galleryControlsRef = useRef<OrbitControlsImpl>(null);
   // Land back on the top of the stack, unfocused, next time the gallery tab
   // is opened, rather than resuming mid-focus from last time.
@@ -3052,6 +3061,7 @@ function App() {
                     scrollProgress={galleryScrollProgress}
                     viewMode={galleryViewMode}
                     controlsRef={galleryControlsRef}
+                    onOpenDepartment={() => setGalleryViewMode("department")}
                   />
                 </Canvas>
               </div>
@@ -3124,20 +3134,14 @@ function App() {
           )}
 
           {gallerySelected !== null && (
-            <button
-              type="button"
-              onClick={() => setGallerySelected(null)}
-              style={{
-                position: "absolute", top: 100, left: 20, zIndex: 42,
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 14px", borderRadius: 999, border: "none",
-                background: "rgba(255,255,255,0.92)", color: "#20362a",
-                fontWeight: 700, fontSize: 14, cursor: "pointer",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
-              }}
-            >
-              <ChevronLeft size={16} /> Back to gallery
-            </button>
+            <div style={{ position: "absolute", top: 100, left: 20, zIndex: 42, display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => setGallerySelected(null)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "none", background: "rgba(255,255,255,0.92)", color: "#20362a", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,0.12)" }}>
+                <ChevronLeft size={16} /> Back to gallery
+              </button>
+              <button type="button" onClick={() => { setGallerySelected(null); setActiveTab("world"); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 999, border: "none", background: "#20362a", color: "#ffffff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,0.18)" }}>
+                Open island workspace <ChevronLeft size={16} style={{ transform: "rotate(180deg)" }} />
+              </button>
+            </div>
           )}
         </>
       )}

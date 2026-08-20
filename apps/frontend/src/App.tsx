@@ -45,6 +45,7 @@ import IncubatorSettings from './pages/incubator/IncubatorSettings';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import PMS3DApp from './pages/PMS3D/PMS3DApp';
 import NewPMSApp from './pages/NewPMS/NewPMSApp';
+import PmsPage from './pages/PmsPage';
 import { VoiceProvider } from './context/VoiceContext';
 
 
@@ -236,6 +237,7 @@ function AppRoutes() {
   const isTwinGraph = location.pathname === '/twin';
   const is3DUniverse = location.pathname === '/3d';
   const isUniversal = location.pathname === '/universal';
+  const isPms = location.pathname === '/pms';
   // Bypass users (VC / Incubator) are authed but have no company — still let them see /3d
   const activeRole = localStorage.getItem('active_role');
   const isBypassUser = !!user && (activeRole === 'vc' || activeRole === 'incubator');
@@ -290,7 +292,7 @@ function AppRoutes() {
           }}
         >
           <div className="min-h-screen cosmos-bg">
-            <TopBar />
+            {!isPms && <TopBar />}
             {isTwinGraph ? (
               <Routes>
                 <Route
@@ -303,7 +305,7 @@ function AppRoutes() {
                 />
               </Routes>
             ) : (
-              <main className={isUniversal ? 'overflow-hidden' : 'pt-14 pb-10 px-8 overflow-y-auto'}>
+              <main className={isPms ? 'fixed inset-0 overflow-hidden' : isUniversal ? 'overflow-hidden' : 'pt-14 pb-10 px-8 overflow-y-auto'}>
                 <Routes>
                   {/* Authenticated app routes */}
                   <Route path="/overview" element={
@@ -390,6 +392,12 @@ function AppRoutes() {
 
                   {/* /universal is handled as a persistent overlay above, but we keep an empty route so router is happy if needed */}
                   <Route path="/universal" element={<AuthGuard requireOnboarding><></></AuthGuard>} />
+
+                  <Route path="/pms" element={
+                    <AuthGuard requireOnboarding>
+                      <PmsPage />
+                    </AuthGuard>
+                  } />
 
                   {/* /workspace — standalone action node workspace */}
                   <Route path="/workspace" element={

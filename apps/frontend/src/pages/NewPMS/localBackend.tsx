@@ -23,6 +23,12 @@ import type { CatalogueItemRow, MemberRole, SprintRow, SubtaskRow, TaskRow, Team
 
 const STORAGE_KEY = "new-pms-local-backend-v1";
 
+export type LocalBackendIdentity = {
+  email: string;
+  name: string;
+  role: MemberRole;
+};
+
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -51,9 +57,9 @@ const EMPTY_STATE: BackendState = {
   tasks: [],
 };
 
-function loadState(): BackendState {
+function loadState(storageKey: string): BackendState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return EMPTY_STATE;
     return { ...EMPTY_STATE, ...JSON.parse(raw) };
   } catch {
@@ -61,9 +67,9 @@ function loadState(): BackendState {
   }
 }
 
-function saveState(state: BackendState) {
+function saveState(storageKey: string, state: BackendState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
     // best-effort local persistence only
   }
@@ -76,12 +82,31 @@ type BackendContextValue = {
 
 const BackendContext = createContext<BackendContextValue | null>(null);
 
-export function LocalBackendProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<BackendState>(() => loadState());
+export function LocalBackendProvider({ children, storageKey = STORAGE_KEY, identity }: {
+  children: ReactNode;
+  storageKey?: string;
+  identity?: LocalBackendIdentity;
+}) {
+  const [state, setState] = useState<BackendState>(() => {
+    const stored = loadState(storageKey);
+    if (!identity) return stored;
+    const now = new Date().toISOString();
+    const member: TeamMemberRow = {
+      id: uid("member"), name: identity.name, email: identity.email,
+      role: identity.role, color: colorFor(identity.email), created_at: now,
+    };
+    const members = stored.teamMembers.some((item) => item.email === identity.email)
+      ? stored.teamMembers.map((item) => item.email === identity.email ? { ...item, name: identity.name, role: identity.role } : item)
+      : [member, ...stored.teamMembers];
+    const sprints: SprintRow[] = stored.sprints.length ? stored.sprints : [{
+      id: uid("sprint"), name: "First Sprint", goal: 300, status: "active", starts_at: now, created_at: now,
+    }];
+    return { ...stored, currentUserEmail: identity.email, teamMembers: members, sprints };
+  });
 
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    saveState(storageKey, state);
+  }, [state, storageKey]);
 
   return <BackendContext.Provider value={{ state, setState }}>{children}</BackendContext.Provider>;
 }

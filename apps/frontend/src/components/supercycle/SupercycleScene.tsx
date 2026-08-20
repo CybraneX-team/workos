@@ -15,18 +15,39 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Billboard, Text } from '@react-three/drei';
+import { NewPmsHypercubeModel } from '../../pages/NewPMS/App';
 import {
   nodeHealth,
   supercycleHealth,
-  SUPERCYCLE_LABEL,
   type SupercycleArchetype,
   type SupercycleInstance,
   type SupercycleNode,
+  type SupercycleCycle,
 } from '../../lib/supercycleData';
 
 const SPHERE_RADIUS = 1.55;
-const RING_RADIUS = 1.15;
+const RING_RADIUS = SPHERE_RADIUS;
 const NODE_RADIUS = 0.115;
+export type SupercycleRouteStyle = 'curved' | 'spherical';
+
+class SphericalArcCurve extends THREE.Curve<THREE.Vector3> {
+  private readonly startDirection: THREE.Vector3;
+  private readonly rotation: THREE.Quaternion;
+  private readonly laneBulge: number;
+
+  constructor(start: THREE.Vector3, end: THREE.Vector3, laneBulge: number) {
+    super();
+    this.startDirection = start.clone().normalize();
+    this.rotation = new THREE.Quaternion().setFromUnitVectors(this.startDirection, end.clone().normalize());
+    this.laneBulge = laneBulge;
+  }
+
+  getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+    const step = new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), this.rotation, t);
+    return target.copy(this.startDirection).applyQuaternion(step).normalize()
+      .multiplyScalar(SPHERE_RADIUS + this.laneBulge * Math.sin(Math.PI * t));
+  }
+}
 
 // ── Additive glow sprite ─────────────────────────────────────────────────────
 // A radial-gradient canvas texture blended additively. Works here because the
@@ -75,7 +96,8 @@ function Glow({ color, scale }: { color: string; scale: number }) {
 
 // ── Health → colour ──────────────────────────────────────────────────────────
 // One rule used everywhere so a colour always means the same thing.
-function healthColor(health: number): string {
+function healthColor(health: number | null): string {
+  if (health === null) return '#64748b';
   if (health >= 75) return '#34d399';
   if (health >= 50) return '#fbbf24';
   return '#f87171';
@@ -85,6 +107,42 @@ function healthColor(health: number): string {
 function slotPosition(i: number, count: number, radius = RING_RADIUS): THREE.Vector3 {
   const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
   return new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+}
+
+function departmentPosition(i: number, count: number): THREE.Vector3 {
+  if (count <= 1) return new THREE.Vector3(0, 0, SPHERE_RADIUS);
+  const y = 1 - (i / (count - 1)) * 2;
+  const radius = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = i * Math.PI * (3 - Math.sqrt(5));
+  return new THREE.Vector3(Math.cos(theta) * radius, y, Math.sin(theta) * radius).multiplyScalar(SPHERE_RADIUS);
+}
+
+function dynamicDepartmentPositions(nodes: SupercycleNode[], cycles: SupercycleCycle[]): Map<string, THREE.Vector3> {
+  const targets = new Map<string, THREE.Vector3[]>();
+  cycles.forEach((cycle, cycleIndex) => {
+    const memberIds = cycle.departmentIds.filter((id) => nodes.some((node) => node.id === id));
+    const normal = new THREE.Vector3(
+      Math.sin(cycleIndex * 1.71 + 0.45),
+      0.55 + (cycleIndex % 2) * 0.22,
+      Math.cos(cycleIndex * 1.71 + 0.45),
+    ).normalize();
+    const orientation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+    memberIds.forEach((departmentId, memberIndex) => {
+      const angle = (memberIndex / Math.max(memberIds.length, 1)) * Math.PI * 2 - Math.PI / 2 + cycleIndex * 0.31;
+      const target = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)).applyQuaternion(orientation);
+      const ownTargets = targets.get(departmentId) ?? [];
+      ownTargets.push(target);
+      targets.set(departmentId, ownTargets);
+    });
+  });
+
+  return new Map(nodes.map((node, index) => {
+    const memberships = targets.get(node.id);
+    if (!memberships?.length) return [node.id, departmentPosition(index, nodes.length)];
+    const position = memberships.reduce((sum, target) => sum.add(target), new THREE.Vector3());
+    if (position.lengthSq() < 0.001) return [node.id, departmentPosition(index, nodes.length)];
+    return [node.id, position.normalize().multiplyScalar(SPHERE_RADIUS)];
+  }));
 }
 
 // ── The enclosing sphere ─────────────────────────────────────────────────────
@@ -124,22 +182,68 @@ function CycleSphere() {
 
 // ── The cycle ring ───────────────────────────────────────────────────────────
 
-function CycleFlow({ dimmed }: { dimmed: boolean }) {
-  const torusGeometry = useMemo(
-    () => new THREE.TorusGeometry(RING_RADIUS, 0.006, 8, 128),
-    [],
-  );
+function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, routeStyle, onSelect }: {
+  cycle: SupercycleCycle;
+  nodePositions: Map<string, THREE.Vector3>;
+  lane: number;
+  selected: boolean;
+  anotherSelected: boolean;
+  routeStyle: SupercycleRouteStyle;
+  onSelect: () => void;
+}) {
+  const curve = useMemo(() => {
+    const departments = cycle.departmentIds.map((id) => nodePositions.get(id)).filter((point): point is THREE.Vector3 => Boolean(point));
+    if (departments.length < 2) return null;
+    const routeRadius = SPHERE_RADIUS + 0.018 + lane * 0.008;
+    if (routeStyle === 'spherical') {
+      let points = departments.map((point) => point.clone());
+      if (points.length === 2) {
+        const perpendicular = points[0].clone().cross(points[1]);
+        if (perpendicular.lengthSq() < 0.001) perpendicular.set(points[0].z, points[0].x, points[0].y);
+        perpendicular.normalize().multiplyScalar(SPHERE_RADIUS);
+        points = [points[0], perpendicular, points[1], perpendicular.clone().negate()];
+      }
+      const path = new THREE.CurvePath<THREE.Vector3>();
+      const laneBulge = 0.018 + lane * 0.016;
+      points.forEach((point, index) => path.add(new SphericalArcCurve(point, points[(index + 1) % points.length], laneBulge)));
+      return path;
+    }
+    if (departments.length === 2) {
+      const perpendicular = departments[0].clone().cross(departments[1]);
+      if (perpendicular.lengthSq() < 0.001) perpendicular.set(departments[0].z, departments[0].x, departments[0].y);
+      perpendicular.normalize().multiplyScalar(routeRadius + 0.05);
+      return new THREE.CatmullRomCurve3([
+        departments[0].clone(), perpendicular, departments[1].clone(), perpendicular.clone().negate(),
+      ], true, 'centripetal', 0.3);
+    }
+    const points: THREE.Vector3[] = [];
+    departments.forEach((point, index) => {
+      const next = departments[(index + 1) % departments.length];
+      points.push(point.clone());
+      const midpoint = point.clone().add(next);
+      if (midpoint.lengthSq() < 0.001) midpoint.set(point.z, point.x, point.y);
+      points.push(midpoint.normalize().multiplyScalar(routeRadius + 0.025));
+    });
+    return new THREE.CatmullRomCurve3(points, true, 'centripetal', 0.3);
+  }, [cycle.departmentIds, lane, nodePositions, routeStyle]);
 
+  if (!curve) return null;
+  const opacity = selected ? 1 : anotherSelected ? 0.055 : 0.52;
   return (
-    <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
-      <meshBasicMaterial
-        color="#4fd8ff"
-        transparent
-        opacity={dimmed ? 0.12 : 0.4}
-        depthWrite={false}
-        toneMapped={false}
-      />
-    </mesh>
+    <group>
+      <mesh>
+        <tubeGeometry args={[curve, 160, selected ? 0.012 : 0.007, 8, true]} />
+        <meshBasicMaterial color={cycle.color} transparent opacity={opacity} depthWrite={false} toneMapped={false} />
+      </mesh>
+      <mesh
+        onClick={(event) => { event.stopPropagation(); onSelect(); }}
+        onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={(event) => { event.stopPropagation(); document.body.style.cursor = 'auto'; }}
+      >
+        <tubeGeometry args={[curve, 128, 0.04, 6, true]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </group>
   );
 }
 
@@ -155,12 +259,13 @@ function CycleNode({
 }: {
   node: SupercycleNode;
   position: THREE.Vector3;
-  health: number;
+  health: number | null;
   dimmed: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const positionRef = useRef<THREE.Group>(null);
   const pulseRef = useRef(0);
 
   useFrame((_, delta) => {
@@ -171,12 +276,17 @@ function CycleNode({
     const breathe = 1 + Math.sin(pulseRef.current * 1.4) * 0.04;
     const next = THREE.MathUtils.lerp(group.scale.x, target * breathe, 0.12);
     group.scale.setScalar(next);
+    if (positionRef.current) {
+      positionRef.current.position.x = THREE.MathUtils.damp(positionRef.current.position.x, position.x, 5.5, delta);
+      positionRef.current.position.y = THREE.MathUtils.damp(positionRef.current.position.y, position.y, 5.5, delta);
+      positionRef.current.position.z = THREE.MathUtils.damp(positionRef.current.position.z, position.z, 5.5, delta);
+    }
   });
 
   const opacity = dimmed ? 0.25 : 1;
 
   return (
-    <group position={position}>
+    <group ref={positionRef} position={position}>
       <group
         ref={groupRef}
         onClick={(e) => {
@@ -226,7 +336,7 @@ function CycleNode({
       {!dimmed && (
         <Billboard position={[0, NODE_RADIUS * 2.9 - 0.1, 0]}>
           <Text fontSize={0.055} color={healthColor(health)} anchorX="center" anchorY="middle">
-            {`${health}%`}
+            {health === null ? 'No execution' : `${health}%`}
           </Text>
         </Billboard>
       )}
@@ -234,37 +344,33 @@ function CycleNode({
   );
 }
 
-// ── The core nucleus ─────────────────────────────────────────────────────────
+// ── The supercycle-specific execution hypercube ─────────────────────────────
 
-function SupercycleCore({ health }: { health: number }) {
-  const glowRef = useRef<THREE.Group>(null);
-  const timeRef = useRef(0);
+function SupercycleCore({ health, archetype }: { health: number | null; archetype: SupercycleArchetype }) {
+  const cubeRef = useRef<THREE.Group>(null);
 
   useFrame((_, delta) => {
-    timeRef.current += delta;
-    if (glowRef.current) {
-      const s = 1 + Math.sin(timeRef.current * 1.1) * 0.08;
-      glowRef.current.scale.setScalar(s);
-    }
+    if (!cubeRef.current) return;
+    cubeRef.current.rotation.x += delta * 0.07;
+    cubeRef.current.rotation.y += delta * 0.11;
   });
 
   return (
     <group>
-      <group ref={glowRef}>
-        <Glow color={healthColor(health)} scale={1.5} />
+      <group ref={cubeRef}>
+        <Glow color={healthColor(health)} scale={1.15} />
+        <group scale={0.012}>
+          <NewPmsHypercubeModel interactive={false} />
+        </group>
       </group>
-      <mesh>
-        <sphereGeometry args={[0.075, 32, 32]} />
-        <meshBasicMaterial color="#ffffff" toneMapped={false} />
-      </mesh>
-      <Billboard position={[0, -0.26, 0]}>
+      <Billboard position={[0, -0.34, 0]}>
         <Text fontSize={0.075} color="#e7edf7" anchorX="center" anchorY="middle" outlineWidth={0.004} outlineColor="#05070f">
-          {SUPERCYCLE_LABEL}
+          {archetype.label} Hypercube
         </Text>
       </Billboard>
-      <Billboard position={[0, -0.36, 0]}>
+      <Billboard position={[0, -0.44, 0]}>
         <Text fontSize={0.05} color={healthColor(health)} anchorX="center" anchorY="middle">
-          {`${health}% health`}
+          {health === null ? 'No execution linked' : `${health}% health`}
         </Text>
       </Billboard>
     </group>
@@ -289,7 +395,7 @@ function SubCycleTrack({
   instances: SupercycleInstance[];
   onOpenInstance: (instance: SupercycleInstance) => void;
   open: boolean;
-  health: number;
+  health: number | null;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const contentsRef = useRef<THREE.Group>(null);
@@ -400,6 +506,10 @@ export type SupercycleSceneProps = {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   onOpenInstance: (instance: SupercycleInstance) => void;
+  cycles: SupercycleCycle[];
+  selectedCycleId: string | null;
+  onSelectCycle: (cycleId: string | null) => void;
+  routeStyle: SupercycleRouteStyle;
   /** 0 while diving in, 1 once arrived — fades the whole thing in with the dive. */
   visibility?: number;
 };
@@ -410,6 +520,10 @@ export function SupercycleScene({
   selectedNodeId,
   onSelectNode,
   onOpenInstance,
+  cycles,
+  selectedCycleId,
+  onSelectCycle,
+  routeStyle,
 }: SupercycleSceneProps) {
   const contentRef = useRef<THREE.Group>(null);
   const [displayedNodeId, setDisplayedNodeId] = useState<string | null>(selectedNodeId);
@@ -418,8 +532,10 @@ export function SupercycleScene({
   const displayedNode = nodes.find((n) => n.id === displayedNodeId) ?? null;
   const selectedIndex = selectedNode ? nodes.findIndex((n) => n.id === selectedNode.id) : -1;
   const displayedIndex = displayedNode ? nodes.findIndex((n) => n.id === displayedNode.id) : -1;
-  const selectedPosition = selectedIndex >= 0 ? slotPosition(selectedIndex, nodes.length) : null;
-  const displayedPosition = displayedIndex >= 0 ? slotPosition(displayedIndex, nodes.length) : null;
+  const nodePositions = useMemo(() => dynamicDepartmentPositions(nodes, cycles), [nodes, cycles]);
+  const selectedPosition = selectedIndex >= 0 ? nodePositions.get(selectedNode!.id) ?? null : null;
+  const displayedPosition = displayedIndex >= 0 ? nodePositions.get(displayedNode!.id) ?? null : null;
+  const selectedCycle = cycles.find((cycle) => cycle.id === selectedCycleId) ?? null;
   const health = useMemo(() => supercycleHealth(nodes, instances), [nodes, instances]);
 
   useEffect(() => {
@@ -444,16 +560,27 @@ export function SupercycleScene({
   return (
     <group ref={contentRef}>
       <CycleSphere />
-      <CycleFlow dimmed={selectedNode !== null} />
-      {selectedNode === null && <SupercycleCore health={health} />}
+      {cycles.map((cycle, index) => (
+        <CycleRoute
+          key={cycle.id}
+          cycle={cycle}
+          nodePositions={nodePositions}
+          lane={index}
+          selected={selectedCycleId === cycle.id}
+          anotherSelected={selectedCycleId !== null && selectedCycleId !== cycle.id}
+          routeStyle={routeStyle}
+          onSelect={() => onSelectCycle(selectedCycleId === cycle.id ? null : cycle.id)}
+        />
+      ))}
+      {selectedNode === null && <SupercycleCore health={health} archetype={archetype} />}
 
       {nodes.map((n, i) => (
         <CycleNode
           key={n.id}
           node={n}
-          position={slotPosition(i, nodes.length)}
+          position={nodePositions.get(n.id) ?? departmentPosition(i, nodes.length)}
           health={nodeHealth(n.id, instances)}
-          dimmed={selectedNode !== null && selectedNode.id !== n.id}
+          dimmed={(selectedNode !== null && selectedNode.id !== n.id) || (selectedCycle !== null && !selectedCycle.departmentIds.includes(n.id))}
           selected={selectedNode?.id === n.id}
           onSelect={() => onSelectNode(selectedNode?.id === n.id ? null : n.id)}
         />

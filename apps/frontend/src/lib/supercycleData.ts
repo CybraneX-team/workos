@@ -57,6 +57,13 @@ export type SupercycleArchetype = {
   optionalNodes: string[];
 };
 
+export type SupercycleCycle = {
+  id: string;
+  name: string;
+  color: string;
+  departmentIds: string[];
+};
+
 // Slot colours. Index 0-4 map to the five ring positions, so "the money slot"
 // is always the same hue whichever archetype is loaded.
 export const SUPERCYCLE_SLOT_COLORS = [
@@ -217,7 +224,7 @@ export type SupercycleInstance = {
   /** Index into the node's subCycle.stages. */
   stageIndex: number;
   /** 0-100. Rolls up into node health, which rolls up into the core. */
-  health: number;
+  health: number | null;
 };
 
 /** Placeholder instances so the track reads as populated before it is wired
@@ -231,14 +238,16 @@ export const SAMPLE_INSTANCES: SupercycleInstance[] = [
 ];
 
 /** Aggregate health of a node from its live instances (100 when it has none). */
-export function nodeHealth(nodeId: string, instances: SupercycleInstance[]): number {
+export function nodeHealth(nodeId: string, instances: SupercycleInstance[]): number | null {
   const own = instances.filter((i) => i.nodeId === nodeId);
-  if (own.length === 0) return 100;
-  return Math.round(own.reduce((sum, i) => sum + i.health, 0) / own.length);
+  const measured = own.filter((instance): instance is SupercycleInstance & { health: number } => instance.health !== null);
+  if (measured.length === 0) return null;
+  return Math.round(measured.reduce((sum, i) => sum + i.health, 0) / measured.length);
 }
 
 /** Aggregate health of the whole supercycle — drives the core's glow. */
-export function supercycleHealth(nodes: SupercycleNode[], instances: SupercycleInstance[]): number {
-  if (nodes.length === 0) return 100;
-  return Math.round(nodes.reduce((sum, n) => sum + nodeHealth(n.id, instances), 0) / nodes.length);
+export function supercycleHealth(nodes: SupercycleNode[], instances: SupercycleInstance[]): number | null {
+  const measured = nodes.map((node) => nodeHealth(node.id, instances)).filter((health): health is number => health !== null);
+  if (measured.length === 0) return null;
+  return Math.round(measured.reduce((sum, health) => sum + health, 0) / measured.length);
 }
