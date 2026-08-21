@@ -1,6 +1,10 @@
 -- A Supercycle is a company-scoped representation of existing BDT departments
 -- and level-one workspace nodes. It never creates a second department tree.
+-- Older deployed schemas predate these composite tenant keys. They are needed
+-- for every company-safe foreign key declared below.
+CREATE UNIQUE INDEX IF NOT EXISTS company_members_company_id_id_key ON public.company_members(company_id,id);
 CREATE UNIQUE INDEX IF NOT EXISTS departments_company_id_id_key ON public.departments(company_id,id);
+CREATE UNIQUE INDEX IF NOT EXISTS department_bdt_nodes_company_department_id_key ON public.department_bdt_nodes(company_id,department_id,id);
 
 CREATE TABLE public.bdt_supercycle_configs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
