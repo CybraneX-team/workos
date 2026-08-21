@@ -29,6 +29,7 @@ COPY packages/gemini ./packages/gemini
 COPY packages/permissions ./packages/permissions
 COPY packages/metrics ./packages/metrics
 COPY apps/backend/tsconfig.json ./apps/backend/tsconfig.json
+COPY apps/backend/scripts ./apps/backend/scripts
 COPY apps/backend/src ./apps/backend/src
 
 RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @cybranex/shared-types build
