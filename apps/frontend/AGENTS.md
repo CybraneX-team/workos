@@ -8,13 +8,16 @@ former environment-specific `code-review-graph` tool names.
 ## Product boundaries
 
 - The browser uses authenticated backend APIs and must never receive provider tokens,
-  service-role keys, raw provider errors, or ERPNext control-plane URLs.
+  service-role keys, provider credentials, or raw provider errors.
 - IDT Root Focus notes are browser-local; branch chat is session-only, grounded in
   stored server data, and cannot edit IDT data or open an action workspace. Read
   `../../docs/architecture/idt-root-focus-chat.md` before changing it.
 - Meta Ads operating-loop and Campaign Studio behavior is documented in
   `../../docs/architecture/meta-ads-operating-loop.md` and
   `../../docs/architecture/meta-ads-campaign-studio.md`.
+- Native Sales workspaces use only `/api/crm`, `/api/catalog`, and `/api/sales`.
+  Read `../../docs/architecture/native-sales-documents.md`; document totals are
+  server-owned and the browser must not imply accounting or statutory compliance.
 - Business Diagnosis is a Founder/Admin-only, backend-owned company assessment.
   Its browser page must not query `business_diagnoses` directly or expose Gemini
   data beyond the validated API contract. Read

@@ -13,6 +13,7 @@ import {
   processOneMetaAdsCampaignJob,
   processOneMetaAdsCreativeJob,
 } from '../domains/meta-ads/authoring.js';
+import { runNativeMetaLeadSweepIfDue } from '../domains/meta-ads/nativeLeadSync.js';
 
 const LOCK_MINUTES = 5;
 const POLL_MS = 2000;
@@ -107,6 +108,7 @@ export function startWorker() {
           await refreshMetaAdsHealthFindings();
           nextMetaHealthCheck = Date.now() + 60 * 60_000;
         }
+        await runNativeMetaLeadSweepIfDue();
         const processedMetaRecalculation = await processOneMetaAdsRecalculationJob();
         if (processedMetaRecalculation) continue;
         const processedMetaCreativeJob = await processOneMetaAdsCreativeJob();

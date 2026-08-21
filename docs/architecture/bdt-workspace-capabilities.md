@@ -1,10 +1,20 @@
-# BDT V4 workspace capabilities
+# BDT V5 workspace capabilities
+
+## Shared Action nodes
+
+Every persisted workspace node can own user-created `action` children. A
+department manager creates an Action node with a name and optional purpose;
+the node reuses the backend-owned BDT task feature and may contain files or
+HTTPS links. Tasks remain separate records with one assignee each. Department
+readers can see all tasks and information, while task progress stays limited to
+the assignee or a department manager. Files are private and downloaded through
+the authenticated backend; external-link access is managed by the linked service.
 
 | Department | Focus area | Connected evidence |
 | --- | --- | --- |
-| Product | Product Portfolio | ERPNext product catalogue |
-| Sales | Deal Execution | ERPNext sales / CRM |
-| Operations | Process & Capacity | ERPNext Operations exception-to-improvement snapshot |
+| Product | Product Portfolio | native WorkOS catalogue |
+| Sales | Deal Execution | native WorkOS CRM |
+| Operations | Process & Capacity | native Operations placeholder |
 | Marketing | Paid Acquisition | Meta Ads |
 | All other canonical departments | Their named focus area | No provider-specific adapter yet |
 
@@ -17,7 +27,12 @@ company and user. They are not shared with teammates or synchronized to the
 backend. The UI must retain the “Saved on this device” notice anywhere projects
 are created or viewed.
 
-Operations has a dedicated workspace model documented in
-[`operations-v4.md`](operations-v4.md): Systems is the ERPNext lifecycle and
-Desk gateway; Metrics holds user-configured ERP-backed KPIs; Process & Capacity
-is a read-only control tower rather than a synthetic health dashboard.
+Operations retains its canonical focus node but has no provider capability or API
+dependency in Phase 1. It renders a concise native-Operations placeholder until the
+execution model is deliberately designed in a later phase. Historical Operations
+design material is not part of the Phase 1 runtime contract.
+# User-authored Action and Form nodes
+
+Persisted BDT workspaces may have two direct user-authored child kinds. An `action/action` child is an evidence-and-work surface: it reuses shared BDT tasks and private files/HTTPS links. A `resource/form` child is a structured shared-information surface: its administrator-defined field schema is permanently locked by its first record, and department readers can create and edit records thereafter.
+
+Structural creation and editing is centralized in **Settings → Node Management**. The 3D BDT remains the discovery and navigation surface: focus a parent, focus the child, then activate its centered node to open its workspace. Neither child kind changes the canonical department taxonomy.

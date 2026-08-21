@@ -1,15 +1,5 @@
 # Supabase Migrations
 
-> **This database also hosts the ERPNext control-plane's `erpnext` schema** (added
-> 2026-07-20, applied via `pnpm --filter erpnext-control-plane db:migrate`). The files
-> here manage the WorkOS `public` schema only — do not add `erpnext.*` objects here, and
-> do not assume `public` is the only schema present. See
-> `../../../docs/runbooks/cloud-deploy.md`.
->
-> ⚠️ The `supabase_migrations` ledger is **stale/unreliable** — it lists only a subset of
-> what is actually applied (migrations have been applied by hand). Verify state by
-> checking whether tables/columns exist, not by reading the ledger.
-
 The active migration set was squashed on 2026-06-28 before production release.
 
 Use all files in `migrations/` for a fresh environment, in filename order. The
@@ -19,16 +9,19 @@ first two files are the squashed baseline:
 2. `migrations/20260628210100_baseline_reference_seed.sql`
 
 Later timestamped files are additive migrations and must also be applied in
-order. This repository does not currently include a Supabase CLI `config.toml`.
-Apply a specific pending migration from the monorepo root with:
+order. `config.toml` defines the disposable local stack. From the monorepo root:
 
 ```sh
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
-  -f apps/frontend/supabase/migrations/<migration>.sql
+pnpm local:setup
+pnpm test:local:native
+pnpm test:local:sales
+pnpm verify:local:phase2
+pnpm dev:local
 ```
 
-Do not reapply the baseline to an existing database. Determine which migrations
-are pending before applying them, and back up shared environments first.
+Use `supabase db reset --workdir apps/frontend` only for the disposable local
+database. Never point local reset or the native DB suite at a shared/remote database;
+the suite independently refuses non-local database hosts.
 
 The current Meta Ads additions are:
 
@@ -38,11 +31,16 @@ The current Meta Ads additions are:
 - `20260716120000_meta_ads_campaign_studio.sql`
 - `20260722000000_meta_ads_lead_forms.sql`
 - `20260803090000_business_diagnoses.sql`
+- `20260808100000_native_crm_catalog.sql`
+- `20260808110000_runtime_role_grants.sql`
+- `20260810100000_native_business_security.sql`
+- `20260810110000_native_sales_documents.sql`
 
 Their backend mirrors are `036_meta_ads_operating_loop.sql` and
 `037_meta_ads_decision_inbox.sql`, `038_meta_ads_configuration_recalculation.sql`,
 `039_meta_ads_campaign_studio.sql`, `040_meta_ads_lead_forms.sql`, and
-`041_business_diagnoses.sql`; keep each pair byte-identical. These
+`041_business_diagnoses.sql`, `042_native_crm_catalog.sql`, and
+`043_native_business_security.sql`, and `044_native_sales_documents.sql`; keep domain migration pairs byte-identical. These
 migrations are additive and safe to re-run, but a shared-database backup is
 still required before applying them.
 

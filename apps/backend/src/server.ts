@@ -2,8 +2,6 @@ import cors from 'cors';
 import express from 'express';
 import { env } from './config.js';
 import { startWorker } from './jobs/runner.js';
-import { startErpNextOutboxWorker } from './lib/erpnextOutbox.js';
-import { startLeadAttributionWorker } from './domains/meta-ads/leadAttribution.js';
 import { ingestionRouter } from './routes/ingestion.js';
 import { metricsRouter } from './routes/metrics.js';
 import { integrationsRouter } from './routes/integrations.js';
@@ -19,14 +17,15 @@ import { profileRouter } from './routes/profile.js';
 import { teamRouter } from './routes/team.js';
 import { rbacRouter } from './routes/rbac.js';
 import { departmentsRouter } from './routes/departments.js';
+import { bdtTasksRouter } from './routes/bdtTasks.js';
+import { bdtActionNodesRouter } from './routes/bdtActionNodes.js';
+import { bdtFormNodesRouter } from './routes/bdtFormNodes.js';
 import { referenceCompaniesRouter } from './routes/referenceCompanies.js';
 import { bdtCatalogRouter } from './routes/bdtCatalog.js';
-import { erpnextChatRouter } from './domains/workos-erp/erpnextChat.js';
-import { erpnextOperationsRouter } from './domains/workos-erp/erpnextOperations.js';
-import { erpnextSalesRouter } from './domains/workos-erp/erpnextSales.js';
-import { erpnextProductsRouter } from './domains/workos-erp/erpnextProducts.js';
+import { crmRouter, catalogRouter } from './domains/native-business/router.js';
+import { businessAssistantRouter } from './domains/native-business/assistant.js';
+import { salesRouter } from './domains/sales/router.js';
 import { debugLogRouter } from './routes/debugLog.js';
-import { oidcRouter } from './routes/oidc.js';
 import { incubatorRouter } from './routes/incubator.js';
 import { incubatorRosterRouter } from './routes/incubatorRoster.js';
 import { incubatorInvitesRouter } from './routes/incubatorInvites.js';
@@ -68,14 +67,16 @@ app.use('/api/profile', profileRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/rbac', rbacRouter);
 app.use('/api/departments', departmentsRouter);
+app.use('/api/bdt/tasks', bdtTasksRouter);
+app.use('/api/bdt/action-nodes', bdtActionNodesRouter);
+app.use('/api/bdt/form-nodes', bdtFormNodesRouter);
 app.use('/api/reference-companies', referenceCompaniesRouter);
 app.use('/api/bdt/catalog', bdtCatalogRouter);
-app.use('/api/erpnext/operations', erpnextOperationsRouter);
-app.use('/api/erpnext/sales', erpnextSalesRouter);
-app.use('/api/erpnext/products', erpnextProductsRouter);
+app.use('/api/crm', crmRouter);
+app.use('/api/catalog', catalogRouter);
+app.use('/api/business-assistant', businessAssistantRouter);
+app.use('/api/sales', salesRouter);
 app.use('/api/debug', debugLogRouter);
-app.use('/api/erpnext', erpnextChatRouter);
-app.use('/api/oidc', oidcRouter);
 app.use('/api/incubators', incubatorRouter);
 app.use('/api/incubator/roster', incubatorRosterRouter);
 app.use('/api/incubator/invites', incubatorInvitesRouter);
@@ -100,12 +101,6 @@ initializeRbac()
       if (env.RUN_WORKER) {
         startWorker();
         console.log(`[backend] worker started (${env.WORKER_ID})`);
-      }
-      if (env.RUN_ERPNEXT_OUTBOX_WORKER) {
-        startErpNextOutboxWorker();
-        // Shares the flag because it has the same dependency: both only work when this instance
-        // is the one talking to the ERPNext control plane.
-        startLeadAttributionWorker();
       }
     });
   })

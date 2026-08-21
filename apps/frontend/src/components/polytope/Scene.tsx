@@ -80,6 +80,8 @@ export interface SceneProps {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   onPathChange: (path: string[]) => void;
+  /** Opens a BDT workspace only after its centered node is clicked again. */
+  onWorkspaceOpen?: (path: string[]) => void;
   setBackInfo: (info: { label: string; onClick: () => void } | null) => void;
   companyName: string;
   industryName?: string;
@@ -192,6 +194,7 @@ export function Scene({
   selectedId,
   setSelectedId,
   onPathChange,
+  onWorkspaceOpen,
   setBackInfo,
   companyName,
   industryName,
@@ -1135,6 +1138,11 @@ export function Scene({
               color={color}
               selectedInternalPath={selectedInternalPath}
               onSelectInternal={(path, targetPos) => handleInternalClick(path, targetPos, node.id)}
+              onOpenCenteredWorkspace={(path, internalNode) => {
+                if (!isLeafInternalNode(internalNode, bdtWorkspaceLeaves)) return false;
+                onWorkspaceOpen?.(path);
+                return Boolean(onWorkspaceOpen);
+              }}
               setBackInfo={setBackInfo}
               isDeepDrillDown={isDeepDrillDown}
               onHover={setHoveredId}

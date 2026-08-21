@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import type { UInternalNode } from '../../lib/universalPolytopeData';
 import { isActionLeafNode } from '../../lib/universalPolytopeData';
-import { isVirtualErpNextNodeLocked } from '../../lib/bdtPolytopeData';
+import { isVirtualCatalogNodeLocked } from '../../lib/bdtPolytopeData';
 import { PlasmaSphere } from '../PolytopeShared';
 import { useDragWorkspaceStore } from '../../lib/useDragWorkspaceStore';
 
@@ -36,6 +36,8 @@ interface InternalNodeProps {
   depth: number;
   selectedPath: string[];
   onSelectPath: (path: string[], pos: THREE.Vector3) => void;
+  /** Handles a second click on a centered node when it owns a workspace. */
+  onOpenCenteredWorkspace?: (path: string[], node: UInternalNode) => boolean;
   pathContext: string[];
   parentPos: THREE.Vector3;
   isVisible: boolean;
@@ -69,6 +71,7 @@ export function InternalNode({
   depth,
   selectedPath,
   onSelectPath,
+  onOpenCenteredWorkspace,
   pathContext,
   parentPos,
   isVisible,
@@ -97,7 +100,7 @@ export function InternalNode({
   const radii = [0.25, 0.20, 0.15, 0.12, 0.09];
   const isLevel1 = node.nodeLevel === 'level1';
   const radius = isLevel1 ? radii[0] : (radii[depth] || 0.05);
-  const isInactive = !isDraft && isVirtualErpNextNodeLocked(node);
+  const isInactive = !isDraft && isVirtualCatalogNodeLocked(node);
 
   const isMeActiveCenter = selectedPath.length > 0 && selectedPath[selectedPath.length - 1] === node.id;
   const isMeAncestor = selectedPath.includes(node.id) && !isMeActiveCenter;
@@ -349,6 +352,7 @@ export function InternalNode({
       return;
     }
     if (selectedPath[selectedPath.length - 1] === node.id) {
+      if (onOpenCenteredWorkspace?.(myPath, node)) return;
       onSelectPath(pathContext, parentPos);
       return;
     } else {
@@ -420,7 +424,7 @@ export function InternalNode({
                 border: '1px solid rgba(255,255,255,0.15)',
                 pointerEvents: 'none',
               }}>
-                Inactive in ERPNext
+                Inactive in WorkOS
               </div>
             </Html>
           </Billboard>
@@ -544,6 +548,7 @@ export function InternalNode({
             depth={depth + 1}
             selectedPath={selectedPath}
             onSelectPath={onSelectPath}
+            onOpenCenteredWorkspace={onOpenCenteredWorkspace}
             pathContext={myPath}
             parentPos={targetPos}
             isVisible={isChildVisible}

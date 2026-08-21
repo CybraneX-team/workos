@@ -60,7 +60,7 @@ pnpm --filter frontend lint
   `../../docs/runbooks/playwright-automation.md` before changing automation.
 
 The frontend must not receive integration credentials, service-role keys, raw
-provider errors, or internal ERPNext control-plane URLs.
+provider credentials or raw provider errors.
 
 ## Business Diagnosis
 
@@ -127,18 +127,9 @@ pnpm --filter frontend demo:meta-ads
 The recordable demo uses disposable development data and has additional safety
 requirements documented in `e2e/meta-ads/DEMO.md`.
 
-## ERPNext
+## Native CRM and catalogue
 
-The browser accesses ERPNext through WorkOS backend routes. It must not call the
-ERPNext control-plane directly. For the ownership boundary and local SSO flow,
-read:
-
-- `../../docs/architecture/erpnext-control-plane.md`
-- `../../docs/runbooks/local-erpnext-sso.md`
-
-During tenant provisioning, Settings polls the backend's safe ERPNext status response and
-may display a coarse provisioning stage. It must never derive a host name, call the
-control-plane, or render a raw provisioning diagnostic.
+The Sales and Product Portfolio workspaces call authenticated WorkOS backend APIs. They are available immediately after company creation and have no external provisioning or connection-status dependency. See `../../docs/architecture/native-crm-catalog.md`.
 
 ## Keeping this document current
 

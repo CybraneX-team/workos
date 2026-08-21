@@ -346,17 +346,15 @@ dbDescribe('Meta Ads Campaign Studio database lifecycle', { concurrency: 1 }, ()
     assert.equal(steps.get('leadform')!.status, 'complete');
     assert.equal(steps.get('campaign')!.status, 'complete');
 
-    // This company has no ERPNext tenant, so crmsync cannot succeed. The publish must still
-    // complete: Meta is already live and keeps collecting, and Frappe backfills on first sync.
-    assert.equal(steps.get('crmsync')?.status, 'failed');
+    assert.equal(steps.get('leadbinding')?.status, 'complete');
     assert.equal(job.status, 'complete');
     assert.equal((await getMetaAdsCampaignDraft(companyId, draft.id)).status, 'published_paused');
 
-    const events = await pool.query(
-      `SELECT count(*)::int AS n FROM public.meta_ads_campaign_events WHERE draft_id=$1 AND event_type='lead_sync_configuration_failed'`,
-      [draft.id],
+    const binding = await pool.query(
+      `SELECT meta_page_id,field_mapping FROM public.meta_lead_form_bindings WHERE company_id=$1 AND meta_form_id=$2`,
+      [companyId, steps.get('leadform')!.metaObjectId],
     );
-    assert.equal(events.rows[0].n, 1, 'a failed CRM handoff must be surfaced, not swallowed');
+    assert.equal(binding.rowCount, 1, 'native lead binding must be persisted');
 
     const mapped = await pool.query(
       `SELECT meta_object_id FROM public.meta_ads_entity_mappings WHERE draft_id=$1 AND object_kind='leadform'`,

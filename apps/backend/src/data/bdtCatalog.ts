@@ -25,7 +25,7 @@ export type { Domain, NodeType, BranchKind, NodeLevel, CompanySize };
 export const DOMAINS = new Set<Domain>(['direction', 'build', 'delivery', 'market', 'control', 'people']);
 export const NODE_TYPES = new Set<NodeType>(['team', 'process', 'project', 'resource', 'decision', 'risk', 'metric', 'branch', 'action', 'signal']);
 export const BRANCH_KINDS = new Set<BranchKind>(['purpose_scope', 'objectives_okrs', 'core_workstreams', 'metrics_health', 'resources_capacity', 'dependencies', 'risks_controls', 'decision_queue']);
-export const NODE_LEVELS = new Set<NodeLevel>(['level1', 'branch', 'internal', 'action']);
+export const NODE_LEVELS = new Set<NodeLevel>(['level1', 'branch', 'internal', 'action', 'form']);
 
 export const U_BRANCH_KIND_LABELS: Record<BranchKind, string> = {
   purpose_scope:      'Purpose & Scope',

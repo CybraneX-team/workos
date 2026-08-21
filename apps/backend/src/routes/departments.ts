@@ -24,7 +24,7 @@ import {
   type BranchKind,
   type NodeLevel,
 } from '../data/bdtCatalog.js';
-import { syncErpNextRolesForMember } from '../lib/erpnextRoleSync.js';
+import { BDT_TAXONOMY_VERSION } from '../data/bdtTaxonomy.js';
 
 export const departmentsRouter = Router();
 departmentsRouter.use(authJwt);
@@ -144,11 +144,22 @@ async function assertDepartment(companyId: string, departmentId: string) {
 }
 
 async function assertNode(companyId: string, nodeId: string) {
-  const { rows } = await pool.query<{ id: string; department_id: string; node_type: NodeType }>(
-    `SELECT id, department_id, node_type FROM public.department_bdt_nodes WHERE id = $1 AND company_id = $2`,
+  const { rows } = await pool.query<{ id: string; department_id: string; node_type: NodeType; node_level: NodeLevel | null; metadata: Record<string, unknown> }>(
+    `SELECT id, department_id, node_type, node_level, metadata FROM public.department_bdt_nodes WHERE id = $1 AND company_id = $2`,
     [nodeId, companyId],
   );
   return rows[0] ?? null;
+}
+
+async function removeActionResourceFiles(companyId: string, where: 'department' | 'node', id: string) {
+  const sql = where === 'department'
+    ? `SELECT storage_path FROM public.bdt_action_resources WHERE company_id=$1 AND department_id=$2 AND storage_path IS NOT NULL`
+    : `WITH RECURSIVE descendants AS (SELECT id FROM public.department_bdt_nodes WHERE company_id=$1 AND id=$2 UNION ALL SELECT child.id FROM public.department_bdt_nodes child JOIN descendants parent ON child.parent_node_id=parent.id WHERE child.company_id=$1) SELECT storage_path FROM public.bdt_action_resources WHERE company_id=$1 AND node_id IN (SELECT id FROM descendants) AND storage_path IS NOT NULL`;
+  const { rows } = await pool.query<{ storage_path: string }>(sql, [companyId, id]);
+  const paths = rows.map(row => row.storage_path);
+  if (!paths.length) return;
+  const { error } = await supabaseAdmin.storage.from('bdt-action-resources').remove(paths);
+  if (error) throw new Error('action_resource_storage_cleanup_failed');
 }
 
 // Only metric nodes keep a side table (department_metric_links → company_metric_definitions FK).
@@ -196,12 +207,40 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
     `SELECT n.id, n.department_id, n.parent_node_id, n.source_key, n.label, n.node_type, n.score, n.sort_order, n.metadata,
             n.branch_kind, n.node_level, n.mapped_universal_category,
             ml.metric_key
-       FROM public.department_bdt_nodes n
+      FROM public.department_bdt_nodes n
        LEFT JOIN public.department_metric_links ml ON ml.node_id = n.id
       WHERE n.company_id = $1
-        AND n.metadata->>'taxonomyVersion' = 'v4'
+        AND (
+          n.metadata->>'taxonomyVersion' = $2
+          OR (
+            n.node_type = 'action'
+            AND n.node_level = 'action'
+            AND n.parent_node_id IS NOT NULL
+            AND n.metadata->>'workspaceKind' IS NULL
+            AND EXISTS (
+              SELECT 1
+                FROM public.department_bdt_nodes parent
+               WHERE parent.id = n.parent_node_id
+                 AND parent.company_id = n.company_id
+                 AND parent.metadata->>'taxonomyVersion' = $2
+                 AND parent.metadata->>'workspaceKind' IS NOT NULL
+            )
+          )
+          OR (
+            n.node_type = 'resource'
+            AND n.node_level = 'form'
+            AND n.parent_node_id IS NOT NULL
+            AND n.metadata->>'workspaceKind' IS NULL
+            AND EXISTS (SELECT 1 FROM public.bdt_form_nodes f WHERE f.company_id=n.company_id AND f.node_id=n.id)
+            AND EXISTS (
+              SELECT 1 FROM public.department_bdt_nodes parent
+               WHERE parent.id=n.parent_node_id AND parent.company_id=n.company_id
+                 AND parent.metadata->>'taxonomyVersion'=$2 AND parent.metadata->>'workspaceKind' IS NOT NULL
+            )
+          )
+        )
       ORDER BY n.department_id, n.parent_node_id NULLS FIRST, n.sort_order ASC, n.label ASC`,
-    [companyId],
+    [companyId, BDT_TAXONOMY_VERSION],
   );
 
   const { rows: rollupRows } = await pool.query<{
@@ -269,6 +308,7 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
       dueDate: row.node_type === 'action' ? (row.metadata?.dueDate ?? undefined) : undefined,
       metricImpact: row.node_type === 'action' ? (row.metadata?.metricImpact ?? undefined) : undefined,
       output: row.node_type === 'action' ? (row.metadata?.output ?? undefined) : undefined,
+      purpose: (row.node_type === 'action' || row.node_level === 'form') ? (row.metadata?.purpose ?? undefined) : undefined,
       metricKey: row.metric_key ?? undefined,
       branchKind: row.branch_kind ?? undefined,
       nodeLevel: row.node_level ?? undefined,
@@ -287,9 +327,9 @@ async function listDepartments(companyId: string, accessMap?: Map<string, Depart
     }
   }
 
-  // V4 Systems reports the connection state for the provider that powers its
+  // Systems reports the connection state for the provider that powers its
   // department Focus. Existing development rows predate that metadata copy, so
-  // derive it from the same persisted V4 department tree at read time.
+  // derive it from the same persisted department tree at read time.
   for (const nodes of nodesByDepartment.values()) {
     const focus = nodes.find(node => node.workspaceKind === 'focus');
     const systems = nodes.find(node => node.workspaceKind === 'systems');
@@ -417,6 +457,7 @@ departmentsRouter.delete('/:departmentId', requirePermission('twin', 'write'), r
   const companyId = req.auth.companyId;
   if (!companyId) return res.status(403).json({ error: 'no_company' });
   try {
+    await removeActionResourceFiles(companyId, 'department', req.params.departmentId);
     await pool.query(`DELETE FROM public.departments WHERE id = $1 AND company_id = $2`, [req.params.departmentId, companyId]);
     const accessMap = await getDepartmentAccessMap(req.auth);
     return res.json({ success: true, departments: await listDepartments(companyId, accessMap) });
@@ -431,8 +472,16 @@ departmentsRouter.post('/:departmentId/nodes', requirePermission('twin', 'write'
   if (!companyId) return res.status(403).json({ error: 'no_company' });
   const client = await pool.connect();
   try {
+    if (String(req.body?.type ?? '') === 'action') {
+      return res.status(409).json({ error: 'action_node_use_bdt_api' });
+    }
+    if (String(req.body?.nodeLevel ?? '') === 'form') return res.status(409).json({ error: 'form_node_use_bdt_api' });
     if (!(await assertDepartment(companyId, req.params.departmentId))) {
       return res.status(404).json({ error: 'department_not_found' });
+    }
+    const { rows: departmentRows } = await pool.query<{ source_key: string }>(`SELECT source_key FROM public.departments WHERE id=$1 AND company_id=$2`, [req.params.departmentId, companyId]);
+    if (departmentRows[0]?.source_key === 'dept_product' || departmentRows[0]?.source_key === 'dept_sales') {
+      return res.status(409).json({ error: 'commercial_nodes_fixed' });
     }
     const input = normalizeNodeInput(req.body);
     if (input.type === 'action') {
@@ -478,6 +527,13 @@ departmentsRouter.patch('/nodes/:nodeId', requirePermission('twin', 'write'), re
   try {
     const existing = await assertNode(companyId, req.params.nodeId);
     if (!existing) return res.status(404).json({ error: 'node_not_found' });
+    if (existing.metadata?.systemOwned === true && existing.metadata?.capability === 'commercial_management') {
+      return res.status(409).json({ error: 'commercial_nodes_fixed' });
+    }
+    if (existing.node_type === 'action' && !existing.metadata?.workspaceKind) {
+      return res.status(409).json({ error: 'action_node_use_bdt_api' });
+    }
+    if (existing.node_level === 'form') return res.status(409).json({ error: 'form_node_use_bdt_api' });
     const input = normalizeNodeInput(req.body);
     const effectiveType = input.type ?? existing.node_type;
     if (effectiveType === 'action') {
@@ -508,6 +564,16 @@ departmentsRouter.delete('/nodes/:nodeId', requirePermission('twin', 'write'), r
   const companyId = req.auth.companyId;
   if (!companyId) return res.status(403).json({ error: 'no_company' });
   try {
+    const existing = await assertNode(companyId, req.params.nodeId);
+    if (!existing) return res.status(404).json({ error: 'node_not_found' });
+    if (existing.metadata?.systemOwned === true && existing.metadata?.capability === 'commercial_management') {
+      return res.status(409).json({ error: 'commercial_nodes_fixed' });
+    }
+    if (existing.node_type === 'action' && !existing.metadata?.workspaceKind) {
+      return res.status(409).json({ error: 'action_node_use_bdt_api' });
+    }
+    if (existing.node_level === 'form') return res.status(409).json({ error: 'form_node_use_bdt_api' });
+    await removeActionResourceFiles(companyId, 'node', req.params.nodeId);
     await pool.query(`DELETE FROM public.department_bdt_nodes WHERE id = $1 AND company_id = $2`, [req.params.nodeId, companyId]);
     const accessMap = await getDepartmentAccessMap(req.auth);
     return res.json({ success: true, departments: await listDepartments(companyId, accessMap) });
@@ -539,7 +605,6 @@ departmentsRouter.patch('/team-members/:memberId', requirePermission('team', 'wr
     if (error) {
       return res.status(500).json({ error: 'member_department_update_failed', details: error.message });
     }
-    if (updated) await syncErpNextRolesForMember(companyId, updated.user_id, updated.role);
     return res.json({ success: true });
   } catch (err: any) {
     console.error('[departments] member assignment failed', err);

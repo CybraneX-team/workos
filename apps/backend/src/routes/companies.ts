@@ -3,7 +3,7 @@ import { authJwt } from '../middleware/authJwt.js';
 import { supabaseAdmin, pool } from '../db.js';
 import { requirePermission } from '../rbac.js';
 import { BDT_SEED_DEPARTMENTS, type BdtSeedDepartment } from '../data/bdtSeed.js';
-import { enqueueErpNextSetup } from '../lib/erpnextOutbox.js';
+import { DEPT_SIZE_CONFIGS, type CompanySize } from '../data/bdtCatalog.js';
 
 export const companiesRouter = Router();
 companiesRouter.use(authJwt);
@@ -70,8 +70,8 @@ export function currencyForCountry(country: string): string {
   return COUNTRY_CURRENCIES[country.trim().toLowerCase()] ?? 'USD';
 }
 
-// Frappe's country_info.json carries currency and timezones but no fiscal-year
-// data, so the policy lives here: April-March where that is the statutory year,
+// Company locale defaults include currency, timezone, and fiscal-year
+// policy: April-March where that is the statutory year,
 // calendar year everywhere else.
 const APRIL_MARCH_FY_COUNTRIES = new Set(['india']);
 
@@ -97,7 +97,7 @@ export function timezoneForCountry(country: string): string {
   return COUNTRY_TIMEZONES[country.trim().toLowerCase()] ?? 'UTC';
 }
 
-/** Current fiscal year for `country`, as the ISO dates ERPNext's setup wizard expects. */
+/** Current fiscal year for `country`, returned as ISO dates. */
 export function fiscalYearForCountry(country: string, today = new Date()): { start: string; end: string } {
   const year = today.getUTCFullYear();
   if (!APRIL_MARCH_FY_COUNTRIES.has(country.trim().toLowerCase())) {
@@ -130,12 +130,11 @@ const DEFAULT_DEPT_METRICS = { performance: 75, efficiency: 75, capacity: 75, al
  * plus a bare shell per custom label. Falls back to all 13 framework departments
  * when nothing was selected, preserving the "company always has departments" rule.
  */
-function buildSeedPayload(sourceKeys: string[]): BdtSeedDepartment[] {
-  const selected = BDT_SEED_DEPARTMENTS.filter(
-    (d) => typeof d.source_key === 'string' && sourceKeys.includes(d.source_key),
-  );
 
-  return selected.length > 0 ? selected : [...BDT_SEED_DEPARTMENTS];
+function buildSeedPayload(sourceKeys: string[], size: CompanySize): BdtSeedDepartment[] {
+  const sizeBaseline = DEPT_SIZE_CONFIGS[size].visibleDeptIds;
+  const required = new Set([...sizeBaseline, ...sourceKeys]);
+  return BDT_SEED_DEPARTMENTS.filter((department) => typeof department.source_key === 'string' && required.has(department.source_key));
 }
 
 companiesRouter.post('/', async (req: any, res: any) => {
@@ -254,9 +253,12 @@ companiesRouter.post('/', async (req: any, res: any) => {
       const customLabels = Array.isArray(body.bdt_custom_departments)
         ? body.bdt_custom_departments.filter((l: unknown): l is string => typeof l === 'string')
         : [];
-      const seedDepartments = buildSeedPayload(sourceKeys);
+      const bdtCompanySize: CompanySize = ['micro', 'msme', 'standard', 'enterprise'].includes(body.bdtCompanySize) ? body.bdtCompanySize : 'standard';
+      const seedDepartments = buildSeedPayload(sourceKeys, bdtCompanySize);
       const selection = {
-        source_keys: sourceKeys,
+        requested_source_keys: sourceKeys,
+        source_keys: seedDepartments.map(department => department.source_key),
+        company_size: bdtCompanySize,
         custom_labels: customLabels,
         imported_at: new Date().toISOString(),
       };
@@ -268,15 +270,6 @@ companiesRouter.post('/', async (req: any, res: any) => {
       console.error('[companies] department seed failed', departmentErr);
       return res.status(500).json({ error: 'company_create_failed', details: departmentErr.message });
     }
-
-    // Provision an isolated ERPNext site for this company (see erpnextProvision.ts).
-    // Enqueued, not awaited inline — site creation takes tens of seconds. A failed
-    // enqueue is logged but does not fail company creation; the ERPNext chat feature
-    // just reports "not yet configured" until a job exists and completes.
-    // target_env scopes this job to a worker that provisions in the matching place,
-    // so a local dev worker can't claim a prod signup's job off the shared queue
-    // (see config.ts provisionEnv + migration 033).
-    await enqueueErpNextSetup(company.id, company.slug);
 
     return res.status(201).json({ company });
   } catch (err: any) {

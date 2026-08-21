@@ -7,13 +7,18 @@
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "build:backend": "pnpm --filter \"backend...\" build",
     "build:frontend": "pnpm --filter \"frontend...\" build",
-    "build:erpnext-control-plane": "pnpm --filter \"erpnext-control-plane...\" build",
     "typecheck:backend": "pnpm --filter backend typecheck",
     "typecheck:frontend": "pnpm --filter frontend build",
-    "typecheck:erpnext-control-plane": "pnpm --filter erpnext-control-plane typecheck",
-    "dev:workos-erpnext": "pnpm --parallel --filter backend --filter frontend --filter erpnext-control-plane dev",
-    "frappe:up": "docker compose -f ../infra/erpnext/pwd.yml up -d",
-    "frappe:down": "docker compose -f ../infra/erpnext/pwd.yml down"
+    "dev": "pnpm --parallel --filter backend --filter frontend dev",
+    "local:setup": "node scripts/local-dev.mjs setup",
+    "test:local:native": "node scripts/local-dev.mjs test-native",
+    "test:local:sales": "node scripts/local-dev.mjs test-sales",
+    "verify:local:phase1": "node scripts/local-dev.mjs verify-phase1",
+    "verify:local:phase2": "node scripts/local-dev.mjs verify-phase2",
+    "dev:local": "node scripts/local-dev.mjs both",
+    "dev:local:backend": "node scripts/local-dev.mjs backend",
+    "dev:local:worker": "node scripts/local-dev.mjs worker",
+    "dev:local:frontend": "node scripts/local-dev.mjs frontend"
   },
   "pnpm": {
     "overrides": {

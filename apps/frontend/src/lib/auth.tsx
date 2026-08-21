@@ -65,19 +65,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   /* Load profile from DB */
-  async function loadProfile(userId: string): Promise<DbUserProfile | null> {
-    try {
-      return await api.get<DbUserProfile>('/api/me');
-    } catch (error) {
-      console.error('[auth] loadProfile', userId, error);
-      return null;
-    }
+  async function loadProfile(): Promise<DbUserProfile | null> {
+    return api.get<DbUserProfile>('/api/me');
   }
 
   async function refreshProfile() {
     if (!state.user) return;
-    const profile = await loadProfile(state.user.id);
-    setState(s => ({ ...s, profile }));
+    try {
+      const profile = await loadProfile();
+      setState(s => ({ ...s, profile }));
+    } catch (error) {
+      // A local backend restart must not make an already signed-in user look
+      // un-onboarded and push them into the onboarding flow.
+      console.error('[auth] refreshProfile', state.user.id, error);
+    }
   }
 
   /* Bootstrap session */
@@ -101,7 +102,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) console.error('[auth] getSession', error);
-        const profile = session?.user ? await loadProfile(session.user.id) : null;
+        let profile: DbUserProfile | null = null;
+        if (session?.user) {
+          try {
+            profile = await loadProfile();
+          } catch (err) {
+            console.error('[auth] bootstrap profile', session.user.id, err);
+          }
+        }
         setAuthState(session, profile);
       } catch (err) {
         console.error('[auth] bootstrap failed', err);
@@ -122,7 +130,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => {
           void (async () => {
             try {
-              const profile = session?.user ? await loadProfile(session.user.id) : null;
+              let profile: DbUserProfile | null = null;
+              if (session?.user) {
+                try {
+                  profile = await loadProfile();
+                } catch (err) {
+                  // Keep the known profile for this same signed-in user when
+                  // the backend is only temporarily unavailable.
+                  console.error('[auth] profile refresh', session.user.id, err);
+                  setState(current => ({
+                    user: session.user,
+                    session,
+                    profile: current.user?.id === session.user.id ? current.profile : null,
+                    loading: false,
+                  }));
+                  return;
+                }
+              }
               setAuthState(session, profile);
             } catch (err) {
               console.error('[auth] onAuthStateChange failed', err);

@@ -8,7 +8,7 @@ import type {
   MetaAdsCreativeAspectRatio,
   MetaAdsCreativeAsset,
   MetaAdsCreativeConcept,
-  MetaAdsErpProductContext,
+  MetaAdsProductContext,
 } from '@cybranex/shared-types';
 import { env } from '../../config.js';
 import { pool, supabaseAdmin } from '../../db.js';
@@ -185,7 +185,7 @@ export async function signedMetaCreativeAsset(row: Record<string, unknown>): Pro
   };
 }
 
-function explicitContext(brief: MetaAdsCampaignBrief, brand: MetaAdsBrandKit, product: MetaAdsErpProductContext | null): string {
+function explicitContext(brief: MetaAdsCampaignBrief, brand: MetaAdsBrandKit, product: MetaAdsProductContext | null): string {
   return JSON.stringify({
     campaign: brief,
     brand: {
@@ -227,7 +227,7 @@ export async function generateMetaCreativeConcepts(input: {
   draftId: string;
   brief: MetaAdsCampaignBrief;
   brand: MetaAdsBrandKit;
-  product: MetaAdsErpProductContext | null;
+  product: MetaAdsProductContext | null;
 }): Promise<MetaAdsCreativeConcept[]> {
   const fake = env.META_AUTHORING_FAKE_GEMINI && process.env.NODE_ENV !== 'production';
   if (!fake && !env.GEMINI_API_KEY) throw new Error('gemini_not_configured');

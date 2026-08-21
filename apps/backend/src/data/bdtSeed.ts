@@ -27,7 +27,7 @@ function buildSeedDepartment(department: BdtTaxonomyDepartment): BdtSeedDepartme
     score: meta.score,
     metrics: meta.metrics,
     internalNodes: department.nodes.map((node, index) => ({
-      id: `${department.sourceKey}_v4_${index}`,
+      id: `${department.sourceKey}_${BDT_TAXONOMY_VERSION}_${index}`,
       label: node.label,
       type: node.nodeType,
       score: meta.score,
@@ -41,6 +41,7 @@ function buildSeedDepartment(department: BdtTaxonomyDepartment): BdtSeedDepartme
         providerCapabilities: node.providerCapabilities,
         taxonomyVersion: BDT_TAXONOMY_VERSION,
         availability: 'active',
+        ...(node.workspaceKind === 'commercial' ? { systemOwned: true, capability: 'commercial_management' } : {}),
         ...(node.presentation ? { presentation: node.presentation } : {}),
       },
       children: [],
@@ -48,7 +49,7 @@ function buildSeedDepartment(department: BdtTaxonomyDepartment): BdtSeedDepartme
   };
 }
 
-/** Default V4 BDT tree for new companies. */
+/** Default V5 BDT tree for new companies. */
 export function buildBdtSeedDepartments(): BdtSeedDepartment[] {
   return BDT_TAXONOMY.map(buildSeedDepartment);
 }

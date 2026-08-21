@@ -11,13 +11,6 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   GEMINI_IMAGE_MODEL: z.string().default('gemini-3.1-flash-image'),
-  ERPNEXT_CONTROL_PLANE_URL: z.string().url().default('http://localhost:8090'),
-  ERPNEXT_CONTROL_PLANE_TOKEN: z.string().min(16),
-  ERPNEXT_TARGET_ENV: z.enum(['local', 'remote']).default('local'),
-  RUN_ERPNEXT_OUTBOX_WORKER: z.enum(['true', 'false']).default('true').transform(v => v === 'true'),
-  OIDC_BROWSER_AUTHORIZE_URL: z.string().url().default('http://localhost:5173/oauth/authorize'),
-  OIDC_INTERNAL_BASE_URL: z.string().url().default('http://host.docker.internal:8080/api/oidc'),
-  ERPNEXT_SUBDOMAIN_BASE: z.string().default('erp.os.cybranex.com'),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_RESPONSES_MODEL: z.string().default('gpt-4.1-mini'),
   // Gemini 2.5 draws thinking tokens from this same budget, and the structured twin
@@ -59,5 +52,3 @@ const EnvSchema = z.object({
 });
 
 export const env = EnvSchema.parse(process.env);
-
-export const provisionEnv = env.ERPNEXT_TARGET_ENV;

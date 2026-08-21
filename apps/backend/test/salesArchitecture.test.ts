@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import test from 'node:test';
+const root=path.resolve(import.meta.dirname,'../../..');
+test('Phase 2 migrations are mirrored and backend-only',async()=>{const backend=await readFile(path.join(root,'apps/backend/db/migrations/044_native_sales_documents.sql'),'utf8');const frontend=await readFile(path.join(root,'apps/frontend/supabase/migrations/20260810110000_native_sales_documents.sql'),'utf8');assert.equal(frontend,backend);for(const table of ['commercial_profiles','sales_document_sequences','sales_quotes','sales_quote_items','sales_orders','sales_order_items','sales_invoices','sales_invoice_items','sales_invoice_payments'])assert.match(backend,new RegExp(`CREATE TABLE public\\.${table}`,'i'));assert.match(backend,/REVOKE ALL PRIVILEGES[\s\S]*FROM anon,\s*authenticated/i);assert.match(backend,/FOREIGN KEY\(company_id,account_id\)/i);assert.match(backend,/numeric\(18,2\)/i);});
+test('sales runtime cannot mutate inventory or add accounting/provider dependencies',async()=>{const files=['apps/backend/src/domains/sales/router.ts','apps/backend/src/domains/sales/service.ts','apps/backend/src/domains/sales/pdf.ts'];for(const file of files){const source=await readFile(path.join(root,file),'utf8');assert.doesNotMatch(source,/insert\s+into\s+(?:public\.)?inventory_balances|update\s+(?:public\.)?inventory_balances|delete\s+from\s+(?:public\.)?inventory_balances/i);assert.doesNotMatch(source,/ledger|journal|stripe|erpnext|frappe/i);}});

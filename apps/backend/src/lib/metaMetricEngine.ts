@@ -333,7 +333,7 @@ export async function configureMetaMetric(companyId: string, userId: string, key
           WHERE company_id = $1
             AND node_type = 'branch'
             AND metadata->>'sourceKey' = $2
-            AND metadata->>'taxonomyVersion' = 'v4'
+            AND metadata->>'taxonomyVersion' = 'v5'
             AND metadata->>'workspaceKind' = 'focus'`,
         [companyId, definition.nodeSourceKey],
       ),

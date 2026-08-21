@@ -36,7 +36,7 @@ import {
   pauseMetaAdsCampaign,
   preflightMetaAdsCampaign,
   putMetaAdsBrandKit,
-  resolveMetaAdsErpProduct,
+  resolveMetaAdsProduct,
   submitMetaAdsCampaignDraft,
   uploadMetaAdsCreativeAsset,
 } from './authoring.js';
@@ -85,7 +85,7 @@ const audienceSchema = z.object({
 });
 const productSchema = z.object({
   itemCode: z.string(), itemName: z.string(), disabled: z.boolean(), currency: z.string().nullable(),
-  price: z.number().nullable(), stockQuantity: z.number().nullable(), source: z.literal('erpnext'), confirmedAt: z.string(),
+  price: z.number().nullable(), stockQuantity: z.number().nullable(), source: z.literal('workos'), confirmedAt: z.string(),
 });
 const conceptSchema = z.object({
   id: z.string().uuid(), name: z.string(), rationale: z.string(), primaryText: z.string(), headline: z.string(), description: z.string(),
@@ -226,7 +226,7 @@ metaAdsOperatingRouter.get('/product-context', authJwt, REQUIRE_PAID_MEDIA_WRITE
   const companyId = req.auth?.companyId;
   if (!companyId) return res.status(403).json({ error: 'no_company' });
   const itemCode = typeof req.query.itemCode === 'string' ? req.query.itemCode : '';
-  try { return res.json(await resolveMetaAdsErpProduct(companyId, itemCode)); }
+  try { return res.json(await resolveMetaAdsProduct(companyId, itemCode)); }
   catch (error) { return authoringError(res, error, 'meta_product_context_unavailable'); }
 });
 

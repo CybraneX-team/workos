@@ -30,7 +30,7 @@ export type BranchKind =
 export type BdtWorkspaceKind = 'team' | 'systems' | 'metrics' | 'projects' | 'focus';
 
 /** Position in the BDT hierarchy — must match department_bdt_nodes.node_level CHECK (migration 028). */
-export type NodeLevel = 'level1' | 'branch' | 'internal' | 'action';
+export type NodeLevel = 'level1' | 'branch' | 'internal' | 'action' | 'form';
 
 /** Company size variant — controls how many department roots are visible. */
 export type CompanySize = 'micro' | 'msme' | 'standard' | 'enterprise';

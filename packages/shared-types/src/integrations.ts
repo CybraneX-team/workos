@@ -475,14 +475,14 @@ export interface MetaAdsCreativeGenerationJob {
   completedAt: string | null;
 }
 
-export interface MetaAdsErpProductContext {
+export interface MetaAdsProductContext {
   itemCode: string;
   itemName: string;
   disabled: boolean;
   currency: string | null;
   price: number | null;
   stockQuantity: number | null;
-  source: 'erpnext';
+  source: 'workos';
   confirmedAt: string;
 }
 
@@ -517,7 +517,7 @@ export interface MetaAdsDraftAd {
 /**
  * Where an ad sends the person who clicks it. `website` is the original behaviour (a link ad
  * pointing at `brief.landingPageUrl`); `lead_form` publishes a Meta instant form instead and
- * routes submissions into Frappe CRM.
+ * routes submissions into the native WorkOS CRM.
  */
 export type MetaAdsCampaignDestination = 'website' | 'lead_form';
 
@@ -541,9 +541,9 @@ export interface MetaAdsLeadFormQuestion {
 export interface MetaAdsLeadFormSpec {
   /**
    * Content hash over the question set plus the copy Meta bakes into a form at creation time.
-   * Forms are reused when this matches, because Frappe CRM allows exactly one enabled
-   * `Lead Sync Source` per form — minting one form per campaign would multiply sync sources
-   * and their polling against Meta.
+   * Forms are reused when this matches, so one native binding owns each
+   * form — minting one form per campaign would multiply bindings
+   * and polling against Meta.
    */
   questionSetHash: string;
   questions: MetaAdsLeadFormQuestion[];
@@ -567,7 +567,7 @@ export interface MetaAdsCampaignDraftContent {
   specialAdCategories: string[];
   dsaBeneficiary: string;
   dsaPayor: string;
-  productContext: MetaAdsErpProductContext | null;
+  productContext: MetaAdsProductContext | null;
   concepts: MetaAdsCreativeConcept[];
   ads: MetaAdsDraftAd[];
   /** Present only when `destination` is `lead_form`. */

@@ -6,7 +6,7 @@ export type UDomain = 'direction' | 'build' | 'delivery' | 'market' | 'control' 
 
 // ── BDT structural types (Company Department spec) ────────────────────────────
 
-/** Categories used to classify the five V4 workspace nodes. */
+/** Categories used to classify BDT workspace nodes. */
 export type UBranchKind =
   | 'purpose_scope'
   | 'objectives_okrs'
@@ -34,11 +34,11 @@ export const U_BRANCH_KINDS: UBranchKind[] = [
 ];
 
 /** Position in the BDT hierarchy. 'level1' is the dept-specific named layer (max 6 per dept). */
-export type UNodeLevel = 'level1' | 'department' | 'branch' | 'internal' | 'action';
+export type UNodeLevel = 'level1' | 'department' | 'branch' | 'internal' | 'action' | 'form';
 
 /** Sub-kind for internal nodes (the 4th level, between branch and action). */
 export type UInternalKind = 'team' | 'process' | 'tool' | 'system' | 'resource' | 'person';
-export type BdtWorkspaceKind = 'team' | 'systems' | 'metrics' | 'projects' | 'focus';
+export type BdtWorkspaceKind = 'team' | 'systems' | 'metrics' | 'projects' | 'focus' | 'commercial';
 
 /** Company size variant — controls how many department roots are visible. */
 export type UCompanySize = 'micro' | 'msme' | 'standard' | 'enterprise';
@@ -126,12 +126,15 @@ export interface UInternalNode {
   stableSourceKey?: string;
   /** Taxonomy version and rendering mode for seeded branches. */
   taxonomyVersion?: string;
-  presentation?: 'erpnext_catalog' | 'erpnext_sales_hub' | 'erpnext_operations_hub' | 'meta_ads_hub';
-  /** V4 workspace contract. Unlike node type/level, this decides what opens. */
+  presentation?: 'native_operations_shell' | 'meta_ads_hub'
+    | 'commercial_product_catalogue' | 'commercial_pricing' | 'commercial_inventory'
+    | 'commercial_customers' | 'commercial_leads' | 'commercial_deals'
+    | 'commercial_quotes' | 'commercial_orders_invoices' | 'commercial_collections';
+  /** BDT workspace contract. Unlike node type/level, this decides what opens. */
   workspaceKind?: BdtWorkspaceKind;
   providerCapabilities?: string[];
-  /** Ephemeral catalog node supplied by ERPNext; it must never be edited as BDT data. */
-  virtualErpNext?: { entity: 'line' | 'product'; identity: string; subtitle?: string; disabled?: boolean; unclassified?: boolean };
+  /** Ephemeral catalog node supplied by the native WorkOS catalogue. */
+  virtualCatalog?: { entity: 'line' | 'product'; identity: string; subtitle?: string; disabled?: boolean; unclassified?: boolean };
   label: string;
   type: 'team' | 'process' | 'project' | 'resource' | 'decision' | 'risk' | 'metric' | 'branch' | 'action' | 'signal';
   score: number;
@@ -147,6 +150,7 @@ export interface UInternalNode {
   dueDate?: string;
   status?: 'Open' | 'In Progress' | 'Blocked' | 'Completed';
   output?: string;
+  purpose?: string;
   metricImpact?: string;
   stateChange?: string;
   dependencies?: string[];
@@ -179,21 +183,23 @@ export function isProjectLeafNode(node: Pick<UInternalNode, 'type' | 'projectDet
   return node.type === 'project' && !!node.projectDetails && (!node.children || node.children.length === 0);
 }
 
-/** A V4 workspace node, or a read-only ERPNext product opened from Product Portfolio. */
-export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'virtualErpNext' | 'workspaceKind'> | null | undefined): boolean {
+/** A BDT workspace node, or a legacy virtual catalogue product. */
+export function isBdtWorkspaceLeafNode(node: Pick<UInternalNode, 'virtualCatalog' | 'workspaceKind' | 'type' | 'nodeLevel'> | null | undefined): boolean {
   if (!node) return false;
   if (node.workspaceKind) return true;
-  if (node.virtualErpNext?.entity === 'product') return true;
+  if (node.type === 'action' && node.nodeLevel === 'action') return true;
+  if (node.type === 'resource' && node.nodeLevel === 'form') return true;
+  if (node.virtualCatalog?.entity === 'product') return true;
   return false;
 }
 
 /**
- * Live ERPNext catalog entities have their own authenticated API and must not be
+ * Native catalogue entities have their own authenticated API and must not be
  * evaluated through the persisted BDT activation map. Disabled Items are the
  * sole read-only exception: they remain visible but cannot open a workspace.
  */
-export function isVirtualErpNextNodeLocked(node: Pick<UInternalNode, 'virtualErpNext'> | null | undefined): boolean {
-  return node?.virtualErpNext?.entity === 'product' && node.virtualErpNext.disabled === true;
+export function isVirtualCatalogNodeLocked(node: Pick<UInternalNode, 'virtualCatalog'> | null | undefined): boolean {
+  return node?.virtualCatalog?.entity === 'product' && node.virtualCatalog.disabled === true;
 }
 
 export interface UExternalNode {

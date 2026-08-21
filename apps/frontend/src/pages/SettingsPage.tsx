@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Settings, Palette, Bell, Layers, Plus, Trash2, ImagePlus, Save, Loader2, ExternalLink, Link2, Check, X as XIcon,
+  Settings, Palette, Bell, Layers, Plus, Trash2, ImagePlus, Save, Loader2, Link2, FileText, Check, X as XIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useCompany, useConnectionRequests, respondToConnectionRequest } from '../lib/db/companies';
@@ -11,6 +11,9 @@ import { usePolytopeStore } from '../lib/usePolytopeStore';
 import { useBdtCatalog } from '../lib/bdtCatalog';
 import type { UCompanySize } from '../lib/bdtPolytopeData';
 import { COUNTRIES, getCurrencyCodeForCountry } from '../lib/currency';
+import { salesDocuments, type SalesProfile } from '../lib/db/salesDocuments';
+import { bdtActionNodes } from '../lib/db/bdtActionNodes';
+import { bdtFormNodes, type BdtFormFieldType, type BdtFormNode } from '../lib/db/bdtFormNodes';
 
 const STAGES: CompanyStage[] = [
   'Idea', 'Pre-seed', 'Seed', 'Series A', 'Series B',
@@ -25,13 +28,14 @@ interface DeptConfig {
   access?: { read: boolean; write: boolean; delete: boolean; manage: boolean };
 }
 
-type Section = 'organization' | 'profile' | 'departments' | 'workspace' | 'notifications' | 'connections';
-type ErpNextStatus = { status: 'not_configured' | 'provisioning' | 'ready' | 'failed'; deskUrl?: string; provisioningStage?: string };
+type Section = 'organization' | 'commercial' | 'profile' | 'departments' | 'node_management' | 'workspace' | 'notifications' | 'connections';
 
 const NAV: { id: Section; icon: React.ReactNode; label: string }[] = [
   { id: 'organization', icon: <Layers size={15} />, label: 'Organization' },
+  { id: 'commercial', icon: <FileText size={15} />, label: 'Commercial Docs' },
   { id: 'profile', icon: <ImagePlus size={15} />, label: 'Profile' },
   { id: 'departments', icon: <Plus size={15} />, label: 'Departments' },
+  { id: 'node_management', icon: <Layers size={15} />, label: 'Node Management' },
   { id: 'workspace', icon: <Palette size={15} />, label: 'Workspace' },
   { id: 'notifications', icon: <Bell size={15} />, label: 'Notifications' },
   { id: 'connections', icon: <Link2 size={15} />, label: 'Connections' },
@@ -69,6 +73,7 @@ export default function SettingsPage() {
   });
 
   const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', title: '' });
+  const [commercialForm, setCommercialForm] = useState<SalesProfile | null>(null);
 
   const [depts, setDepts] = useState<DeptConfig[]>([
     { name: 'Product', size: 4, hod: 'Founder' },
@@ -82,29 +87,23 @@ export default function SettingsPage() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [bdtCompanySize, setBdtCompanySize] = useState<UCompanySize>('standard');
   const [sizeSaving, setSizeSaving] = useState(false);
-  const [erpNextStatus, setErpNextStatus] = useState<ErpNextStatus | null>(null);
+  const [nodeTab,setNodeTab]=useState<'action'|'form'>('action');
+  const [nodeDepartment,setNodeDepartment]=useState('');
+  const [nodeParent,setNodeParent]=useState('');
+  const [nodeName,setNodeName]=useState('');
+  const [nodePurpose,setNodePurpose]=useState('');
+  const [formFields,setFormFields]=useState<{label:string;fieldType:BdtFormFieldType;required:boolean;options:string}[]>([{label:'',fieldType:'short_text',required:false,options:''}]);
+  const [managedForms,setManagedForms]=useState<BdtFormNode[]>([]);
+  const [nodeMessage,setNodeMessage]=useState<string|null>(null);
 
   useEffect(() => {
     if (profile?.company_id) void departmentStore.loadDepartments();
   }, [profile?.company_id, departmentStore.loadDepartments]);
 
   useEffect(() => {
-    if (!profile?.company_id) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const refresh = async () => {
-      try {
-        const status = await api.get<ErpNextStatus>('/api/erpnext/status');
-        if (cancelled) return;
-        setErpNextStatus(status);
-        if (status.status === 'provisioning') timer = setTimeout(() => void refresh(), 5_000);
-      } catch {
-        if (!cancelled) setErpNextStatus(null);
-      }
-    };
-    void refresh();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    if (profile?.company_id) void salesDocuments.profile().then(setCommercialForm).catch(() => setCommercialForm(null));
   }, [profile?.company_id]);
+  useEffect(()=>{ if(section==='node_management') void bdtFormNodes.list().then(x=>setManagedForms(x.items)).catch(()=>setManagedForms([])); },[section]);
 
   const displayDepts: DeptConfig[] = departmentStore.departments
     .filter(d => d.domain !== 'inactive' && !d.isDraft)
@@ -189,6 +188,16 @@ export default function SettingsPage() {
     }
     setSaving(false);
     setTimeout(() => setSaveMsg(null), 3000);
+  }
+
+  async function handleSaveCommercial() {
+    if (!commercialForm || !canEditSettings) return;
+    setSaving(true); setSaveMsg(null);
+    try {
+      const saved = await salesDocuments.saveProfile({ sellerName:commercialForm.seller_name,sellerEmail:commercialForm.seller_email,sellerPhone:commercialForm.seller_phone,sellerAddress:commercialForm.seller_address,registrationText:commercialForm.registration_text,taxRegistration:commercialForm.tax_registration,quotePrefix:commercialForm.quote_prefix,orderPrefix:commercialForm.order_prefix,invoicePrefix:commercialForm.invoice_prefix });
+      setCommercialForm(saved); setSaveMsg('Saved');
+    } catch (err) { setSaveMsg('Failed: ' + (err instanceof Error ? err.message : 'Unknown error')); }
+    setSaving(false); setTimeout(() => setSaveMsg(null), 3000);
   }
 
   async function handleSaveBdtSize() {
@@ -373,23 +382,6 @@ export default function SettingsPage() {
                     />
                   )
                 },
-                {
-                  label: 'WorkOS', content: erpNextStatus?.status === 'ready' && erpNextStatus.deskUrl ? (
-                    <a href={`${erpNextStatus.deskUrl.replace(/\/+$/, '')}/login?redirect-to=/app`} target="_blank" rel="noopener noreferrer"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                        background: 'rgba(193,174,255,0.1)', border: `1px solid rgba(193,174,255,0.2)`, color: AC, textDecoration: 'none'
-                      }}>
-                      Open WorkOS <ExternalLink size={13} />
-                    </a>
-                  ) : (
-                    <span style={{ fontSize: 13, color: DIM }}>
-                      {erpNextStatus?.status === 'provisioning'
-                        ? `Setting up ERPNext${erpNextStatus.provisioningStage ? ` (${erpNextStatus.provisioningStage.replaceAll('_', ' ')})` : ''}…`
-                        : erpNextStatus?.status === 'failed' ? 'ERPNext setup failed' : 'Not available yet'}
-                    </span>
-                  )
-                },
               ].map((row) => (
                 <div key={row.label} style={{ display: 'flex', alignItems: 'flex-start', padding: '18px 0', borderBottom: `1px solid ${B}`, gap: 24 }}>
                   <div style={{ width: 140, flexShrink: 0, fontSize: 13, color: 'rgba(255,255,255,0.38)', paddingTop: 10 }}>{row.label}</div>
@@ -486,6 +478,19 @@ export default function SettingsPage() {
               {!canEditSettings && (
                 <p style={{ fontSize: 11, color: 'rgba(255,187,0,0.5)', marginTop: 16 }}>Admin or Founder role required to edit company settings.</p>
               )}
+            </div>
+          )}
+
+          {section === 'commercial' && (
+            <div>
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:28 }}>
+                <div><h2 style={{fontSize:18,fontWeight:700,color:'#fff',margin:0}}>Commercial Documents</h2><p style={{fontSize:13,color:DIM,margin:'4px 0 0'}}>Seller snapshots and numbering prefixes for quotes, orders and invoices</p></div>
+                {canEditSettings&&<button onClick={handleSaveCommercial} disabled={saving||!commercialForm} style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,background:'rgba(193,174,255,0.1)',border:'1px solid rgba(193,174,255,0.2)',color:AC,cursor:'pointer'}}>{saving?<Loader2 size={13} className="animate-spin"/>:<Save size={13}/>} Save</button>}
+              </div>
+              {!commercialForm?<p style={{fontSize:13,color:DIM}}>Loading commercial profile…</p>:[
+                ['Seller name','seller_name','text'],['Seller email','seller_email','email'],['Seller phone','seller_phone','text'],['Seller address','seller_address','textarea'],['Registration text','registration_text','text'],['Tax registration','tax_registration','text'],['Quote prefix','quote_prefix','text'],['Order prefix','order_prefix','text'],['Invoice prefix','invoice_prefix','text'],
+              ].map(([label,key,type])=><div key={key} style={{display:'flex',alignItems:'flex-start',padding:'18px 0',borderBottom:`1px solid ${B}`,gap:24}}><div style={{width:140,flexShrink:0,fontSize:13,color:'rgba(255,255,255,0.38)',paddingTop:10}}>{label}</div><div style={{flex:1}}>{type==='textarea'?<textarea style={inputStyle} rows={3} disabled={!canEditSettings} value={commercialForm[key as keyof SalesProfile]??''} onChange={e=>setCommercialForm({...commercialForm,[key]:e.target.value})}/>:<input style={inputStyle} type={type} disabled={!canEditSettings} value={commercialForm[key as keyof SalesProfile]??''} onChange={e=>setCommercialForm({...commercialForm,[key]:e.target.value})}/>}</div></div>)}
+              <p style={{fontSize:11,color:'rgba(255,255,255,0.28)',marginTop:16}}>Documents are internal operational records, not statutory tax or accounting documents.</p>
             </div>
           )}
 
@@ -618,6 +623,16 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+
+          {section === 'node_management' && (() => {
+            const readable=departmentStore.departments.filter(d=>d.access?.read);
+            const department=readable.find(d=>d.id===nodeDepartment)??readable[0];
+            const parents=(department?.internalNodes??[]).filter(n=>Boolean(n.workspaceKind));
+            const canSchema=['super_admin','founder','co_founder','admin'].includes(role ?? '') && canWrite('twin');
+            const actionNodes=departmentStore.departments.flatMap(d=>(d.internalNodes??[]).flatMap(parent=>(parent.children??[]).filter(child=>child.type==='action'&&child.nodeLevel==='action').map(child=>({child,parent,department:d}))));
+            const create=async()=>{try{if(!nodeParent||!nodeName.trim())throw new Error('Choose a parent workspace and enter a name.');if(nodeTab==='action')await bdtActionNodes.create({parentNodeId:nodeParent,name:nodeName.trim(),purpose:nodePurpose||null});else await bdtFormNodes.create({parentNodeId:nodeParent,name:nodeName.trim(),purpose:nodePurpose||null,fields:formFields.map(f=>({label:f.label,fieldType:f.fieldType,required:f.required,...(f.fieldType==='single_select'?{options:f.options.split('\n').map(x=>x.trim()).filter(Boolean)}:{})}))});setNodeMessage('Saved. The BDT graph has been refreshed.');setNodeName('');setNodePurpose('');await departmentStore.loadDepartments();setManagedForms((await bdtFormNodes.list()).items);}catch(e){setNodeMessage(e instanceof Error?e.message:'Unable to save node.');}};
+            return <div><h1 className="text-2xl font-semibold mb-2">Node Management</h1><p className="mb-6 text-sm" style={{color:DIM}}>Create and manage the user-authored Action and Form children of persisted workspaces.</p><div className="mb-4 flex gap-2"><button onClick={()=>setNodeTab('action')} style={{...inputStyle,width:'auto',borderColor:nodeTab==='action'?AC:B}}>Action nodes</button><button onClick={()=>setNodeTab('form')} style={{...inputStyle,width:'auto',borderColor:nodeTab==='form'?AC:B}}>Form nodes</button></div><div className="rounded-xl p-5 mb-6" style={{background:'rgba(255,255,255,.03)',border:`1px solid ${B}`}}><h2 className="mb-4 font-semibold">Create {nodeTab === 'action'?'Action':'Form'} node</h2><div className="grid gap-3 md:grid-cols-2"><select value={nodeDepartment||department?.id||''} onChange={e=>{setNodeDepartment(e.target.value);setNodeParent('')}} style={inputStyle}><option value="">Choose department</option>{readable.map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select><select value={nodeParent} onChange={e=>setNodeParent(e.target.value)} style={inputStyle}><option value="">Choose parent workspace</option>{parents.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}</select><input value={nodeName} onChange={e=>setNodeName(e.target.value)} placeholder="Node name" style={inputStyle}/><input value={nodePurpose} onChange={e=>setNodePurpose(e.target.value)} placeholder="Purpose (optional)" style={inputStyle}/></div>{nodeTab==='form'&&<div className="mt-5"><p className="mb-2 text-sm font-medium">Fields</p>{formFields.map((f,i)=><div key={i} className="mb-2 grid gap-2 md:grid-cols-4"><input value={f.label} onChange={e=>setFormFields(x=>x.map((v,j)=>j===i?{...v,label:e.target.value}:v))} placeholder="Field label" style={inputStyle}/><select value={f.fieldType} onChange={e=>setFormFields(x=>x.map((v,j)=>j===i?{...v,fieldType:e.target.value as BdtFormFieldType}:v))} style={inputStyle}>{['short_text','long_text','number','date','checkbox','single_select','url','email'].map(x=><option key={x}>{x}</option>)}</select><label className="text-sm"><input type="checkbox" checked={f.required} onChange={e=>setFormFields(x=>x.map((v,j)=>j===i?{...v,required:e.target.checked}:v))}/> Required</label>{f.fieldType==='single_select'?<textarea value={f.options} onChange={e=>setFormFields(x=>x.map((v,j)=>j===i?{...v,options:e.target.value}:v))} placeholder="One option per line" style={inputStyle}/>:<button onClick={()=>setFormFields(x=>x.filter((_,j)=>j!==i))} disabled={formFields.length===1}>Remove</button>}</div>)}<button onClick={()=>setFormFields(x=>[...x,{label:'',fieldType:'short_text',required:false,options:''}])}>+ Add field</button></div>}<button disabled={nodeTab==='action'?!Boolean(department?.access?.manage&&canWrite('twin')):!canSchema} onClick={()=>void create()} className="mt-5 rounded px-4 py-2" style={{background:AC,color:'#111'}}>Create node</button>{nodeMessage&&<p className="mt-3 text-sm" style={{color:DIM}}>{nodeMessage}</p>}</div><div className="rounded-xl p-5" style={{background:'rgba(255,255,255,.03)',border:`1px solid ${B}`}}><h2 className="mb-3 font-semibold">Existing {nodeTab==='action'?'Action':'Form'} nodes</h2>{nodeTab==='action'?actionNodes.map(x=><div key={x.child.id} className="mb-2 flex justify-between gap-3 text-sm"><span>{x.department.label} / {x.parent.label} / {x.child.label}</span><button onClick={()=>{if(confirm('Delete this empty Action node?'))void bdtActionNodes.remove(x.child.id).then(()=>departmentStore.loadDepartments()).catch(e=>setNodeMessage(e.message))}}>Delete empty</button></div>):managedForms.map(f=><div key={f.id} className="mb-2 flex justify-between gap-3 text-sm"><span>{f.parentLabel} / {f.name} · {f.recordCount} records {f.schemaLockedAt?'· schema locked':''}</span><button disabled={f.recordCount>0||!f.canManageSchema} onClick={()=>{if(confirm('Delete this empty Form node?'))void bdtFormNodes.remove(f.id).then(async()=>{setManagedForms((await bdtFormNodes.list()).items);await departmentStore.loadDepartments();})}}>Delete empty</button></div>)}</div></div>;
+          })()}
 
           {/* ── Workspace ───────────────────────────────────── */}
           {section === 'workspace' && (

@@ -17,6 +17,7 @@ interface ExternalNodeProps {
   color: string;
   selectedInternalPath: string[];
   onSelectInternal: (path: string[], pos: THREE.Vector3) => void;
+  onOpenCenteredWorkspace?: (path: string[], node: UInternalNode) => boolean;
   setBackInfo: (info: { label: string; onClick: () => void } | null) => void;
   isDeepDrillDown: boolean;
   onHover: (id: string | null) => void;
@@ -56,6 +57,7 @@ export function ExternalNode({
   color,
   selectedInternalPath,
   onSelectInternal,
+  onOpenCenteredWorkspace,
   setBackInfo,
   isDeepDrillDown,
   onHover,
@@ -315,6 +317,7 @@ export function ExternalNode({
             depth={1}
             selectedPath={selectedInternalPath}
             onSelectPath={onSelectInternal}
+            onOpenCenteredWorkspace={onOpenCenteredWorkspace}
             pathContext={[]}
             parentPos={pos}
             isVisible={isChildVisible}
