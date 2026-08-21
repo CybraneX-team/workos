@@ -9,8 +9,8 @@ const supabaseWorkdir = path.join(root, 'apps/frontend');
 const optionalServices = 'edge-runtime,imgproxy,studio,vector';
 const mode = process.argv[2] ?? 'both';
 
-if (!['setup', 'backend', 'worker', 'frontend', 'both', 'test-native', 'test-sales', 'verify-phase1', 'verify-phase2'].includes(mode)) {
-  console.error('Usage: node scripts/local-dev.mjs <setup|backend|worker|frontend|both|test-native|test-sales|verify-phase1|verify-phase2>');
+if (!['setup', 'backend', 'worker', 'frontend', 'both', 'test-native', 'test-sales', 'test-supercycle', 'verify-phase1', 'verify-phase2'].includes(mode)) {
+  console.error('Usage: node scripts/local-dev.mjs <setup|backend|worker|frontend|both|test-native|test-sales|test-supercycle|verify-phase1|verify-phase2>');
   process.exit(1);
 }
 
@@ -97,6 +97,11 @@ if (mode === 'test-native') {
 }
 if (mode === 'test-sales') {
   const result = child('pnpm', ['--filter', 'backend', 'test:sales-db'], shared);
+  const code = await new Promise((resolve) => result.once('exit', (value) => resolve(value ?? 1)));
+  process.exit(code);
+}
+if (mode === 'test-supercycle') {
+  const result = child('pnpm', ['--filter', 'backend', 'test:bdt-supercycle-db'], { ...shared, BDT_SUPERCYCLE_DB_TESTS: '1' });
   const code = await new Promise((resolve) => result.once('exit', (value) => resolve(value ?? 1)));
   process.exit(code);
 }

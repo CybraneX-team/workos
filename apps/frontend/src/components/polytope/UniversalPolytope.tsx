@@ -1,4 +1,4 @@
-import { useState, useCallback, type MutableRefObject } from 'react';
+import { useState, useCallback, type MutableRefObject, type ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import type { UExternalNode, UInternalNode } from '../../lib/universalPolytopeData';
 import { usePolytopeStore, type PolytopeStoreScope } from '../../lib/usePolytopeStore';
@@ -59,6 +59,7 @@ export interface UniversalPolytopeProps {
   bdtWorkspaceLeaves?: boolean;
   /** BDT: arc the camera around to the focused department and unfold its nodes */
   cinematicFocus?: boolean;
+  coreOverlay?: ReactNode;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -94,6 +95,7 @@ export default function UniversalPolytope({
   readOnly = false,
   bdtWorkspaceLeaves = false,
   cinematicFocus = false,
+  coreOverlay,
 }: UniversalPolytopeProps) {
   const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -143,7 +145,8 @@ export default function UniversalPolytope({
           draftMember={draftMember}
           draftMemberScreenPosRef={draftMemberScreenPosRef}
           selectedInternalPathProps={selectedInternalPath}
-          enableCoreWorkspace={enableCoreWorkspace && !readOnly}
+          enableCoreWorkspace={enableCoreWorkspace}
+          coreOverlay={coreOverlay}
           coreWorkspacePhase={coreWorkspacePhase}
           onCoreClickIntent={onCoreClickIntent}
           onCoreDiveComplete={onCoreDiveComplete}

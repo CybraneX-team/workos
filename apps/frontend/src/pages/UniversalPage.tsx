@@ -7,7 +7,7 @@ import { usePolytopeStore } from '../lib/usePolytopeStore';
 import type { UExternalNode, UInternalNode } from '../lib/usePolytopeStore';
 import { useAuth } from '../lib/auth';
 import { useCompany } from '../lib/db/companies';
-import type { CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
+import type { CoreDestination, CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
 import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
@@ -19,6 +19,9 @@ import { useWorkflowTrail } from '../lib/useWorkflowTrail';
 import { useBdtSavedTrails } from '../lib/useBdtSavedTrails';
 import type { UserPlanetRole } from '../data/companyPlanetRoots';
 import { bdtTasks, type BdtTask } from '../lib/db/bdtTasks';
+import { bdtSupercycle, type BdtSupercycle } from '../lib/db/bdtSupercycle';
+import { SupercycleScene } from '../components/supercycle/SupercycleScene';
+import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleEditor';
 
 export default function UniversalPage() {
   const navigate = useNavigate();
@@ -49,6 +52,10 @@ export default function UniversalPage() {
   // --- Replay State & Logic ---
   const [replayStepIndex, setReplayStepIndex] = useState(0);
   const [showCommercialMyWork, setShowCommercialMyWork] = useState(false);
+  const [supercycle, setSupercycle] = useState<BdtSupercycle | null>(null);
+  const [supercycleError, setSupercycleError] = useState<string | null>(null);
+  const [selectedSupercycleDepartmentId, setSelectedSupercycleDepartmentId] = useState<string | null>(null);
+  const [pendingSupercycleOpen, setPendingSupercycleOpen] = useState<{ departmentId: string; nodeId: string } | null>(null);
 
   const replayTrail = useMemo(() => {
     if (!replayTrailId) return null;
@@ -299,11 +306,21 @@ export default function UniversalPage() {
     setSelectDeptNonce((value) => value + 1);
   }, [focusKey, paidAcquisitionDepartmentId, paidAcquisitionPathKey]);
 
-  // Core workspace/Voice AI zoom state
+  // The core can dive to the shared Supercycle or to Voice AI. They share the
+  // camera transition but remain independent destinations.
   const [corePhase, setCorePhase] = useState<CoreWorkspacePhase>('idle');
+  const [coreDestination, setCoreDestination] = useState<CoreDestination>('supercycle');
   const isPolytopeInteractive = corePhase === 'idle';
 
+  const loadSupercycle = useCallback(async () => {
+    try { setSupercycle(await bdtSupercycle.get()); setSupercycleError(null); }
+    catch (cause) { setSupercycleError(cause instanceof Error ? cause.message : 'Unable to load Supercycle'); }
+  }, []);
+
+  useEffect(() => { void loadSupercycle(); }, [loadSupercycle]);
+
   useEffect(() => {
+    if (coreDestination !== 'voice') return;
     if (voiceState === 'idle' && corePhase === 'workspace') {
       setCorePhase('surfacing');
     } else if (voiceState !== 'idle' && corePhase === 'idle') {
@@ -464,8 +481,10 @@ export default function UniversalPage() {
 
 
   const handleCoreClickIntent = useCallback(() => {
-    toggle();
-  }, [toggle]);
+    setSelectedSupercycleDepartmentId(null);
+    setCoreDestination('supercycle');
+    setCorePhase((phase) => phase === 'idle' ? 'diving-in' : phase);
+  }, []);
 
   const handleCoreDiveComplete = useCallback(() => {
     if (corePhase === 'diving-in') {
@@ -476,8 +495,24 @@ export default function UniversalPage() {
   const handleCoreSurfaceComplete = useCallback(() => {
     if (corePhase === 'surfacing') {
       setCorePhase('idle');
+      if (pendingSupercycleOpen) {
+        const path = [pendingSupercycleOpen.nodeId];
+        setSelectedDeptId(pendingSupercycleOpen.departmentId);
+        setRequestSelectDeptId(pendingSupercycleOpen.departmentId);
+        setSelectDeptNonce((value) => value + 1);
+        setInternalPath(path);
+        setOpenWorkspacePath(path);
+        setPendingSupercycleOpen(null);
+      }
     }
-  }, [corePhase]);
+  }, [corePhase, pendingSupercycleOpen]);
+
+  const surfaceFromCore = useCallback(() => setCorePhase((phase) => phase === 'workspace' ? 'surfacing' : phase), []);
+  const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
+  const openSupercycleNode = useCallback((departmentId: string, nodeId: string) => {
+    setPendingSupercycleOpen({ departmentId, nodeId });
+    surfaceFromCore();
+  }, [surfaceFromCore]);
 
   const handlePolytopeExitIntent = useCallback(() => {
     if (!profile?.company_id) return;
@@ -520,7 +555,7 @@ export default function UniversalPage() {
             cameraResetTrigger={polytopeResetTrigger}
             departments={displayDepartments}
             selectedInternalPath={resolvedInternalPath}
-            enableCoreWorkspace={hasWritableDepartment}
+            enableCoreWorkspace
             readOnly={!hasWritableDepartment}
             coreWorkspacePhase={corePhase}
             onCoreClickIntent={handleCoreClickIntent}
@@ -529,6 +564,13 @@ export default function UniversalPage() {
             voiceIntensityRef={intensityRef}
             bdtWorkspaceLeaves
             cinematicFocus
+            coreOverlay={showSupercycle ? <SupercycleScene
+              departments={supercycle?.departments ?? []}
+              routes={supercycle?.routes ?? []}
+              selectedDepartmentId={selectedSupercycleDepartmentId}
+              onSelectDepartment={setSelectedSupercycleDepartmentId}
+              onOpenNode={openSupercycleNode}
+            /> : undefined}
           />
         )}
       </div>
@@ -536,8 +578,8 @@ export default function UniversalPage() {
 
 
 
-      {/* Back button when Voice AI is active */}
-      {voiceState !== 'idle' && (
+      {/* Voice is deliberately separate from the shared Supercycle core. */}
+      {coreDestination === 'voice' && voiceState !== 'idle' && (
         <button
           onClick={() => toggle()}
           className="fixed top-20 left-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-purple-500/30"
@@ -545,6 +587,34 @@ export default function UniversalPage() {
         >
           &larr; Back to Polytope
         </button>
+      )}
+
+      {isPolytopeInteractive && voiceState === 'idle' && (
+        <button
+          onClick={() => { setCoreDestination('voice'); toggle(); }}
+          className="fixed right-6 top-20 z-[60] flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium text-slate-300 backdrop-blur-md transition-all hover:border-purple-500/30 hover:text-white"
+          style={{ background: 'rgba(0,0,0,0.55)', borderColor: 'rgba(148,163,184,0.1)' }}
+        >Voice AI</button>
+      )}
+
+      {showSupercycle && corePhase !== 'surfacing' && (
+        <>
+          <button onClick={() => selectedSupercycleDepartmentId ? setSelectedSupercycleDepartmentId(null) : surfaceFromCore()} className="fixed left-6 top-20 z-[70] flex items-center gap-2 rounded-lg border border-cyan-400/25 bg-black/65 px-3 py-2 text-xs font-semibold text-cyan-100 backdrop-blur-xl transition hover:border-cyan-300/50">
+            &larr; {selectedSupercycleDepartmentId ? 'Supercycle' : 'Back to Polytope'}
+          </button>
+          <div className="pointer-events-none fixed left-1/2 top-20 z-[60] -translate-x-1/2 rounded-lg border px-4 py-2 text-center backdrop-blur-md" style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}>
+            <div className="text-[10px] uppercase tracking-[3px] text-cyan-300">Shared BDT representation</div>
+            <div className="text-sm font-semibold text-slate-100">{selectedSupercycleDepartmentId ? supercycle?.departments.find((department) => department.id === selectedSupercycleDepartmentId)?.label : 'Supercycle'}</div>
+          </div>
+          {supercycle?.canEdit && <SupercycleCycleEditor
+            availableDepartments={supercycle.availableDepartments}
+            initial={supercycle.departments}
+            initialRoutes={supercycle.routes}
+            onSave={async (value) => { setSupercycle(await bdtSupercycle.save(value)); setSelectedSupercycleDepartmentId(null); }}
+            onDelete={async () => { await bdtSupercycle.remove(); await loadSupercycle(); setSelectedSupercycleDepartmentId(null); }}
+          />}
+          {!supercycle?.configured && <div className="fixed bottom-8 left-1/2 z-[70] max-w-md -translate-x-1/2 rounded-xl border border-cyan-400/20 bg-[#060a13]/90 px-5 py-4 text-center text-sm text-slate-300 backdrop-blur-xl">{supercycleError ?? (supercycle?.canEdit ? 'No shared Supercycle has been configured. Use Edit cycles to select existing departments and workspaces.' : 'No shared Supercycle has been configured for this company.')}</div>}
+        </>
       )}
 
       {/* ── Left sidebar panel — hidden when create panel is shown ── */}
