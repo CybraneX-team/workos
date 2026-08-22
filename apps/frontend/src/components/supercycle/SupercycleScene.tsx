@@ -27,7 +27,7 @@ import {
 
 const SPHERE_RADIUS = 1.55;
 const RING_RADIUS = SPHERE_RADIUS;
-const NODE_RADIUS = 0.115;
+const NODE_RADIUS = 0.14;
 export type SupercycleRouteStyle = 'curved' | 'spherical';
 
 class SphericalArcCurve extends THREE.Curve<THREE.Vector3> {
@@ -55,6 +55,52 @@ class SphericalArcCurve extends THREE.Curve<THREE.Vector3> {
 // contribute nothing on a light background.
 
 const glowTextureCache = new Map<string, THREE.CanvasTexture>();
+const planetTextureCache = new Map<string, THREE.CanvasTexture>();
+
+function planetTexture(id: string, color: string): THREE.CanvasTexture {
+  const key = `${id}:${color}`;
+  const cached = planetTextureCache.get(key);
+  if (cached) return cached;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  const base = new THREE.Color(color);
+  const dark = base.clone().multiplyScalar(0.16);
+  const mid = base.clone().multiplyScalar(0.62);
+  const rgb = (value: THREE.Color, alpha = 1) => `rgba(${Math.round(value.r * 255)},${Math.round(value.g * 255)},${Math.round(value.b * 255)},${alpha})`;
+  ctx.fillStyle = rgb(dark);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  gradient.addColorStop(0, rgb(dark));
+  gradient.addColorStop(0.38, rgb(mid));
+  gradient.addColorStop(0.62, rgb(base));
+  gradient.addColorStop(1, rgb(dark));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let seed = [...id].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 2166136261);
+  const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let band = 0; band < 12; band += 1) {
+    const y = (band / 12) * canvas.height + random() * 8;
+    ctx.strokeStyle = rgb(random() > 0.5 ? base.clone().lerp(new THREE.Color('#ffffff'), 0.35) : dark, 0.16 + random() * 0.22);
+    ctx.lineWidth = 1 + random() * 5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= canvas.width; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.045 + band) * (2 + random() * 3));
+    ctx.stroke();
+  }
+  for (let spot = 0; spot < 9; spot += 1) {
+    ctx.fillStyle = rgb(base.clone().lerp(new THREE.Color('#ffffff'), random() * 0.28), 0.08 + random() * 0.16);
+    ctx.beginPath();
+    ctx.ellipse(random() * canvas.width, random() * canvas.height, 5 + random() * 20, 2 + random() * 7, random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  planetTextureCache.set(key, texture);
+  return texture;
+}
 
 function glowTexture(color: string): THREE.CanvasTexture {
   const cached = glowTextureCache.get(color);
@@ -148,16 +194,47 @@ function dynamicDepartmentPositions(nodes: SupercycleNode[], cycles: SupercycleC
 // ── The enclosing sphere ─────────────────────────────────────────────────────
 
 function CycleSphere() {
-  const wireRef = useRef<THREE.LineSegments>(null);
+  const guidesRef = useRef<THREE.LineSegments>(null);
+  const guideGeometry = useMemo(() => {
+    const vertices: number[] = [];
+    const radius = SPHERE_RADIUS + 0.006;
+    const segments = 96;
+    const addSegment = (from: THREE.Vector3, to: THREE.Vector3) => {
+      vertices.push(from.x, from.y, from.z, to.x, to.y, to.z);
+    };
 
-  const wireGeometry = useMemo(
-    () => new THREE.EdgesGeometry(new THREE.SphereGeometry(SPHERE_RADIUS, 24, 16), 1),
-    [],
-  );
+    [-0.72, 0, 0.72].forEach((latitude) => {
+      const y = Math.sin(latitude) * radius;
+      const ringRadius = Math.cos(latitude) * radius;
+      for (let index = 0; index < segments; index += 1) {
+        const start = (index / segments) * Math.PI * 2;
+        const end = ((index + 1) / segments) * Math.PI * 2;
+        addSegment(
+          new THREE.Vector3(Math.cos(start) * ringRadius, y, Math.sin(start) * ringRadius),
+          new THREE.Vector3(Math.cos(end) * ringRadius, y, Math.sin(end) * ringRadius),
+        );
+      }
+    });
 
-  // A slow drift so the shell reads as a living boundary rather than a decal.
+    for (let meridian = 0; meridian < 6; meridian += 1) {
+      const longitude = (meridian / 6) * Math.PI;
+      for (let index = 0; index < segments; index += 1) {
+        const start = (index / segments) * Math.PI * 2;
+        const end = ((index + 1) / segments) * Math.PI * 2;
+        addSegment(
+          new THREE.Vector3(Math.sin(start) * Math.cos(longitude) * radius, Math.cos(start) * radius, Math.sin(start) * Math.sin(longitude) * radius),
+          new THREE.Vector3(Math.sin(end) * Math.cos(longitude) * radius, Math.cos(end) * radius, Math.sin(end) * Math.sin(longitude) * radius),
+        );
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    return geometry;
+  }, []);
+
   useFrame((_, delta) => {
-    if (wireRef.current) wireRef.current.rotation.y += delta * 0.03;
+    if (guidesRef.current) guidesRef.current.rotation.y += delta * 0.018;
   });
 
   return (
@@ -167,14 +244,14 @@ function CycleSphere() {
         <meshBasicMaterial
           color="#4fd8ff"
           transparent
-          opacity={0.035}
+          opacity={0.025}
           side={THREE.BackSide}
           depthWrite={false}
           toneMapped={false}
         />
       </mesh>
-      <lineSegments ref={wireRef} geometry={wireGeometry}>
-        <lineBasicMaterial color="#4fd8ff" transparent opacity={0.12} depthWrite={false} toneMapped={false} />
+      <lineSegments ref={guidesRef} geometry={guideGeometry} raycast={() => undefined}>
+        <lineBasicMaterial color="#4fd8ff" transparent opacity={0.075} depthWrite={false} toneMapped={false} />
       </lineSegments>
     </group>
   );
@@ -182,15 +259,17 @@ function CycleSphere() {
 
 // ── The cycle ring ───────────────────────────────────────────────────────────
 
-function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, routeStyle, onSelect }: {
+function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, planetActive, routeStyle, onSelect }: {
   cycle: SupercycleCycle;
   nodePositions: Map<string, THREE.Vector3>;
   lane: number;
   selected: boolean;
   anotherSelected: boolean;
+  planetActive: boolean;
   routeStyle: SupercycleRouteStyle;
   onSelect: () => void;
 }) {
+  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
   const curve = useMemo(() => {
     const departments = cycle.departmentIds.map((id) => nodePositions.get(id)).filter((point): point is THREE.Vector3 => Boolean(point));
     if (departments.length < 2) return null;
@@ -227,13 +306,20 @@ function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, rou
     return new THREE.CatmullRomCurve3(points, true, 'centripetal', 0.3);
   }, [cycle.departmentIds, lane, nodePositions, routeStyle]);
 
+  const opacity = planetActive ? 0.045 : selected ? 1 : anotherSelected ? 0.055 : 0.52;
+
+  useFrame((_, delta) => {
+    if (materialRef.current) {
+      materialRef.current.opacity = THREE.MathUtils.damp(materialRef.current.opacity, opacity, 8, delta);
+    }
+  });
+
   if (!curve) return null;
-  const opacity = selected ? 1 : anotherSelected ? 0.055 : 0.52;
   return (
     <group>
       <mesh>
         <tubeGeometry args={[curve, 160, selected ? 0.012 : 0.007, 8, true]} />
-        <meshBasicMaterial color={cycle.color} transparent opacity={opacity} depthWrite={false} toneMapped={false} />
+        <meshBasicMaterial ref={materialRef} color={cycle.color} transparent opacity={opacity} depthWrite={false} toneMapped={false} />
       </mesh>
       <mesh
         onClick={(event) => { event.stopPropagation(); onSelect(); }}
@@ -266,10 +352,12 @@ function CycleNode({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const positionRef = useRef<THREE.Group>(null);
+  const surfaceRef = useRef<THREE.Mesh>(null);
   const pulseRef = useRef(0);
 
   useFrame((_, delta) => {
     pulseRef.current += delta;
+    if (surfaceRef.current) surfaceRef.current.rotation.y += delta * (selected ? 0.28 : 0.055);
     const group = groupRef.current;
     if (!group) return;
     const target = selected ? 1.45 : dimmed ? 0.75 : 1;
@@ -284,6 +372,7 @@ function CycleNode({
   });
 
   const opacity = dimmed ? 0.25 : 1;
+  const surface = useMemo(() => planetTexture(node.id, node.color), [node.id, node.color]);
 
   return (
     <group ref={positionRef} position={position}>
@@ -302,21 +391,19 @@ function CycleNode({
           document.body.style.cursor = 'auto';
         }}
       >
-        <mesh>
-          <sphereGeometry args={[NODE_RADIUS, 24, 24]} />
-          <meshBasicMaterial color={node.color} transparent opacity={opacity} toneMapped={false} />
+        <mesh ref={surfaceRef}>
+          <sphereGeometry args={[NODE_RADIUS, 40, 28]} />
+          <meshBasicMaterial map={surface} color="#ffffff" transparent opacity={opacity} toneMapped={false} />
         </mesh>
-        <Glow color={node.color} scale={NODE_RADIUS * (dimmed ? 5 : 8)} />
+        <mesh raycast={() => undefined}>
+          <sphereGeometry args={[NODE_RADIUS * 1.09, 32, 24]} />
+          <meshBasicMaterial color={node.color} transparent opacity={dimmed ? 0.025 : 0.12} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+        </mesh>
+        <Glow color={node.color} scale={NODE_RADIUS * (dimmed ? 4.5 : selected ? 10 : 7.5)} />
         {!selected && (
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[NODE_RADIUS * 1.7, 0.008, 8, 32]} />
-            <meshBasicMaterial
-              color={healthColor(health)}
-              transparent
-              opacity={opacity}
-              depthWrite={false}
-              toneMapped={false}
-            />
+          <mesh rotation={[Math.PI / 2, 0, 0]} raycast={() => undefined}>
+            <torusGeometry args={[NODE_RADIUS * 2.08, 0.005, 8, 96]} />
+            <meshBasicMaterial color={node.color} transparent opacity={dimmed ? 0.04 : 0.28} depthWrite={false} toneMapped={false} />
           </mesh>
         )}
       </group>
@@ -346,7 +433,7 @@ function CycleNode({
 
 // ── The supercycle-specific execution hypercube ─────────────────────────────
 
-function SupercycleCore({ health, archetype }: { health: number | null; archetype: SupercycleArchetype }) {
+function SupercycleCore({ health, archetype, overviewMuted }: { health: number | null; archetype: SupercycleArchetype; overviewMuted: boolean }) {
   const cubeRef = useRef<THREE.Group>(null);
 
   useFrame((_, delta) => {
@@ -360,7 +447,7 @@ function SupercycleCore({ health, archetype }: { health: number | null; archetyp
       <group ref={cubeRef}>
         <Glow color={healthColor(health)} scale={1.15} />
         <group scale={0.012}>
-          <NewPmsHypercubeModel interactive={false} />
+          <NewPmsHypercubeModel interactive={false} overviewMuted={overviewMuted} />
         </group>
       </group>
       <Billboard position={[0, -0.34, 0]}>
@@ -389,19 +476,17 @@ function SubCycleTrack({
   instances,
   onOpenInstance,
   open,
-  health,
 }: {
   node: SupercycleNode;
   instances: SupercycleInstance[];
   onOpenInstance: (instance: SupercycleInstance) => void;
   open: boolean;
-  health: number | null;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const contentsRef = useRef<THREE.Group>(null);
   const stages = node.subCycle.stages;
   const trackRadius = 0.72;
-  const collapsedScale = (NODE_RADIUS * 1.7) / trackRadius;
+  const collapsedScale = (NODE_RADIUS * 2.08) / trackRadius;
 
   const torusGeometry = useMemo(
     () => new THREE.TorusGeometry(trackRadius, 0.005, 8, 96),
@@ -422,7 +507,7 @@ function SubCycleTrack({
   return (
     <group ref={groupRef} scale={collapsedScale}>
       <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
-        <meshBasicMaterial color={healthColor(health)} transparent opacity={0.8} depthWrite={false} toneMapped={false} />
+        <meshBasicMaterial color={node.color} transparent opacity={0.8} depthWrite={false} toneMapped={false} />
       </mesh>
 
       <group ref={contentsRef} visible={false}>
@@ -545,7 +630,7 @@ export function SupercycleScene({
   useFrame((_, delta) => {
     const content = contentRef.current;
     if (!content) return;
-    const targetScale = selectedPosition ? 1.5 : 1;
+    const targetScale = selectedPosition ? 1.9 : 1;
     const nextScale = THREE.MathUtils.damp(content.scale.x, targetScale, 4.8, delta);
     content.scale.setScalar(nextScale);
 
@@ -568,11 +653,16 @@ export function SupercycleScene({
           lane={index}
           selected={selectedCycleId === cycle.id}
           anotherSelected={selectedCycleId !== null && selectedCycleId !== cycle.id}
+          planetActive={selectedNode !== null}
           routeStyle={routeStyle}
           onSelect={() => onSelectCycle(selectedCycleId === cycle.id ? null : cycle.id)}
         />
       ))}
-      {selectedNode === null && <SupercycleCore health={health} archetype={archetype} />}
+      <SupercycleCore
+        health={health}
+        archetype={archetype}
+        overviewMuted={selectedCycleId === null && selectedNode === null}
+      />
 
       {nodes.map((n, i) => (
         <CycleNode
@@ -593,7 +683,6 @@ export function SupercycleScene({
             instances={instances.filter((i) => i.nodeId === displayedNode.id)}
             onOpenInstance={onOpenInstance}
             open={selectedNode?.id === displayedNode.id}
-            health={nodeHealth(displayedNode.id, instances)}
           />
         </group>
       )}

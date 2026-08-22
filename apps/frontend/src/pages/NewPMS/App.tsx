@@ -1441,7 +1441,7 @@ function glowTexture(color: string): THREE.CanvasTexture {
   return texture;
 }
 
-function GlowSprite({ color, scale }: { color: string; scale: number }) {
+function GlowSprite({ color, scale, opacity = 1 }: { color: string; scale: number; opacity?: number }) {
   const texture = useMemo(() => glowTexture(color), [color]);
   return (
     <sprite scale={[scale, scale, scale]}>
@@ -1450,6 +1450,7 @@ function GlowSprite({ color, scale }: { color: string; scale: number }) {
         blending={THREE.AdditiveBlending}
         depthWrite={false}
         transparent
+        opacity={opacity}
         toneMapped={false}
       />
     </sprite>
@@ -1465,11 +1466,15 @@ function GlowCube({
   color,
   glowScale = 2.6,
   opacity = 0.88,
+  edgeOpacity = 1,
+  glowOpacity = 1,
 }: {
   size: number;
   color: string;
   glowScale?: number;
   opacity?: number;
+  edgeOpacity?: number;
+  glowOpacity?: number;
 }) {
   const geometry = useMemo(() => new THREE.BoxGeometry(size, size, size), [size]);
   const edgeGeometry = useMemo(() => new THREE.EdgesGeometry(geometry), [geometry]);
@@ -1484,9 +1489,9 @@ function GlowCube({
         <meshBasicMaterial color={color} transparent opacity={opacity} toneMapped={false} />
       </mesh>
       <lineSegments geometry={edgeGeometry} raycast={NO_RAYCAST}>
-        <lineBasicMaterial color={edgeColor} toneMapped={false} />
+        <lineBasicMaterial color={edgeColor} transparent opacity={edgeOpacity} toneMapped={false} />
       </lineSegments>
-      <GlowSprite color={color} scale={size * glowScale} />
+      <GlowSprite color={color} scale={size * glowScale} opacity={glowOpacity} />
     </group>
   );
 }
@@ -1835,7 +1840,7 @@ function hypercubeFaceGrid(half: number, divisions: number): Float32Array {
   return new Float32Array(points);
 }
 
-function HypercubeCell({ position, color, label, onOpen, interactive = true }: { position: [number, number, number]; color: string; label: string; onOpen: () => void; interactive?: boolean }) {
+function HypercubeCell({ position, color, label, onOpen, interactive = true, muted = false }: { position: [number, number, number]; color: string; label: string; onOpen: () => void; interactive?: boolean; muted?: boolean }) {
   return (
     <group
       position={position}
@@ -1843,15 +1848,13 @@ function HypercubeCell({ position, color, label, onOpen, interactive = true }: {
       onPointerOver={interactive ? (event) => { event.stopPropagation(); document.body.style.cursor = "pointer"; } : undefined}
       onPointerOut={interactive ? (event) => { event.stopPropagation(); document.body.style.cursor = "auto"; } : undefined}
     >
-      <GlowCube size={HYPERCUBE_CELL_HALF * 2} color={color} />
-      <Text position={[0, HYPERCUBE_CELL_HALF + 1.2, 0]} fontSize={1.1} color="#ffffff" anchorX="center">
-        {label}
-      </Text>
+      <GlowCube size={HYPERCUBE_CELL_HALF * 2} color={color} opacity={muted ? 0.12 : 0.88} edgeOpacity={muted ? 0.16 : 1} glowOpacity={muted ? 0.08 : 1} />
+      {!muted && <Text position={[0, HYPERCUBE_CELL_HALF + 1.2, 0]} fontSize={1.1} color="#ffffff" anchorX="center">{label}</Text>}
     </group>
   );
 }
 
-export function NewPmsHypercubeModel({ onOpenDepartment = () => {}, interactive = true }: { onOpenDepartment?: () => void; interactive?: boolean }) {
+export function NewPmsHypercubeModel({ onOpenDepartment = () => {}, interactive = true, overviewMuted = false }: { onOpenDepartment?: () => void; interactive?: boolean; overviewMuted?: boolean }) {
   const cells = useMemo(() => hypercubeCellPositions(), []);
   const gridGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
@@ -1864,6 +1867,12 @@ export function NewPmsHypercubeModel({ onOpenDepartment = () => {}, interactive 
 
   return (
     <>
+      {overviewMuted && (
+        <mesh renderOrder={20} raycast={NO_RAYCAST}>
+          <boxGeometry args={[HYPERCUBE_OUTER_HALF * 2, HYPERCUBE_OUTER_HALF * 2, HYPERCUBE_OUTER_HALF * 2]} />
+          <meshBasicMaterial color="#01040a" transparent opacity={0.76} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+        </mesh>
+      )}
       <lineSegments geometry={gridGeometry} raycast={NO_RAYCAST}>
         <lineBasicMaterial
           color={HYPERCUBE_SHELL_COLOR}
@@ -1882,7 +1891,7 @@ export function NewPmsHypercubeModel({ onOpenDepartment = () => {}, interactive 
 
       {cells.map((position, index) => {
         const department = HYPERCUBE_DEPARTMENTS[index % HYPERCUBE_DEPARTMENTS.length];
-        return <HypercubeCell key={department.label} position={position} color={department.color} label={department.label} onOpen={onOpenDepartment} interactive={interactive} />;
+        return <HypercubeCell key={department.label} position={position} color={department.color} label={department.label} onOpen={onOpenDepartment} interactive={interactive} muted={overviewMuted} />;
       })}
     </>
   );
