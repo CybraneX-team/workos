@@ -97,7 +97,6 @@ export default function UniversalPolytope({
   readOnly = false,
   bdtWorkspaceLeaves = false,
   cinematicFocus = false,
-  coreOverlay,
 }: UniversalPolytopeProps) {
   const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -153,7 +152,6 @@ export default function UniversalPolytope({
           onCoreClickIntent={onCoreClickIntent}
           onCoreDiveComplete={onCoreDiveComplete}
           onCoreSurfaceComplete={onCoreSurfaceComplete}
-          coreOverlay={coreOverlay}
           voiceIntensityRef={voiceIntensityRef}
           bdtWorkspaceLeaves={bdtWorkspaceLeaves}
           cinematicFocus={cinematicFocus}

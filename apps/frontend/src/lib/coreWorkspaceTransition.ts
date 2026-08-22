@@ -1,6 +1,5 @@
 /** Orchestrates polytope core dive ↔ product workspace on /universal (BDT). */
 export type CoreWorkspacePhase = 'idle' | 'diving-in' | 'workspace' | 'surfacing';
-export type CoreDestination = 'supercycle' | 'voice';
 
 /**
  * What the dive arrives at.

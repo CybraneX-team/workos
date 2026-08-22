@@ -32,9 +32,6 @@ import { useWorkflowTrail } from '../lib/useWorkflowTrail';
 import { useBdtSavedTrails } from '../lib/useBdtSavedTrails';
 import type { UserPlanetRole } from '../data/companyPlanetRoots';
 import { bdtTasks, type BdtTask } from '../lib/db/bdtTasks';
-import { bdtSupercycle, type BdtSupercycle } from '../lib/db/bdtSupercycle';
-import { SupercycleScene } from '../components/supercycle/SupercycleScene';
-import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleEditor';
 
 export default function UniversalPage() {
   const navigate = useNavigate();
@@ -66,9 +63,6 @@ export default function UniversalPage() {
   // --- Replay State & Logic ---
   const [replayStepIndex, setReplayStepIndex] = useState(0);
   const [showCommercialMyWork, setShowCommercialMyWork] = useState(false);
-  const [supercycle, setSupercycle] = useState<BdtSupercycle | null>(null);
-  const [supercycleError, setSupercycleError] = useState<string | null>(null);
-  const [selectedSupercycleDepartmentId, setSelectedSupercycleDepartmentId] = useState<string | null>(null);
   const [pendingSupercycleOpen, setPendingSupercycleOpen] = useState<{ departmentId: string; nodeId: string } | null>(null);
 
   const replayTrail = useMemo(() => {
@@ -557,13 +551,6 @@ export default function UniversalPage() {
       }
     }
   }, [corePhase, pendingSupercycleOpen]);
-
-  const surfaceFromCore = useCallback(() => setCorePhase((phase) => phase === 'workspace' ? 'surfacing' : phase), []);
-  const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
-  const openSupercycleNode = useCallback((departmentId: string, nodeId: string) => {
-    setPendingSupercycleOpen({ departmentId, nodeId });
-    surfaceFromCore();
-  }, [surfaceFromCore]);
 
   const handlePolytopeExitIntent = useCallback(() => {
     if (!profile?.company_id) return;

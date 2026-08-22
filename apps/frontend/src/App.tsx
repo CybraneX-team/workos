@@ -177,6 +177,16 @@ function AppRoutes() {
     );
   }
 
+  // /oauth/authorize — ERPNext SSO bridge page (no TopBar, no AuthGuard —
+  // it performs its own session check before exchanging the authorization code).
+  if (location.pathname === '/oauth/authorize') {
+    return (
+      <Routes>
+        <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
+      </Routes>
+    );
+  }
+
   // /join-startup — incubator invite landing page (no TopBar, no layout)
   if (location.pathname === '/join-startup') {
     return (
