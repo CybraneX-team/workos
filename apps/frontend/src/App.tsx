@@ -42,6 +42,10 @@ import IncubatorInvites from './pages/incubator/IncubatorInvites';
 import IncubatorCohorts from './pages/incubator/IncubatorCohorts';
 import IncubatorCohortDetail from './pages/incubator/IncubatorCohortDetail';
 import IncubatorSettings from './pages/incubator/IncubatorSettings';
+import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
+import PMS3DApp from './pages/PMS3D/PMS3DApp';
+import NewPMSApp from './pages/NewPMS/NewPMSApp';
+import PmsPage from './pages/PmsPage';
 import { VoiceProvider } from './context/VoiceContext';
 
 
@@ -104,6 +108,27 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<RootRoute />} />
         <Route path="/landing" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  }
+
+  // /3d-pms — standalone interactive 3D project-management prototype (own
+  // account creation + dummy in-memory backend, no AuthGuard/TopBar from the
+  // main app shell).
+  if (location.pathname.startsWith('/3d-pms')) {
+    return (
+      <Routes>
+        <Route path="/3d-pms/*" element={<PMS3DApp />} />
+      </Routes>
+    );
+  }
+
+  // /new-pms — same task-management UI as /3d-pms, but the 3D canvas is a
+  // fresh empty scene being built from scratch (see pages/NewPMS/App.tsx).
+  if (location.pathname.startsWith('/new-pms')) {
+    return (
+      <Routes>
+        <Route path="/new-pms/*" element={<NewPMSApp />} />
       </Routes>
     );
   }
@@ -202,6 +227,7 @@ function AppRoutes() {
   const isTwinGraph = location.pathname === '/twin';
   const is3DUniverse = location.pathname === '/3d';
   const isUniversal = location.pathname === '/universal';
+  const isPms = location.pathname === '/pms';
   // Bypass users (VC / Incubator) are authed but have no company — still let them see /3d
   const activeRole = localStorage.getItem('active_role');
   const isBypassUser = !!user && (activeRole === 'vc' || activeRole === 'incubator');
@@ -256,7 +282,7 @@ function AppRoutes() {
           }}
         >
           <div className="min-h-screen cosmos-bg">
-            <TopBar />
+            {!isPms && <TopBar />}
             {isTwinGraph ? (
               <Routes>
                 <Route
@@ -269,7 +295,7 @@ function AppRoutes() {
                 />
               </Routes>
             ) : (
-              <main className={isUniversal ? 'overflow-hidden' : 'pt-14 pb-10 px-8 overflow-y-auto'}>
+              <main className={isPms ? 'fixed inset-0 overflow-hidden' : isUniversal ? 'overflow-hidden' : 'pt-14 pb-10 px-8 overflow-y-auto'}>
                 <Routes>
                   {/* Authenticated app routes */}
                   <Route path="/overview" element={
@@ -356,6 +382,12 @@ function AppRoutes() {
 
                   {/* /universal is handled as a persistent overlay above, but we keep an empty route so router is happy if needed */}
                   <Route path="/universal" element={<AuthGuard requireOnboarding><></></AuthGuard>} />
+
+                  <Route path="/pms" element={
+                    <AuthGuard requireOnboarding>
+                      <PmsPage />
+                    </AuthGuard>
+                  } />
 
                   {/* /workspace — standalone action node workspace */}
                   <Route path="/workspace" element={

@@ -7,7 +7,20 @@ import { usePolytopeStore } from '../lib/usePolytopeStore';
 import type { UExternalNode, UInternalNode } from '../lib/usePolytopeStore';
 import { useAuth } from '../lib/auth';
 import { useCompany } from '../lib/db/companies';
-import type { CoreDestination, CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
+import type { CoreWorkspacePhase } from '../lib/coreWorkspaceTransition';
+import type { CoreDestination } from '../lib/coreWorkspaceTransition';
+import { SupercycleScene } from '../components/supercycle/SupercycleScene';
+import type { SupercycleRouteStyle } from '../components/supercycle/SupercycleScene';
+import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleEditor';
+import {
+  DEFAULT_ARCHETYPE,
+  SUPERCYCLE_ARCHETYPES,
+  SUPERCYCLE_ARCHETYPE_LIST,
+  SUPERCYCLE_LABEL,
+  type SupercycleArchetypeId,
+  type SupercycleInstance,
+} from '../lib/supercycleData';
+import { instanceHealth, usePmsStore } from '../lib/usePmsStore';
 import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
@@ -31,6 +44,7 @@ export default function UniversalPage() {
   const { user, profile, canRead, canWrite, role: authRole } = useAuth();
   const canCreateDepartments = canWrite('twin') && canWrite('team');
   const { company } = useCompany(profile?.company_id);
+  const pms = usePmsStore(profile?.company_id);
   const store = usePolytopeStore('bdt');
   const { sendContextUpdate, voiceState, toggle, intensityRef } = useVoice();
 
@@ -306,19 +320,53 @@ export default function UniversalPage() {
     setSelectDeptNonce((value) => value + 1);
   }, [focusKey, paidAcquisitionDepartmentId, paidAcquisitionPathKey]);
 
-  // The core can dive to the shared Supercycle or to Voice AI. They share the
-  // camera transition but remain independent destinations.
+  // Core dive state. `coreDestination` records WHERE the dive is heading —
+  // the supercycle sphere (clicking the core) or Voice AI (its own button).
   const [corePhase, setCorePhase] = useState<CoreWorkspacePhase>('idle');
   const [coreDestination, setCoreDestination] = useState<CoreDestination>('supercycle');
   const isPolytopeInteractive = corePhase === 'idle';
 
-  const loadSupercycle = useCallback(async () => {
-    try { setSupercycle(await bdtSupercycle.get()); setSupercycleError(null); }
-    catch (cause) { setSupercycleError(cause instanceof Error ? cause.message : 'Unable to load Supercycle'); }
+  const diveToCore = useCallback((destination: CoreDestination) => {
+    setCoreDestination(destination);
+    setCorePhase((phase) => (phase === 'idle' ? 'diving-in' : phase));
   }, []);
 
-  useEffect(() => { void loadSupercycle(); }, [loadSupercycle]);
+  const surfaceFromCore = useCallback(() => {
+    setCorePhase((phase) => (phase === 'workspace' ? 'surfacing' : phase));
+  }, []);
 
+  // ── Supercycle (inside the core) ──────────────────────────────────────────
+  const [archetypeId, setArchetypeId] = useState<SupercycleArchetypeId>(DEFAULT_ARCHETYPE);
+  const [selectedCycleNodeId, setSelectedCycleNodeId] = useState<string | null>(null);
+  const [selectedValueCycleId, setSelectedValueCycleId] = useState<string | null>(null);
+  const [cycleRouteStyle, setCycleRouteStyle] = useState<SupercycleRouteStyle>('curved');
+  const archetype = SUPERCYCLE_ARCHETYPES[archetypeId];
+  const valueCycles = pms.state.cycles.filter((cycle) => cycle.archetypeId === archetypeId);
+  const selectedValueCycle = valueCycles.find((cycle) => cycle.id === selectedValueCycleId) ?? null;
+  const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
+  const selectedCycleNode = archetype.nodes.find((n) => n.id === selectedCycleNodeId) ?? null;
+
+  const supercycleInstances = useMemo<SupercycleInstance[]>(
+    () => pms.state.instances
+      .filter((instance) => archetype.nodes.some((node) => node.id === instance.departmentNodeId))
+      .map((instance) => ({
+        id: instance.id,
+        label: instance.name,
+        nodeId: instance.departmentNodeId,
+        stageIndex: instance.stageIndex,
+        health: instanceHealth(instance.id, pms.state),
+      })),
+    [archetype, pms.state],
+  );
+
+  const handleOpenInstance = useCallback((instance: SupercycleInstance) => {
+    navigate(`/pms?view=hypercube&instance=${encodeURIComponent(instance.id)}`);
+  }, [navigate]);
+
+  // Voice keeps driving the dive, but ONLY while voice is the destination.
+  // Previously this effect ran unconditionally, which meant any dive was
+  // treated as a voice session and ending voice yanked you back out of
+  // whatever you were actually looking at.
   useEffect(() => {
     if (coreDestination !== 'voice') return;
     if (voiceState === 'idle' && corePhase === 'workspace') {
@@ -326,7 +374,7 @@ export default function UniversalPage() {
     } else if (voiceState !== 'idle' && corePhase === 'idle') {
       setCorePhase('diving-in');
     }
-  }, [voiceState, corePhase]);
+  }, [voiceState, corePhase, coreDestination]);
 
   useLayoutEffect(() => {
     // We no longer unmount/remount the canvas or reset state on path change.
@@ -480,11 +528,14 @@ export default function UniversalPage() {
 
 
 
+  // Clicking the core now opens the Revenue & Growth supercycle rather than
+  // Voice AI. Voice moved to its own control (see the toolbar button below) so
+  // the core can mean one thing: dive into the organisation's value loop.
   const handleCoreClickIntent = useCallback(() => {
-    setSelectedSupercycleDepartmentId(null);
-    setCoreDestination('supercycle');
-    setCorePhase((phase) => phase === 'idle' ? 'diving-in' : phase);
-  }, []);
+    setSelectedCycleNodeId(null);
+    setSelectedValueCycleId(null);
+    diveToCore('supercycle');
+  }, [diveToCore]);
 
   const handleCoreDiveComplete = useCallback(() => {
     if (corePhase === 'diving-in') {
@@ -564,13 +615,21 @@ export default function UniversalPage() {
             voiceIntensityRef={intensityRef}
             bdtWorkspaceLeaves
             cinematicFocus
-            coreOverlay={showSupercycle ? <SupercycleScene
-              departments={supercycle?.departments ?? []}
-              routes={supercycle?.routes ?? []}
-              selectedDepartmentId={selectedSupercycleDepartmentId}
-              onSelectDepartment={setSelectedSupercycleDepartmentId}
-              onOpenNode={openSupercycleNode}
-            /> : undefined}
+            coreOverlay={
+              showSupercycle ? (
+                <SupercycleScene
+                  archetype={archetype}
+                  instances={supercycleInstances}
+                  selectedNodeId={selectedCycleNodeId}
+                  onSelectNode={setSelectedCycleNodeId}
+                  onOpenInstance={handleOpenInstance}
+                  cycles={valueCycles}
+                  selectedCycleId={selectedValueCycleId}
+                  onSelectCycle={(cycleId) => { setSelectedValueCycleId(cycleId); setSelectedCycleNodeId(null); }}
+                  routeStyle={cycleRouteStyle}
+                />
+              ) : undefined
+            }
           />
         )}
       </div>
@@ -589,31 +648,121 @@ export default function UniversalPage() {
         </button>
       )}
 
+      {/* Voice AI trigger. The core used to open Voice; now it opens the
+          supercycle, so Voice needs its own control. */}
       {isPolytopeInteractive && voiceState === 'idle' && (
         <button
           onClick={() => { setCoreDestination('voice'); toggle(); }}
-          className="fixed right-6 top-20 z-[60] flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium text-slate-300 backdrop-blur-md transition-all hover:border-purple-500/30 hover:text-white"
+          className="fixed top-20 right-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-purple-500/30"
           style={{ background: 'rgba(0,0,0,0.55)', borderColor: 'rgba(148,163,184,0.1)' }}
-        >Voice AI</button>
+        >
+          Voice AI
+        </button>
       )}
 
+      {/* ── Supercycle chrome (inside the core) ── */}
       {showSupercycle && corePhase !== 'surfacing' && (
         <>
-          <button onClick={() => selectedSupercycleDepartmentId ? setSelectedSupercycleDepartmentId(null) : surfaceFromCore()} className="fixed left-6 top-20 z-[70] flex items-center gap-2 rounded-lg border border-cyan-400/25 bg-black/65 px-3 py-2 text-xs font-semibold text-cyan-100 backdrop-blur-xl transition hover:border-cyan-300/50">
-            &larr; {selectedSupercycleDepartmentId ? 'Supercycle' : 'Back to Polytope'}
+          <button
+            onClick={() => (selectedCycleNode ? setSelectedCycleNodeId(null) : surfaceFromCore())}
+            className="fixed top-20 left-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-cyan-400/30"
+            style={{ background: 'rgba(0,0,0,0.55)', borderColor: 'rgba(148,163,184,0.1)' }}
+          >
+            &larr; {selectedCycleNode ? SUPERCYCLE_LABEL : 'Back to Polytope'}
           </button>
-          <div className="pointer-events-none fixed left-1/2 top-20 z-[60] -translate-x-1/2 rounded-lg border px-4 py-2 text-center backdrop-blur-md" style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}>
-            <div className="text-[10px] uppercase tracking-[3px] text-cyan-300">Shared BDT representation</div>
-            <div className="text-sm font-semibold text-slate-100">{selectedSupercycleDepartmentId ? supercycle?.departments.find((department) => department.id === selectedSupercycleDepartmentId)?.label : 'Supercycle'}</div>
+
+          <div
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg border backdrop-blur-md text-center pointer-events-none"
+            style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
+          >
+            <div className="text-[10px] tracking-[3px] uppercase" style={{ color: '#4fd8ff' }}>
+              {selectedCycleNode ? selectedCycleNode.subCycle.label : selectedValueCycle ? 'Selected cycle' : 'Supercycle'}
+            </div>
+            <div className="text-sm font-semibold text-slate-100">
+              {selectedCycleNode ? selectedCycleNode.label : selectedValueCycle?.name ?? SUPERCYCLE_LABEL}
+            </div>
+            {selectedCycleNode && (
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {selectedCycleNode.subNodes.map((s) => s.label).join(' · ')}
+              </div>
+            )}
           </div>
-          {supercycle?.canEdit && <SupercycleCycleEditor
-            availableDepartments={supercycle.availableDepartments}
-            initial={supercycle.departments}
-            initialRoutes={supercycle.routes}
-            onSave={async (value) => { setSupercycle(await bdtSupercycle.save(value)); setSelectedSupercycleDepartmentId(null); }}
-            onDelete={async () => { await bdtSupercycle.remove(); await loadSupercycle(); setSelectedSupercycleDepartmentId(null); }}
-          />}
-          {!supercycle?.configured && <div className="fixed bottom-8 left-1/2 z-[70] max-w-md -translate-x-1/2 rounded-xl border border-cyan-400/20 bg-[#060a13]/90 px-5 py-4 text-center text-sm text-slate-300 backdrop-blur-xl">{supercycleError ?? (supercycle?.canEdit ? 'No shared Supercycle has been configured. Use Edit cycles to select existing departments and workspaces.' : 'No shared Supercycle has been configured for this company.')}</div>}
+
+          {selectedCycleNode && (
+            <button
+              onClick={() => {
+                const name = window.prompt(`Name this ${selectedCycleNode.subCycle.label} live instance`);
+                if (!name?.trim()) return;
+                pms.setArchetype(archetypeId);
+                pms.createInstance({
+                  name: name.trim(),
+                  departmentNodeId: selectedCycleNode.id,
+                  templateId: selectedCycleNode.subCycle.id,
+                  stageIndex: 0,
+                  status: 'active',
+                });
+              }}
+              className="fixed top-20 right-36 z-[60] rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 backdrop-blur-md transition hover:bg-cyan-400/20"
+            >
+              + New live instance
+            </button>
+          )}
+
+          <SupercycleCycleEditor
+            cycles={valueCycles}
+            departments={archetype.nodes}
+            onCreate={(draft) => {
+              const cycleId = pms.createCycle({ ...draft, archetypeId });
+              setSelectedValueCycleId(cycleId);
+            }}
+            onUpdate={(cycleId, draft) => pms.updateCycle(cycleId, draft)}
+            onDelete={(cycleId) => {
+              pms.deleteCycle(cycleId);
+              if (selectedValueCycleId === cycleId) setSelectedValueCycleId(null);
+            }}
+          />
+
+          <div className="fixed right-6 top-32 z-[70] flex rounded-lg border border-white/10 bg-black/65 p-1 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-xl">
+            {(['curved', 'spherical'] as const).map((style) => (
+              <button key={style} onClick={() => setCycleRouteStyle(style)} className={`rounded-md px-2.5 py-1.5 transition ${cycleRouteStyle === style ? 'bg-cyan-300 text-slate-950' : 'text-slate-500 hover:text-white'}`}>
+                {style === 'spherical' ? 'Circular' : 'Curved'}
+              </button>
+            ))}
+          </div>
+
+          {!selectedCycleNode && valueCycles.length > 0 && (
+            <div className="fixed bottom-20 left-1/2 z-[60] flex -translate-x-1/2 gap-1.5 rounded-xl border border-white/10 bg-black/65 p-1.5 backdrop-blur-xl">
+              {valueCycles.map((cycle) => {
+                const active = selectedValueCycleId === cycle.id;
+                return <button key={cycle.id} onClick={() => setSelectedValueCycleId(active ? null : cycle.id)} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-medium transition" style={{ background: active ? `${cycle.color}22` : 'transparent', color: active ? cycle.color : '#7c879b' }}><span className="h-2 w-2 rounded-full" style={{ background: cycle.color, boxShadow: active ? `0 0 10px ${cycle.color}` : 'none' }} />{cycle.name}</button>;
+              })}
+            </div>
+          )}
+
+          {/* Business-model picker. Same ring, different labels — the point of
+              section 8 of the spec is that these stay comparable. */}
+          {!selectedCycleNode && (
+            <div
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex gap-1 p-1.5 rounded-xl border backdrop-blur-md"
+              style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
+            >
+              {SUPERCYCLE_ARCHETYPE_LIST.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => { setArchetypeId(a.id); pms.setArchetype(a.id); setSelectedCycleNodeId(null); setSelectedValueCycleId(null); }}
+                  title={a.revenueModel}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={
+                    a.id === archetypeId
+                      ? { background: 'rgba(79,216,255,0.16)', color: '#4fd8ff' }
+                      : { color: '#8b96ab' }
+                  }
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
 

@@ -36,6 +36,7 @@ export function OrgCore({
   voiceIntensityRef?: React.MutableRefObject<number> | undefined;
   hideCompanyName?: boolean;
   coreWorkspacePhase?: string;
+  /** Voice visualisation is mounted only when the core dive targets Voice AI. */
   showVoicePlasma?: boolean;
 }) {
   const meshRef  = useRef<THREE.Group>(null);
@@ -90,12 +91,14 @@ export function OrgCore({
              coreWorkspacePhase={coreWorkspacePhase}
           />
         </group>
-        {showVoicePlasma && <VoicePlasmaWeb
-          coreWorkspacePhase={coreWorkspacePhase}
-          voiceIntensityRef={voiceIntensityRef}
-          radius={1.2}
-          count={8000}
-        />}
+        {showVoicePlasma && (
+          <VoicePlasmaWeb
+            coreWorkspacePhase={coreWorkspacePhase}
+            voiceIntensityRef={voiceIntensityRef}
+            radius={1.2}
+            count={8000}
+          />
+        )}
       </group>
       
       {/* 3D Text floating on top of the core */}
@@ -140,7 +143,7 @@ export function OrgCore({
               outlineColor="#0f172a"
               outlineOpacity={0.55}
             >
-              Click to explore Supercycle
+              Click to explore Revenue &amp; Growth
             </Text>
           </group>
         </Billboard>
