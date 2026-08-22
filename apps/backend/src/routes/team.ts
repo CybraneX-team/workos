@@ -12,7 +12,6 @@ import {
   type RoleId,
 } from '../rbac.js';
 import { getDepartmentAccess, roleDepartmentGrantsSubset } from '../departmentAccess.js';
-import { syncErpNextRolesForMember, deprovisionErpNextUser } from '../lib/erpnextRoleSync.js';
 
 export const teamRouter = Router();
 teamRouter.use(authJwt);
@@ -160,7 +159,6 @@ teamRouter.patch('/members/:memberId/department', requireTeamWrite, async (req: 
       return res.status(500).json({ error: 'department_update_failed', details: error.message });
     }
 
-    await syncErpNextRolesForMember(companyId, member.user_id, member.role);
     return res.status(200).json({ success: true });
   } catch (err: any) {
     console.error('[team] department update unexpected error', err);
@@ -203,7 +201,6 @@ teamRouter.patch('/members/:memberId/role', requireTeamWrite, async (req: any, r
     }
 
     await syncProfileRole(member.user_id, companyId, newRole);
-    await syncErpNextRolesForMember(companyId, member.user_id, newRole);
     return res.status(200).json({ success: true });
   } catch (err: any) {
     console.error('[team] role update unexpected error', err);
@@ -244,7 +241,6 @@ teamRouter.delete('/members/:memberId', requireTeamDelete, async (req: any, res:
       .eq('id', member.user_id)
       .eq('company_id', companyId);
 
-    await deprovisionErpNextUser(companyId, member.user_id);
     return res.status(200).json({ success: true });
   } catch (err: any) {
     console.error('[team] member remove unexpected error', err);

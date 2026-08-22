@@ -35,7 +35,7 @@ campaign                        (destination: website | lead_form)
 
 Campaign Studio does not create audiences, pixels, catalogs, videos, carousel
 ads, dynamic creatives, Advantage+ campaigns, or conversion campaigns. It does
-not scrape a website or silently import ERPNext context. It does create Meta
+not scrape a website or silently import catalogue context. It does create Meta
 lead forms, as of 2026-07-22.
 
 ## User flow and permissions
@@ -104,7 +104,7 @@ storage path is returned to the browser.
 ## Creative context and storage
 
 Gemini receives only the saved brand kit, the explicit campaign brief, and an
-optional ERPNext item the user explicitly looked up and confirmed. It does not
+optional WorkOS product the user explicitly looked up and confirmed. It does not
 receive arbitrary company records or crawl the destination.
 
 `GEMINI_MODEL` produces three structured copy concepts. `GEMINI_IMAGE_MODEL`
@@ -215,21 +215,17 @@ Added 2026-07-22. `content.destination` selects the publish shape.
 | Objective | `OUTCOME_TRAFFIC` | `OUTCOME_LEADS` |
 | Ad set | `LINK_CLICKS`, `destination_type: WEBSITE` | `LEAD_GENERATION`, `destination_type: ON_AD`, `promoted_object: {page_id}` |
 | Creative CTA value | `{link}` | `{lead_gen_form_id}` |
-| Extra steps | — | `leadform` before the campaign, `crmsync` after the ads |
+| Extra steps | — | `leadform` before the campaign, `leadbinding` after the ads |
 
 Design points that are not obvious from the code:
 
-- **Forms are reused by question-set hash, not created per campaign.** Frappe CRM permits
-  one enabled `Lead Sync Source` per form, so a form per campaign would multiply sync
-  sources and their polling against Meta. The hash is recomputed server-side on every patch
+- **Forms are reused by question-set hash, not created per campaign.** One native binding
+  and polling cursor owns each form, avoiding duplicate polling. The hash is recomputed server-side on every patch
   because it decides which form a publish binds to. It includes each question's target CRM
   field, since the mapping is stored on the shared form.
-- **`crmsync` is non-fatal.** It runs after the campaign is live on Meta, which keeps
-  collecting submissions regardless — Frappe backfills on first sync because
-  `last_synced_at` starts null. A failure records the step and a
-  `lead_sync_configuration_failed` event rather than failing an already-published job.
-- **Ad-level attribution comes from `ad_id`, not the form.** See
-  `domains/meta-ads/leadAttribution.ts`.
+- **`leadbinding` persists the native ingestion mapping.** The hourly worker begins from
+  `last_synced_at`, upserts leads idempotently, and advances the cursor only after commit.
+- **Ad-level attribution comes from `ad_id`, not the form.** It is stored during native lead ingestion.
 - **Preflight owns three Meta rules that otherwise fail mid-publish**: a lead form needs an
   HTTPS privacy-policy URL; an intro card forces a follow-up URL (`error_subcode 1892085`);
   and the Page must have accepted Meta's Lead Generation Terms (`leadgen_tos_accepted`,

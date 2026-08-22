@@ -18,7 +18,6 @@ import {
   normalizeDepartmentGrant,
   type DepartmentAccess,
 } from '../departmentAccess.js';
-import { syncErpNextRolesForRole, syncErpNextRolesForMember } from '../lib/erpnextRoleSync.js';
 
 export const rbacRouter = Router();
 rbacRouter.use(authJwt);
@@ -123,7 +122,6 @@ rbacRouter.put('/departments/:departmentId/role-grants/:roleId', requirePermissi
              updated_at = NOW()`,
       [companyId, departmentId, roleId, grant.read, grant.write, grant.delete, grant.manage, req.auth.userId],
     );
-    await syncErpNextRolesForRole(companyId, roleId);
     return res.json({ success: true });
   } catch (err: any) {
     const status = err.message === 'department_forbidden' || err.message === 'department_permission_escalation' ? 403 : 500;
@@ -142,7 +140,6 @@ rbacRouter.delete('/departments/:departmentId/role-grants/:roleId', requirePermi
         WHERE company_id = $1 AND department_id = $2 AND role_id = $3`,
       [companyId, req.params.departmentId, req.params.roleId],
     );
-    await syncErpNextRolesForRole(companyId, req.params.roleId);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: 'department_role_grant_delete_failed', details: err.message });
@@ -176,7 +173,6 @@ rbacRouter.put('/departments/:departmentId/member-grants/:memberId', requirePerm
              updated_at = NOW()`,
       [companyId, departmentId, memberId, grant.read, grant.write, grant.delete, grant.manage, req.auth.userId],
     );
-    await syncErpNextRolesForMember(companyId, rows[0].user_id, rows[0].role);
     return res.json({ success: true });
   } catch (err: any) {
     const status = err.message === 'department_forbidden' || err.message === 'department_permission_escalation' ? 403 : 500;
@@ -199,7 +195,6 @@ rbacRouter.delete('/departments/:departmentId/member-grants/:memberId', requireP
       `SELECT user_id, role FROM public.company_members WHERE id = $1 AND company_id = $2`,
       [req.params.memberId, companyId],
     );
-    if (rows[0]) await syncErpNextRolesForMember(companyId, rows[0].user_id, rows[0].role);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: 'department_member_grant_delete_failed', details: err.message });

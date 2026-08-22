@@ -22,7 +22,7 @@ isolated from synchronization and experiment evaluation. See
 [`meta-ads-campaign-studio.md`](meta-ads-campaign-studio.md).
 
 Projects are deliberately excluded because the current Projects feature is
-browser-local. ERPNext is excluded because this repository has no reliable
+browser-local. Native CRM data is excluded because this operating loop has no reliable
 Meta campaign/ad attribution chain. Analysis and experiment outcomes are
 deterministic; no LLM, email, or Meta write API participates.
 

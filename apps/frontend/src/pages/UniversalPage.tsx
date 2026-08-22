@@ -25,12 +25,16 @@ import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
 import { BdtActionWorkspace } from '../components/workspace/BdtActionWorkspace';
+import { BdtFormWorkspace } from '../components/workspace/BdtFormWorkspace';
 import { isBdtWorkspaceLeafNode } from '../lib/usePolytopeStore';
 import { canReadDept, canWriteDept as canWriteDeptHelper } from '../lib/bdtTrailRbac';
 import { useWorkflowTrail } from '../lib/useWorkflowTrail';
 import { useBdtSavedTrails } from '../lib/useBdtSavedTrails';
 import type { UserPlanetRole } from '../data/companyPlanetRoots';
-import { fetchErpNextProductPortfolio, type ErpNextCatalogPortfolio } from '../lib/db/erpnextProducts';
+import { bdtTasks, type BdtTask } from '../lib/db/bdtTasks';
+import { bdtSupercycle, type BdtSupercycle } from '../lib/db/bdtSupercycle';
+import { SupercycleScene } from '../components/supercycle/SupercycleScene';
+import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleEditor';
 
 export default function UniversalPage() {
   const navigate = useNavigate();
@@ -42,7 +46,6 @@ export default function UniversalPage() {
   const { company } = useCompany(profile?.company_id);
   const pms = usePmsStore(profile?.company_id);
   const store = usePolytopeStore('bdt');
-  const [productPortfolio, setProductPortfolio] = useState<ErpNextCatalogPortfolio | null>(null);
   const { sendContextUpdate, voiceState, toggle, intensityRef } = useVoice();
 
   const {
@@ -62,6 +65,11 @@ export default function UniversalPage() {
 
   // --- Replay State & Logic ---
   const [replayStepIndex, setReplayStepIndex] = useState(0);
+  const [showCommercialMyWork, setShowCommercialMyWork] = useState(false);
+  const [supercycle, setSupercycle] = useState<BdtSupercycle | null>(null);
+  const [supercycleError, setSupercycleError] = useState<string | null>(null);
+  const [selectedSupercycleDepartmentId, setSelectedSupercycleDepartmentId] = useState<string | null>(null);
+  const [pendingSupercycleOpen, setPendingSupercycleOpen] = useState<{ departmentId: string; nodeId: string } | null>(null);
 
   const replayTrail = useMemo(() => {
     if (!replayTrailId) return null;
@@ -195,6 +203,9 @@ export default function UniversalPage() {
   // Sidebar state — which dept is selected in sidebar, and internal drill-down path
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [internalPath, setInternalPath] = useState<string[]>([]);
+  // Graph focus and workspace visibility are intentionally independent. A node
+  // must be centered before a second 3D click opens its workspace.
+  const [openWorkspacePath, setOpenWorkspacePath] = useState<string[] | null>(null);
   // Counter incremented each time the sidebar's back button is pressed
   const [internalBackStep, setInternalBackStep] = useState(0);
 
@@ -254,50 +265,30 @@ export default function UniversalPage() {
   const resolvedSelectedDeptId = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.department.id
     : selectedDeptId;
-  const displayDepartments = useMemo(() => {
-    if (!productPortfolio || !['ready', 'partial'].includes(productPortfolio.status)) return store.departments;
-    const virtualLines = productPortfolio.lines.map(line => ({
-      id: line.stableKey, label: line.label, type: 'branch' as const, score: 75, nodeLevel: 'branch' as const,
-      virtualErpNext: { entity: 'line' as const, identity: line.identity, unclassified: line.unclassified },
-      children: line.products.map(product => ({
-        id: product.stableKey, label: product.label, type: 'resource' as const, score: product.disabled ? 0 : 75, nodeLevel: 'internal' as const,
-        virtualErpNext: { entity: 'product' as const, identity: product.identity, subtitle: product.subtitle, disabled: product.disabled }, children: [],
-      })),
-    }));
-    const replace = (nodes: UInternalNode[]): UInternalNode[] => nodes.map(node => {
-      if (node.stableSourceKey === 'prod_product_portfolio' && node.presentation === 'erpnext_catalog' && node.taxonomyVersion === 'v4') return { ...node, children: virtualLines };
-      return node.children?.length ? { ...node, children: replace(node.children) } : node;
-    });
-    return store.departments.map(department => ({ ...department, internalNodes: replace(department.internalNodes) }));
-  }, [productPortfolio, store.departments]);
+  const displayDepartments = store.departments;
   const selectedDept = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.department
     : selectedDeptId ? displayDepartments.find(d => d.id === selectedDeptId) : null;
   const resolvedInternalPath = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
     ? paidAcquisitionDeepLink.path
     : internalPath;
-  const getSelectedInternalNode = () => {
-    if (!selectedDept || resolvedInternalPath.length === 0) return null;
+  const getInternalNodeAtPath = (path: string[]) => {
+    if (!selectedDept || path.length === 0) return null;
     let currentNodes = selectedDept.internalNodes;
     let targetNode: UInternalNode | null = null;
-    for (const p of resolvedInternalPath) {
+    for (const p of path) {
       targetNode = currentNodes?.find(n => n.id === p) || null;
       if (targetNode) currentNodes = targetNode.children || [];
     }
     return targetNode;
   };
-  const selectedNode = getSelectedInternalNode();
-  const isLiveProductLines = Boolean(selectedNode && selectedNode.stableSourceKey === 'prod_product_portfolio' && selectedNode.presentation === 'erpnext_catalog' && selectedNode.taxonomyVersion === 'v4');
-  const refreshProductPortfolio = useCallback(() => {
-    void fetchErpNextProductPortfolio().then(setProductPortfolio).catch(() => setProductPortfolio({ status: 'not_configured', generatedAt: new Date().toISOString(), lines: [], warnings: [], message: 'Connect ERPNext to load Product Lines.' }));
-  }, []);
-  useEffect(() => {
-    if (!isLiveProductLines) return;
-    refreshProductPortfolio();
-  }, [isLiveProductLines, refreshProductPortfolio]);
-  const isLeafNode = !!selectedNode && isBdtWorkspaceLeafNode(selectedNode);
-  const isPaidAcquisitionNode = Boolean(selectedNode && (selectedNode.stableSourceKey === 'mkt_paid_acquisition' || selectedNode.sourceKey === 'mkt_paid_acquisition'));
-  const isWorkspaceOpen = isLeafNode;
+  const selectedNode = getInternalNodeAtPath(resolvedInternalPath);
+  const resolvedWorkspacePath = focusOwnsPaidAcquisitionSelection && paidAcquisitionDeepLink
+    ? paidAcquisitionDeepLink.path
+    : openWorkspacePath;
+  const workspaceNode = resolvedWorkspacePath ? getInternalNodeAtPath(resolvedWorkspacePath) : null;
+  const isWorkspaceOpen = Boolean(workspaceNode && isBdtWorkspaceLeafNode(workspaceNode));
+  const isPaidAcquisitionNode = Boolean(workspaceNode && (workspaceNode.stableSourceKey === 'mkt_paid_acquisition' || workspaceNode.sourceKey === 'mkt_paid_acquisition'));
 
   const handleInternalPathChange = useCallback((path: string[]) => {
     const authoritativePath = sidebarPathAuthority.current;
@@ -306,6 +297,7 @@ export default function UniversalPage() {
         && authoritativePath.every((entry, index) => entry === path[index]);
       if (!matchesAuthority) return;
     }
+    setOpenWorkspacePath(null);
     setInternalPath((current) => (
       current.length === path.length && current.every((entry, index) => entry === path[index])
         ? current
@@ -554,8 +546,24 @@ export default function UniversalPage() {
   const handleCoreSurfaceComplete = useCallback(() => {
     if (corePhase === 'surfacing') {
       setCorePhase('idle');
+      if (pendingSupercycleOpen) {
+        const path = [pendingSupercycleOpen.nodeId];
+        setSelectedDeptId(pendingSupercycleOpen.departmentId);
+        setRequestSelectDeptId(pendingSupercycleOpen.departmentId);
+        setSelectDeptNonce((value) => value + 1);
+        setInternalPath(path);
+        setOpenWorkspacePath(path);
+        setPendingSupercycleOpen(null);
+      }
     }
-  }, [corePhase]);
+  }, [corePhase, pendingSupercycleOpen]);
+
+  const surfaceFromCore = useCallback(() => setCorePhase((phase) => phase === 'workspace' ? 'surfacing' : phase), []);
+  const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
+  const openSupercycleNode = useCallback((departmentId: string, nodeId: string) => {
+    setPendingSupercycleOpen({ departmentId, nodeId });
+    surfaceFromCore();
+  }, [surfaceFromCore]);
 
   const handlePolytopeExitIntent = useCallback(() => {
     if (!profile?.company_id) return;
@@ -591,13 +599,14 @@ export default function UniversalPage() {
             onExitIntent={handlePolytopeExitIntent}
             onDepartmentChange={handleDepartmentChange}
             onInternalPathChange={handleInternalPathChange}
+            onWorkspaceOpen={(path) => setOpenWorkspacePath([...path])}
             requestSelectDeptId={requestSelectDeptId}
             selectDeptNonce={selectDeptNonce}
             requestBackStep={internalBackStep}
             cameraResetTrigger={polytopeResetTrigger}
             departments={displayDepartments}
             selectedInternalPath={resolvedInternalPath}
-            enableCoreWorkspace={hasWritableDepartment}
+            enableCoreWorkspace
             readOnly={!hasWritableDepartment}
             coreWorkspacePhase={corePhase}
             onCoreClickIntent={handleCoreClickIntent}
@@ -628,8 +637,8 @@ export default function UniversalPage() {
 
 
 
-      {/* Back button when Voice AI is active */}
-      {voiceState !== 'idle' && (
+      {/* Voice is deliberately separate from the shared Supercycle core. */}
+      {coreDestination === 'voice' && voiceState !== 'idle' && (
         <button
           onClick={() => toggle()}
           className="fixed top-20 left-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-purple-500/30"
@@ -765,7 +774,6 @@ export default function UniversalPage() {
             selectedDeptId={resolvedSelectedDeptId}
             onDeptSelect={(id) => { clearSidebarPathAuthority(); handleSidebarDeptSelect(id); }}
             selectedInternalPath={resolvedInternalPath}
-            onRefreshProductPortfolio={refreshProductPortfolio}
             onInternalBack={() => {
               // A back press supersedes any pending sidebar pick. Without this the
               // authority guard rejects the scene's `onPathChange([])` for up to
@@ -783,6 +791,7 @@ export default function UniversalPage() {
               }, 2_000);
               setRequestSelectDeptId(undefined);
               setInternalPath(authoritativePath);
+              setOpenWorkspacePath(authoritativePath);
               setSearchParams((current) => {
                 if (!current.has('focus') && !current.has('tab')) return current;
                 const next = new URLSearchParams(current);
@@ -792,9 +801,24 @@ export default function UniversalPage() {
               }, { replace: true });
             }}
             bdtWorkspaceLeaves
+            onOpenMyWork={() => setShowCommercialMyWork(true)}
           />
         </div>
       )}
+
+      {showCommercialMyWork && <CommercialMyWorkModal onClose={() => setShowCommercialMyWork(false)} onOpenTask={(task) => {
+        const dept = store.departments.find(entry => entry.id === task.department_id);
+        const findPath = (nodes: UInternalNode[], target: string, path: string[] = []): string[] | null => { for (const entry of nodes) { const next = [...path, entry.id]; if (entry.id === target) return next; const found = findPath(entry.children ?? [], target, next); if (found) return found; } return null; };
+        const path = dept ? findPath(dept.internalNodes, task.node_id) : null;
+        if (dept && path) {
+          setSelectedDeptId(dept.id);
+          setRequestSelectDeptId(dept.id);
+          setSelectDeptNonce(n => n + 1);
+          setInternalPath(path);
+          setOpenWorkspacePath(path);
+          setShowCommercialMyWork(false);
+        }
+      }} />}
 
       {isPolytopeInteractive && store.loaded && !store.loading && store.departments.length === 0 && (
         <div className="fixed left-6 bottom-6 z-[60] max-w-sm rounded-xl border border-slate-800 bg-black/70 p-4 text-sm text-slate-300 backdrop-blur-md">
@@ -803,16 +827,21 @@ export default function UniversalPage() {
       )}
 
       {/* ── BDT Action Workspace (Leaf Nodes) ── */}
-      {selectedDept && selectedNode && (
-        <BdtActionWorkspace
+      {selectedDept && workspaceNode && (
+        workspaceNode.nodeLevel === 'form' ? <BdtFormWorkspace node={workspaceNode} department={selectedDept} onClose={() => setOpenWorkspacePath(null)} /> : <BdtActionWorkspace
           isOpen={isWorkspaceOpen}
           containerMode={isPaidAcquisitionNode ? 'meta-paid-acquisition' : undefined}
-          node={selectedNode}
+          node={workspaceNode}
           department={selectedDept}
           allDepartments={displayDepartments}
           canEdit={canWriteDept(selectedDept)}
+          onOpenActionNode={async (nodeId) => {
+            await store.loadDepartments();
+            setInternalPath((current) => current[current.length - 1] === nodeId ? current : [...current, nodeId]);
+            setOpenWorkspacePath((current) => current?.[current.length - 1] === nodeId ? current : [...internalPath, nodeId]);
+          }}
           onClose={() => {
-            setInternalPath(prev => prev.slice(0, -1));
+            setOpenWorkspacePath(null);
           }}
           onDepartmentClick={handleInterrelatedDepartmentClick}
           onInterrelatedDepartmentClick={handleInterrelatedDepartmentClick}
@@ -831,4 +860,21 @@ export default function UniversalPage() {
 
     </div>
   );
+}
+
+function CommercialMyWorkModal({ onClose, onOpenTask }: { onClose: () => void; onOpenTask: (task: BdtTask) => void }) {
+  const [items, setItems] = useState<BdtTask[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try { const result = await bdtTasks.mine(); setItems(result.items); setError(null); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load My Work'); }
+  }, []);
+  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(timer); }, [load]);
+  return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4">
+    <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#111] p-5 shadow-2xl">
+      <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold text-white">My Work</h2><button onClick={onClose} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80">Close</button></div>
+      {error && <p className="mb-3 text-xs text-rose-200">{error}</p>}
+      {items.length === 0 ? <p className="text-sm text-white/45">No BDT tasks are assigned to you.</p> : <div className="max-h-[60vh] space-y-2 overflow-auto">{items.map(item => <button type="button" onClick={() => onOpenTask(item)} key={item.id} className="block w-full rounded-lg border border-white/10 p-3 text-left hover:bg-white/[.06]"><p className="text-sm font-medium text-white">{item.title}</p><p className="mt-1 text-xs text-white/45">{item.status.replace('_',' ')} · {item.priority}{item.due_on ? ` · due ${item.due_on}` : ''}{item.overdue ? ' · overdue' : ''}</p>{item.related && <p className="mt-1 text-xs text-white/40">{item.related.available ? item.related.label : `${item.related.label ?? 'Linked record'} removed`}</p>}</button>)}</div>}
+    </div>
+  </div>;
 }

@@ -12,14 +12,13 @@ import type {
   MetaAdsCampaignPreflight,
   MetaAdsCreativeAsset,
   MetaAdsCreativeGenerationJob,
-  MetaAdsErpProductContext,
+  MetaAdsProductContext,
   MetaAdsLeadFormSpec,
   MetaAdsPreflightIssue,
 } from '@cybranex/shared-types';
-import { env, provisionEnv } from '../../config.js';
+import { env } from '../../config.js';
 import { pool, supabaseAdmin } from '../../db.js';
 import { decrypt } from '../../lib/crypto.js';
-import { configureTenantLeadSync, queryRecords } from '../../lib/erpnextControlPlane.js';
 import {
   createMetaLeadAdSet,
   createMetaLeadCampaign,
@@ -106,7 +105,7 @@ export function metaAdsDraftSnapshotHash(content: MetaAdsCampaignDraftContent): 
 
 /**
  * Identity of a lead form for reuse purposes. Two drafts that hash equal can publish against the
- * same Meta form, which matters because Frappe CRM permits exactly one enabled `Lead Sync Source`
+ * same Meta form, while preserving a single native binding and polling cursor
  * per form — a form per campaign would multiply sync sources and their polling.
  *
  * `crmField` is part of the identity even though Meta never sees it: the question-to-CRM mapping
@@ -524,30 +523,27 @@ export async function patchMetaAdsCampaignDraft(input: {
   }
 }
 
-export async function resolveMetaAdsErpProduct(companyId: string, itemCode: string): Promise<MetaAdsErpProductContext> {
+export async function resolveMetaAdsProduct(companyId: string, itemCode: string): Promise<MetaAdsProductContext> {
   const code = itemCode.trim();
   if (!code) fail(400, 'item_code_required');
-  const results = await queryRecords(companyId, [
-    { id: 'item', doctype: 'Item', fields: ['name','item_code','item_name','disabled'], filters: [['item_code', '=', code]], limit: 1, pageSize: 100 },
-    { id: 'price', doctype: 'Item Price', fields: ['item_code','price_list','price_list_rate','currency','valid_from'], filters: [['item_code', '=', code]], limit: 20, pageSize: 100 },
-    { id: 'stock', doctype: 'Bin', fields: ['item_code','warehouse','actual_qty'], filters: [['item_code', '=', code]], limit: 100, pageSize: 100 },
-  ]);
-  const itemResult = results.find((result) => result.id === 'item');
-  if (!itemResult?.ok || !itemResult.rows[0]) fail(404, 'erp_item_not_found');
-  const item = itemResult.rows[0];
-  const priceRows = results.find((result) => result.id === 'price');
-  const stockRows = results.find((result) => result.id === 'stock');
-  const price = priceRows?.ok ? priceRows.rows.find((row) => Number(row.price_list_rate) > 0) : undefined;
-  const stockQuantity = stockRows?.ok ? stockRows.rows.reduce((sum, row) => sum + (Number(row.actual_qty) || 0), 0) : null;
-  const disabled = item.disabled === true || item.disabled === 1 || String(item.disabled).toLowerCase() === 'true';
+  const { rows } = await pool.query(
+    `select p.code,p.name,p.active,p.currency,p.price_amount,coalesce(sum(b.quantity),0)::float stock_quantity
+       from public.catalog_products p
+       left join public.inventory_balances b on b.company_id=p.company_id and b.product_id=p.id
+      where p.company_id=$1 and lower(p.code)=lower($2)
+      group by p.id`,
+    [companyId, code],
+  );
+  const item = rows[0];
+  if (!item) fail(404, 'catalog_product_not_found');
   return {
-    itemCode: String(item.item_code ?? item.name ?? code),
-    itemName: String(item.item_name ?? item.item_code ?? item.name ?? code),
-    disabled,
-    currency: price?.currency ? String(price.currency) : null,
-    price: price ? Number(price.price_list_rate) || null : null,
-    stockQuantity,
-    source: 'erpnext',
+    itemCode: String(item.code),
+    itemName: String(item.name),
+    disabled: !item.active,
+    currency: item.currency ? String(item.currency) : null,
+    price: item.price_amount == null ? null : Number(item.price_amount),
+    stockQuantity: Number(item.stock_quantity),
+    source: 'workos',
     confirmedAt: new Date().toISOString(),
   };
 }
@@ -618,7 +614,7 @@ export function evaluateMetaAdsCampaignDraft(input: {
       if (leadForm.questions.length === 0) {
         issues.push(issue('lead_form_questions_required', 'Add at least one question to the lead form.', 'leadForm.questions'));
       }
-      // Frappe CRM's facebook_lead_form.py throws unless first_name is mapped; catching it here
+      // Native lead normalization requires a first-name mapping; catching it here
       // keeps the failure in preflight instead of halfway through a publish job.
       if (leadForm.questions.filter((question) => question.crmField === 'first_name').length !== 1) {
         issues.push(issue('lead_form_first_name_required', 'Exactly one question must map to the CRM first name field.', 'leadForm.questions'));
@@ -690,8 +686,8 @@ export function evaluateMetaAdsCampaignDraft(input: {
   const normalized = policyText.toLowerCase();
   for (const phrase of brand.requiredPhrases) if (phrase.trim() && !normalized.includes(phrase.trim().toLowerCase())) issues.push(issue('required_brand_phrase_missing', `Required phrase is missing: ${phrase}`, 'ads'));
   for (const phrase of brand.prohibitedPhrases) if (phrase.trim() && normalized.includes(phrase.trim().toLowerCase())) issues.push(issue('prohibited_brand_phrase_used', `Prohibited phrase is present: ${phrase}`, 'ads'));
-  if (content.productContext?.disabled) issues.push(issue('erp_item_disabled', 'The selected ERPNext item is disabled.', 'productContext'));
-  if (content.productContext?.stockQuantity != null && content.productContext.stockQuantity <= 0) issues.push(issue('erp_item_out_of_stock', 'The selected ERPNext item is out of stock.', 'productContext'));
+  if (content.productContext?.disabled) issues.push(issue('catalog_product_disabled', 'The selected WorkOS product is disabled.', 'productContext'));
+  if (content.productContext?.stockQuantity != null && content.productContext.stockQuantity <= 0) issues.push(issue('catalog_product_out_of_stock', 'The selected WorkOS product is out of stock.', 'productContext'));
   return {
     checkedAt: now.toISOString(),
     ready: issues.every((item) => item.severity !== 'blocking'),
@@ -714,14 +710,14 @@ export async function preflightMetaAdsCampaign(companyId: string, draftId: strin
   let evaluatedContent = content;
   if (content.productContext) {
     try {
-      const freshProduct = await resolveMetaAdsErpProduct(companyId, content.productContext.itemCode);
+      const freshProduct = await resolveMetaAdsProduct(companyId, content.productContext.itemCode);
       evaluatedContent = { ...content, productContext: freshProduct };
       const prior = content.productContext;
       if (freshProduct.disabled !== prior.disabled || freshProduct.price !== prior.price || freshProduct.currency !== prior.currency || freshProduct.stockQuantity !== prior.stockQuantity) {
-        readiness.blockers.push({ code: 'erp_product_changed', message: 'ERPNext price, availability, or item state changed. Reconfirm the item in the editable draft.' });
+        readiness.blockers.push({ code: 'catalog_product_changed', message: 'WorkOS price, availability, or product state changed. Reconfirm the product in the editable draft.' });
       }
     } catch (error) {
-      readiness.blockers.push({ code: 'erp_product_verification_failed', message: error instanceof Error ? error.message : 'ERP product could not be verified.' });
+      readiness.blockers.push({ code: 'catalog_product_verification_failed', message: error instanceof Error ? error.message : 'WorkOS product could not be verified.' });
     }
   }
   const result = evaluateMetaAdsCampaignDraft({ content: evaluatedContent, readiness, brand, availableAssetIds: new Set(assets.rows.map((asset) => String(asset.id))), phase });
@@ -907,7 +903,7 @@ export async function processOneMetaAdsCreativeJob(companyId?: string): Promise<
     const concepts = await generateMetaCreativeConcepts({
       companyId: String(job.company_id), userId: String(job.requested_by), draftId: String(job.draft_id),
       brief: snapshot.brief, brand: job.brand_snapshot as MetaAdsBrandKit,
-      product: (job.product_snapshot as MetaAdsErpProductContext | null) ?? null,
+      product: (job.product_snapshot as MetaAdsProductContext | null) ?? null,
     });
     const current = draftContent(row.content);
     let nextConcepts = concepts;
@@ -1274,7 +1270,7 @@ export async function getMetaAdsCampaignJob(companyId: string, jobId: string): P
 }
 
 async function executeStep(input: {
-  job: Record<string, unknown>; key: string; kind: 'image' | 'campaign' | 'adset' | 'creative' | 'ad' | 'status' | 'leadform' | 'crmsync'; fingerprint: string;
+  job: Record<string, unknown>; key: string; kind: 'image' | 'campaign' | 'adset' | 'creative' | 'ad' | 'status' | 'leadform' | 'leadbinding'; fingerprint: string;
   run: () => Promise<{ id: string; summary?: Record<string, unknown> }>;
 }): Promise<{ id: string; summary: Record<string, unknown> }> {
   const existing = await pool.query(`SELECT * FROM public.meta_ads_campaign_job_steps WHERE job_id=$1 AND step_key=$2`, [input.job.id, input.key]);
@@ -1444,35 +1440,25 @@ async function publishPaused(job: Record<string, unknown>): Promise<void> {
     await mapping({ job, kind: 'ad', localKey: ad.id, metaId: createdAd.id, status: 'PAUSED' });
   }
   if (isLeadForm && leadForm && leadFormId) {
-    // Deliberately non-fatal. The Meta side is already published at this point, and Meta keeps
-    // collecting submissions regardless — Frappe's first sync backfills them because
-    // `last_synced_at` starts null. Failing the job here would leave a live campaign behind a
-    // "failed" publish; instead the step row records the failure and an event surfaces it.
+    // The Meta object already exists, so binding persistence is non-fatal and independently retryable.
     try {
       await executeStep({
-        job, key: 'crmsync', kind: 'crmsync', fingerprint: fingerprint({ leadFormId, hash: leadForm.questionSetHash }),
+        job, key: 'leadbinding', kind: 'leadbinding', fingerprint: fingerprint({ leadFormId, hash: leadForm.questionSetHash }),
         run: async () => {
-          const result = await configureTenantLeadSync(String(job.company_id), {
-            environment: provisionEnv,
-            // Keyed on the form, not the draft: drafts sharing a question set share a form, and
-            // the mapping they imply is identical, so configuring once is enough.
-            idempotencyKey: `configure_lead_sync:${leadFormId}`,
-            sourceName: `WorkOS · ${leadForm.questionSetHash.slice(0, 12)}`,
-            discoveryAccessToken: connection.accessToken,
-            syncAccessToken: pageAccessToken,
-            backgroundSyncFrequency: 'Hourly',
-            facebookPageId: content.identity!.pageId,
-            facebookLeadFormId: leadFormId,
-            questionMappings: leadForm.questions
-              .filter((question): question is typeof question & { crmField: string } => Boolean(question.crmField))
-              .map((question) => ({ key: question.key, mappedToCrmField: question.crmField })),
-          });
-          return { id: result.sourceName };
+          const fieldMapping = Object.fromEntries(leadForm.questions.filter(question => question.crmField).map(question => [question.key, question.crmField]));
+          const { rows } = await pool.query(
+            `insert into public.meta_lead_form_bindings(company_id,meta_page_id,meta_form_id,field_mapping)
+             values($1,$2,$3,$4::jsonb)
+             on conflict(company_id,meta_form_id) do update set meta_page_id=excluded.meta_page_id,field_mapping=excluded.field_mapping,active=true,last_error=null,updated_at=now()
+             returning id`,
+            [String(job.company_id), content.identity!.pageId, leadFormId, JSON.stringify(fieldMapping)],
+          );
+          return { id: String(rows[0].id) };
         },
       });
     } catch (error) {
       await addEvent({
-        companyId: String(job.company_id), draftId: String(job.draft_id), type: 'lead_sync_configuration_failed',
+        companyId: String(job.company_id), draftId: String(job.draft_id), type: 'lead_binding_failed',
         userId: job.requested_by ? String(job.requested_by) : null,
         payload: { leadFormId, error: error instanceof Error ? error.message.slice(0, 300) : 'unknown' },
       });

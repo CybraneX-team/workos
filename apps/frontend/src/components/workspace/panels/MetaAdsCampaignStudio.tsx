@@ -320,7 +320,7 @@ export function MetaAdsCampaignStudio() {
               <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] p-4">
                 <p className="text-xs uppercase tracking-wide text-white/40">Lead form</p>
                 <p className="mt-1 text-xs text-white/35">
-                  Answers sync into Frappe CRM as leads. Forms are reused across campaigns that ask the same questions.
+                  Answers enter the native WorkOS CRM as leads. Forms are reused across campaigns that ask the same questions.
                 </p>
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   <label className={labelClass}>Privacy policy URL<input disabled={!editable} type="url" className={inputClass} value={form.leadForm.privacyPolicyUrl} onChange={(event) => setLeadForm({ privacyPolicyUrl: event.target.value })} placeholder="https://example.com/privacy" /><span className="block normal-case tracking-normal text-white/25">Required by Meta on every lead form.</span></label>
@@ -356,12 +356,12 @@ export function MetaAdsCampaignStudio() {
                 </div>
                 {editable && <button type="button" onClick={addQuestion} className="mt-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65">Add custom question</button>}
                 <p className="mt-3 text-xs text-white/25">
-                  One question must map to First name — Frappe CRM rejects the form otherwise. Standard questions use Meta&apos;s own wording.
+                  One question must map to First name so native leads always have a usable name. Standard questions use Meta&apos;s own wording.
                 </p>
               </div>
             )}
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] p-4">
-              <div className="flex flex-wrap items-end gap-3"><label className={`${labelClass} min-w-60 flex-1`}>Optional confirmed ERPNext item<input disabled={!editable} className={inputClass} value={itemCode} onChange={(event) => setItemCode(event.target.value)} placeholder="Item code" /></label>{editable && <button type="button" disabled={productBusy} onClick={() => void attachProduct()} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65"><PackageSearch className="h-3.5 w-3.5" /> {productBusy ? 'Checking…' : 'Confirm item'}</button>}</div>
+              <div className="flex flex-wrap items-end gap-3"><label className={`${labelClass} min-w-60 flex-1`}>Optional confirmed WorkOS product<input disabled={!editable} className={inputClass} value={itemCode} onChange={(event) => setItemCode(event.target.value)} placeholder="Item code" /></label>{editable && <button type="button" disabled={productBusy} onClick={() => void attachProduct()} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65"><PackageSearch className="h-3.5 w-3.5" /> {productBusy ? 'Checking…' : 'Confirm product'}</button>}</div>
               {form.productContext && <p className="mt-3 text-xs text-emerald-100/70">{form.productContext.itemName} · price {form.productContext.price ?? 'not set'} {form.productContext.currency ?? ''} · stock {form.productContext.stockQuantity ?? 'unknown'}</p>}
               {productError && <p className="mt-2 text-xs text-rose-200">{productError}</p>}
             </div>

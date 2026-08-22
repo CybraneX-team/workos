@@ -99,14 +99,10 @@ for fake and live-sandbox authoring verification.
 ## Lead-form campaigns
 
 `MetaAdsCampaignDraftContent.destination` selects the publish shape. `website` is the
-original link-ad flow; `lead_form` publishes a Meta instant form and hands the resulting
-leads to Frappe CRM.
+original link-ad flow; `lead_form` publishes a Meta instant form and stores submissions
+as native CRM leads.
 
-- `leadAttribution.ts` backfills `ad_id` onto synced leads hourly. Frappe's syncer requests
-  only `id,created_time,field_data`, so without this pass attribution stops at the form —
-  and forms are shared across campaigns by design.
-- Forms are reused by question-set hash, because Frappe CRM permits one enabled
-  `Lead Sync Source` per form. A form per campaign would multiply sync sources and polling.
-- The `crmsync` publish step is non-fatal: by the time it runs the campaign is live on Meta,
-  which keeps collecting regardless. Failures raise a `lead_sync_configuration_failed` event
-  rather than failing an already-published job.
+- `leadbinding` persists one company/form field mapping and cursor.
+- `nativeLeadSync.ts` polls active bindings hourly, requests `ad_id` with form answers,
+  upserts by company/Meta lead ID, and advances the cursor only after commit.
+- Binding failures are isolated and retried on the next worker pass.

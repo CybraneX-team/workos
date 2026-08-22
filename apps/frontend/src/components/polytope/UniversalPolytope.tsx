@@ -21,6 +21,8 @@ export interface UniversalPolytopeProps {
   onDepartmentChange?: (id: string | null) => void;
   /** Called whenever the internal drill-down path changes */
   onInternalPathChange?: (path: string[]) => void;
+  /** Called when the user clicks an already-centered BDT workspace node. */
+  onWorkspaceOpen?: (path: string[]) => void;
   /** When set, auto-flies camera to this department and selects it */
   requestSelectDeptId?: string | null;
   /** Increment on sidebar dept picks to re-fly camera even to the same dept */
@@ -72,6 +74,7 @@ export default function UniversalPolytope({
   cameraResetTrigger = 0,
   onDepartmentChange,
   onInternalPathChange,
+  onWorkspaceOpen,
   requestSelectDeptId,
   selectDeptNonce = 0,
   requestBackStep,
@@ -94,6 +97,7 @@ export default function UniversalPolytope({
   readOnly = false,
   bdtWorkspaceLeaves = false,
   cinematicFocus = false,
+  coreOverlay,
 }: UniversalPolytopeProps) {
   const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -123,6 +127,7 @@ export default function UniversalPolytope({
           selectedId={selectedId}
           setSelectedId={setSelectedId}
           onPathChange={path => { onInternalPathChange?.(path); }}
+          onWorkspaceOpen={onWorkspaceOpen}
           setBackInfo={setBackInfo}
           companyName={companyName}
           industryName={industryName}
@@ -142,7 +147,8 @@ export default function UniversalPolytope({
           draftMember={draftMember}
           draftMemberScreenPosRef={draftMemberScreenPosRef}
           selectedInternalPathProps={selectedInternalPath}
-          enableCoreWorkspace={enableCoreWorkspace && !readOnly}
+          enableCoreWorkspace={enableCoreWorkspace}
+          coreOverlay={coreOverlay}
           coreWorkspacePhase={coreWorkspacePhase}
           onCoreClickIntent={onCoreClickIntent}
           onCoreDiveComplete={onCoreDiveComplete}

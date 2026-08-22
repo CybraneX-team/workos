@@ -1871,7 +1871,7 @@ function WorkspaceChatCopilot() {
         const result = await api.post<{
           reply: string;
           toolCalls?: Array<{ name: string; args: Record<string, unknown> }>;
-        }>('/api/erpnext/chat', { messages: history });
+        }>('/api/business-assistant/chat', { messages: history });
         replyText = result.reply;
         toolTrace = (result.toolCalls ?? []).map(
           (call) => `Called WorkOS: ${call.name}(${JSON.stringify(call.args)})`,

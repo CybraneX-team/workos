@@ -3,7 +3,7 @@ import { Search, Command, ArrowLeft, Plus, ChevronRight, Pencil, Trash2, Target,
 import { useNavigate } from 'react-router-dom';
 import type { UExternalNode, UInternalNode } from '../lib/universalPolytopeData';
 import { getExternalNodeColor, isActionLeafNode, isBdtWorkspaceLeafNode } from '../lib/universalPolytopeData';
-import { resolveDepartmentDelete, resolveDepartmentWrite, isVirtualErpNextNodeLocked } from '../lib/bdtPolytopeData';
+import { resolveDepartmentDelete, resolveDepartmentWrite, isVirtualCatalogNodeLocked } from '../lib/bdtPolytopeData';
 
 export interface PolytopeSidePanelProps {
   departments: UExternalNode[];
@@ -36,8 +36,9 @@ export interface PolytopeSidePanelProps {
   /** When true, project leaves are treated as workspace leaves (BDT route). */
   bdtWorkspaceLeaves?: boolean;
   onOpenPaidAcquisition?: (path: string[]) => void;
-  /** Refreshes the read-only ERPNext Product Lines projection. */
+  /** Refreshes the native Product Portfolio projection. */
   onRefreshProductPortfolio?: () => void;
+  onOpenMyWork?: () => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -121,6 +122,7 @@ export function PolytopeSidePanel({
   canCreateDepartment = canEdit,
   bdtWorkspaceLeaves = false,
   onRefreshProductPortfolio,
+  onOpenMyWork,
 }: PolytopeSidePanelProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'departments' | 'information'>('departments');
@@ -215,7 +217,7 @@ export function PolytopeSidePanel({
         .map(x => x.node)
     : allVisibleNodes;
   const deptColor = effectiveDept ? getExternalNodeColor(effectiveDept) : '#C1AEFF';
-  const isLiveCatalogNode = Boolean(activeNode?.virtualErpNext || activeNode?.presentation === 'erpnext_catalog');
+  const isLiveCatalogNode = Boolean(activeNode?.virtualCatalog);
   const canWriteEffectiveDept = effectiveDept ? canWriteDept(effectiveDept) && !isLiveCatalogNode : false;
   const canDeleteEffectiveDept = effectiveDept ? canDeleteDept(effectiveDept) && !isLiveCatalogNode : false;
   const isLeafInternalNode = (node: UInternalNode) =>
@@ -225,7 +227,7 @@ export function PolytopeSidePanel({
   };
 
   const isNodeInactive = (node: UInternalNode) =>
-    isVirtualErpNextNodeLocked(node);
+    isVirtualCatalogNodeLocked(node);
 
   // Dynamic back button logic based on drill-down level
   let backLabel: string | null = null;
@@ -308,6 +310,8 @@ export function PolytopeSidePanel({
           Information
         </button>
       </div>
+
+      {onOpenMyWork && <button type="button" onClick={onOpenMyWork} className="w-[196px] rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-left text-xs font-semibold text-white/75 backdrop-blur hover:bg-white/10">My Work</button>}
 
       {/* ── Search bar — visible only in departments tab ── */}
       {activeTab === 'departments' && (
@@ -664,7 +668,7 @@ export function PolytopeSidePanel({
               <Plug className="w-6 h-6" style={{ color: deptColor }} />
               <p className="text-[11px] text-gray-400">
                 {isLiveCatalogNode
-                  ? 'Connect ERPNext, then create top-level Item Groups and Items to load Product Lines.'
+                  ? 'Create catalogue groups and products to load Product Lines.'
                   : `No connected data for ${effectiveDept?.label ?? 'this department'} yet.`}
               </p>
               {effectiveDept && canWriteEffectiveDept && onAddNode && (
@@ -708,7 +712,7 @@ export function PolytopeSidePanel({
                     borderLeft: isActiveNode ? `2px solid ${deptColor}` : '2px solid transparent',
                     opacity: isInactive ? 0.4 : 1,
                   }}
-                  title={isInactive ? 'Inactive in ERPNext' : undefined}
+                  title={isInactive ? 'Inactive in WorkOS' : undefined}
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0 transition-transform group-hover/row:scale-125"
@@ -732,7 +736,7 @@ export function PolytopeSidePanel({
                       </span>
                       <span className="text-[9px] truncate" style={{ color: '#4b5563' }}>
                         {isInactive
-                          ? 'inactive in ERPNext'
+                          ? 'inactive in WorkOS'
                           : isLeaf ? (node.type === 'team' ? `${memberCount} teammate${memberCount === 1 ? '' : 's'}` : 'dashboard') : `${childCount} node${childCount === 1 ? '' : 's'}`}
                       </span>
                     </span>
@@ -875,7 +879,7 @@ export function PolytopeSidePanel({
         {activeTab === 'departments' && showingNodes && isLiveCatalogNode && onRefreshProductPortfolio && (
           <div className="px-3 pb-3 pt-2 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <button type="button" onClick={onRefreshProductPortfolio} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-cyan-200 border border-cyan-300/25 bg-cyan-300/10 hover:bg-cyan-300/15">
-              Refresh ERPNext catalog
+              Refresh native catalog
             </button>
           </div>
         )}

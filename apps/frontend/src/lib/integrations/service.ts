@@ -15,7 +15,7 @@ import type {
   MetaAdsCampaignPreflight,
   MetaAdsCreativeAsset,
   MetaAdsCreativeGenerationJob,
-  MetaAdsErpProductContext,
+  MetaAdsProductContext,
 } from '@cybranex/shared-types';
 
 // Returned by connectOAuth when Meta finds more than one ad account and the
@@ -203,7 +203,7 @@ export function deleteMetaAdsCreative(assetId: string): Promise<void> {
   return api.delete(`/api/integrations/meta/creative-assets/${encodeURIComponent(assetId)}`);
 }
 
-export function fetchMetaAdsProductContext(itemCode: string): Promise<MetaAdsErpProductContext> {
+export function fetchMetaAdsProductContext(itemCode: string): Promise<MetaAdsProductContext> {
   return api.get(`/api/integrations/meta/product-context?itemCode=${encodeURIComponent(itemCode)}`);
 }
 

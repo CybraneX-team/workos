@@ -153,7 +153,7 @@ test('guided Campaign Studio lifecycle with review, approvals, and safe fake exe
     await controls.showScene(
       page,
       'Brand context is explicit',
-      'Creative generation receives only this saved brand kit, the campaign brief, and an optional confirmed ERPNext item. Required and prohibited phrases remain visible for review.',
+      'Creative generation receives only this saved brand kit, the campaign brief, and an optional confirmed WorkOS product. Required and prohibited phrases remain visible for review.',
     );
 
     const createDraft = apiResponse(page, 'POST', '/api/integrations/meta/campaign-drafts');

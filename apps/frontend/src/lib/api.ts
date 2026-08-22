@@ -29,6 +29,7 @@ async function authed<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!response.ok) {
       throw new Error(`${response.status}: ${await response.text()}`);
     }
+    if (response.status === 204) return undefined as T;
     return response.json();
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {

@@ -430,7 +430,7 @@ test('lead-form preflight drops the landing-page rule and enforces Meta and CRM 
   const noPrivacy = evaluateLeadForm({ ...content, leadForm: { ...content.leadForm!, privacyPolicyUrl: 'http://example.com/privacy' } });
   assert.ok(noPrivacy.issues.some((value) => value.code === 'lead_form_privacy_policy_invalid'));
 
-  // Frappe CRM throws on save without exactly one first_name mapping.
+  // Native lead normalization requires exactly one first_name mapping.
   const noFirstName = evaluateLeadForm({
     ...content,
     leadForm: { ...content.leadForm!, questions: content.leadForm!.questions.filter((q) => q.crmField !== 'first_name') },

@@ -453,7 +453,7 @@ export function getMetaOAuthUrl(state: string): string {
   // actual dependencies are pages_read_user_content + pages_show_list, not
   // pages_read_engagement. Requesting instagram_basic without its real dependency present
   // makes Facebook reject the whole OAuth call with "Invalid Scopes: instagram_basic".
-  const scope = 'ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,instagram_basic';
+  const scope = 'ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,leads_retrieval,instagram_basic';
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}&response_type=code`;
 }
 

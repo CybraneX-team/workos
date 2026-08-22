@@ -7,7 +7,7 @@ Last verified: 2026-08-03.
 Business Diagnosis is a company-owned current assessment for exactly the system
 roles `founder` and `admin`. It is launched from Home and rendered as a native
 WorkOS page at `/business-diagnosis`. It is not onboarding completion,
-BDT content, an ERPNext projection, or a provider integration.
+BDT content, native CRM/catalogue data, or a provider integration.
 
 The source-of-truth questionnaire is
 `packages/shared-types/src/businessDiagnosis.ts`. It preserves the India-wide
@@ -55,8 +55,13 @@ again before it is persisted or rendered.
 The `public.business_diagnoses` table is RLS-enabled and is backend-managed; the
 browser has no direct table access. It stores only the latest normalized answer
 set, generated follow-up questions, report, version metadata, model name, and
-completion audit data. Do not add BDT node writes, taxonomy links, ERPNext data,
+completion audit data. Do not add BDT node writes, taxonomy links, CRM/catalogue writes,
 Google Sheets, PDF export, history storage, or a parallel prototype runtime here.
+
+The helper above is a compatibility wrapper over `packages/gemini`; validation,
+prompt construction, and structured report parsing come from
+`packages/business-diagnosis`. These packages are part of this WorkOS repository
+and support only the authenticated, company-owned diagnosis flow described here.
 
 ## Excel export
 

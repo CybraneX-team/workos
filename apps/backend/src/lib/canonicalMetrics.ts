@@ -68,7 +68,7 @@ export async function recomputeCanonicalRollups(client: PoolClient, companyId: s
          FROM public.departments d
          JOIN public.department_bdt_nodes n
            ON n.department_id=d.id AND n.company_id=d.company_id
-          AND n.metadata->>'taxonomyVersion'='v4'
+          AND n.metadata->>'taxonomyVersion'='v5'
           AND n.metadata->>'workspaceKind'='focus'
          JOIN public.metric_links ml
            ON ml.company_id=d.company_id

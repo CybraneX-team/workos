@@ -222,7 +222,7 @@ function load(key = STORAGE_KEY, empty = false): ProjectsState {
       return seeded;
     }
     const parsed = JSON.parse(raw) as Partial<ProjectsState>;
-    return {
+    const state = {
       members: parsed.members || [],
       projects: (parsed.projects || []).map(p => ({
         ...p,
@@ -236,6 +236,25 @@ function load(key = STORAGE_KEY, empty = false): ProjectsState {
       chat: parsed.chat || [],
       currentMemberId: parsed.currentMemberId || 'm1',
     };
+    // Product and Sales now use server-backed commercial capabilities/tasks.
+    // Discard only their old browser-local project artefacts; other departments
+    // retain their local project workspace unchanged.
+    const removed = new Set(state.projects.filter(project => project.departmentSourceKey === 'dept_product' || project.departmentSourceKey === 'dept_sales').map(project => project.id));
+    if (removed.size) {
+      const next = {
+        ...state,
+        projects: state.projects.filter(project => !removed.has(project.id)),
+        tasks: state.tasks.filter(item => !removed.has(item.projectId)),
+        milestones: state.milestones.filter(item => !removed.has(item.projectId)),
+        decisions: state.decisions.filter(item => !removed.has(item.projectId)),
+        risks: state.risks.filter(item => !removed.has(item.projectId)),
+        files: state.files.filter(item => !removed.has(item.projectId)),
+        chat: state.chat.filter(item => !removed.has(item.projectId)),
+      };
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    }
+    return state;
   } catch {
     return seed(empty);
   }
