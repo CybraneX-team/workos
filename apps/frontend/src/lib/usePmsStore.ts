@@ -54,6 +54,17 @@ export type PmsCycle = {
   updatedAt: string;
 };
 
+export type PmsDepartmentCycle = {
+  id: string;
+  archetypeId: SupercycleArchetypeId;
+  departmentId: string;
+  name: string;
+  color: string;
+  stageIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PmsProject = {
   id: string;
   name: string;
@@ -92,6 +103,7 @@ export type PmsState = {
   messages: PmsMessage[];
   instances: PmsLiveInstance[];
   cycles: PmsCycle[];
+  departmentCycles: PmsDepartmentCycle[];
 };
 
 export type PmsRepository = {
@@ -113,6 +125,39 @@ function defaultCycle(archetypeId: SupercycleArchetypeId): PmsCycle {
   };
 }
 
+const DEPARTMENT_CYCLE_COLORS = ['#4fd8ff', '#c1aeff', '#22c55e', '#f0a83f'];
+
+function defaultDepartmentCycles(archetypeId: SupercycleArchetypeId): PmsDepartmentCycle[] {
+  const now = new Date().toISOString();
+  return SUPERCYCLE_ARCHETYPES[archetypeId].nodes.flatMap((node) => {
+    const stages = node.subCycle.stages;
+    const middle = stages.slice(1, Math.min(stages.length, 4));
+    const closing = [...stages.slice(Math.max(0, stages.length - 3)), stages[0]].filter((stage, index, all) => all.indexOf(stage) === index);
+    const memberships = [
+      stages,
+      stages.slice(0, Math.max(2, Math.ceil(stages.length * 0.6))),
+      middle.length >= 2 ? middle : stages.slice(0, 2),
+      closing.length >= 2 ? closing : stages.slice(-2),
+    ];
+    const names = [
+      node.subCycle.label,
+      `${node.subNodes[0]?.label ?? 'Planning'} loop`,
+      `${node.subNodes[1]?.label ?? 'Delivery'} loop`,
+      `${node.label} optimisation`,
+    ];
+    return names.map((name, index) => ({
+      id: `department_cycle_${archetypeId}_${node.id}_${index + 1}`,
+      archetypeId,
+      departmentId: node.id,
+      name,
+      color: DEPARTMENT_CYCLE_COLORS[index],
+      stageIds: memberships[index],
+      createdAt: now,
+      updatedAt: now,
+    }));
+  });
+}
+
 const emptyState = (): PmsState => ({
   version: 1,
   archetypeId: 'b2b_saas',
@@ -125,6 +170,8 @@ const emptyState = (): PmsState => ({
   messages: [],
   instances: [],
   cycles: [defaultCycle('b2b_saas')],
+  departmentCycles: (Object.keys(SUPERCYCLE_ARCHETYPES) as SupercycleArchetypeId[])
+    .flatMap(defaultDepartmentCycles),
 });
 
 const repositories = new Map<string, PmsRepository>();
@@ -220,6 +267,9 @@ export function usePmsStore(companyId: string | null | undefined) {
       cycles: current.cycles.some((cycle) => cycle.archetypeId === archetypeId)
         ? current.cycles
         : [...current.cycles, defaultCycle(archetypeId)],
+      departmentCycles: current.departmentCycles.some((cycle) => cycle.archetypeId === archetypeId)
+        ? current.departmentCycles
+        : [...current.departmentCycles, ...defaultDepartmentCycles(archetypeId)],
     })), [update]),
     createCycle: useCallback((input: Pick<PmsCycle, 'archetypeId' | 'name' | 'color' | 'departmentIds'>) => {
       const now = new Date().toISOString();
@@ -234,6 +284,22 @@ export function usePmsStore(companyId: string | null | undefined) {
     deleteCycle: useCallback((cycleId: string) => update((current) => ({
       ...current,
       cycles: current.cycles.filter((cycle) => cycle.id !== cycleId),
+    })), [update]),
+    createDepartmentCycle: useCallback((input: Pick<PmsDepartmentCycle, 'archetypeId' | 'departmentId' | 'name' | 'color' | 'stageIds'>) => {
+      const now = new Date().toISOString();
+      const cycle: PmsDepartmentCycle = { ...input, id: id('department_cycle'), createdAt: now, updatedAt: now };
+      update((current) => ({ ...current, departmentCycles: [...current.departmentCycles, cycle] }));
+      return cycle.id;
+    }, [update]),
+    updateDepartmentCycle: useCallback((cycleId: string, patch: Partial<Pick<PmsDepartmentCycle, 'name' | 'color' | 'stageIds'>>) => update((current) => ({
+      ...current,
+      departmentCycles: current.departmentCycles.map((cycle) => cycle.id === cycleId
+        ? { ...cycle, ...patch, updatedAt: new Date().toISOString() }
+        : cycle),
+    })), [update]),
+    deleteDepartmentCycle: useCallback((cycleId: string) => update((current) => ({
+      ...current,
+      departmentCycles: current.departmentCycles.filter((cycle) => cycle.id !== cycleId),
     })), [update]),
     createInstance: useCallback((input: Omit<PmsLiveInstance, 'id' | 'createdAt' | 'updatedAt'>) => {
       const now = new Date().toISOString();

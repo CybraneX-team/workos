@@ -819,13 +819,19 @@ const TREE_MODEL_URLS = [
   `${ASSET_BASE}kits/fantasy-town/tree-high.glb`,
   `${ASSET_BASE}kits/urban-city/tree-small.glb`,
 ];
+const CENTERED_ISLAND_TREE_MODEL_URLS = TREE_MODEL_URLS.slice(0, 2);
 TREE_MODEL_URLS.forEach((url) => useGLTF.preload(url));
 
 const TREES_PER_ISLAND = 3;
 
 // `roadSeed` must match the seed given to Road on the same island, or the
 // trees will dodge a road that isn't where they think it is.
-function ScatteredTrees({ tiles, seed, roadSeed }: { tiles: [number, number][]; seed: number; roadSeed: number }) {
+function ScatteredTrees({ tiles, seed, roadSeed, modelUrls = TREE_MODEL_URLS }: {
+  tiles: [number, number][];
+  seed: number;
+  roadSeed: number;
+  modelUrls?: string[];
+}) {
   const placements = useMemo(() => {
     const road = new Set(computeRoadPath(tiles, roadSeed).map(([x, z]) => `${x},${z}`));
     const candidates = tiles.filter(([x, z]) => !road.has(`${x},${z}`));
@@ -840,12 +846,12 @@ function ScatteredTrees({ tiles, seed, roadSeed }: { tiles: [number, number][]; 
       const [x, z] = candidates[idx];
       picked.push({
         x, z,
-        url: TREE_MODEL_URLS[Math.floor(random() * TREE_MODEL_URLS.length)],
+        url: modelUrls[Math.floor(random() * modelUrls.length)],
         rotationY: random() * Math.PI * 2,
       });
     }
     return picked;
-  }, [tiles, seed, roadSeed]);
+  }, [tiles, seed, roadSeed, modelUrls]);
 
   return (
     <Suspense fallback={null}>
@@ -2111,6 +2117,37 @@ const GALLERY_ISLANDS: { id: IslandId; y: number; seed: number }[] =
     seed: LAND_SEED + index * 9173,
   }));
 
+export function NewPmsDepartmentModel() {
+  return (
+    <group position={[0, -galleryStackCenterY(), 0]}>
+      {GALLERY_ISLANDS.map((island) => (
+        <group key={island.id} position={[0, island.y, 0]} raycast={NO_RAYCAST}>
+          <LandTiles tiles={GALLERY_TILES} />
+          <Road tiles={GALLERY_TILES} seed={island.seed} />
+          <ScatteredTrees tiles={GALLERY_TILES} seed={island.seed + 7} roadSeed={island.seed} />
+        </group>
+      ))}
+      <DepartmentCube />
+    </group>
+  );
+}
+
+export function NewPmsIslandModel({ islandId = 0 }: { islandId?: number }) {
+  const island = GALLERY_ISLANDS[Math.max(0, Math.min(GALLERY_ISLANDS.length - 1, islandId))];
+  return (
+    <group>
+      <LandTiles tiles={GALLERY_TILES} />
+      <Road tiles={GALLERY_TILES} seed={island.seed} />
+      <ScatteredTrees
+        tiles={GALLERY_TILES}
+        seed={island.seed + 7}
+        roadSeed={island.seed}
+        modelUrls={CENTERED_ISLAND_TREE_MODEL_URLS}
+      />
+    </group>
+  );
+}
+
 function GalleryWorld({
   selected,
   onSelect,
@@ -2484,8 +2521,12 @@ function App() {
   }, []);
 
   const initialPmsView = new URLSearchParams(window.location.search).get("view");
+  const initialIslandParam = Number.parseInt(new URLSearchParams(window.location.search).get("island") ?? "", 10);
+  const initialIslandId = Number.isFinite(initialIslandParam)
+    ? Math.max(0, Math.min(GALLERY_ISLAND_COUNT - 1, initialIslandParam))
+    : null;
   const [activeTab, setActiveTab] = useState<AppTab>(() =>
-    ["gallery", "department", "org", "orgAdmin", "hypercube"].includes(initialPmsView ?? "") ? "gallery" : "world",
+    ["gallery", "island", "department", "org", "orgAdmin", "hypercube"].includes(initialPmsView ?? "") ? "gallery" : "world",
   );
 
   // The gallery tab's <Canvas> mounts fresh each time it's switched to,
@@ -2500,7 +2541,7 @@ function App() {
     return () => cancelAnimationFrame(raf);
   }, [activeTab]);
 
-  const [gallerySelected, setGallerySelected] = useState<IslandId | null>(null);
+  const [gallerySelected, setGallerySelected] = useState<IslandId | null>(initialIslandId);
   const [galleryScrollProgress, setGalleryScrollProgress] = useState(0);
   const [galleryViewMode, setGalleryViewMode] = useState<GalleryViewMode>(() => {
     if (initialPmsView === "org") return "orgAdmin";

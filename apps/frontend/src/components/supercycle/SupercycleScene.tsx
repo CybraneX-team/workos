@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Billboard, Text } from '@react-three/drei';
-import { NewPmsHypercubeModel } from '../../pages/NewPMS/App';
+import { NewPmsDepartmentModel, NewPmsHypercubeModel, NewPmsIslandModel } from '../../pages/NewPMS/App';
 import {
   nodeHealth,
   supercycleHealth,
@@ -24,9 +24,9 @@ import {
   type SupercycleNode,
   type SupercycleCycle,
 } from '../../lib/supercycleData';
+import type { PmsDepartmentCycle } from '../../lib/usePmsStore';
 
 const SPHERE_RADIUS = 1.55;
-const RING_RADIUS = SPHERE_RADIUS;
 const NODE_RADIUS = 0.14;
 export type SupercycleRouteStyle = 'curved' | 'spherical';
 
@@ -56,6 +56,55 @@ class SphericalArcCurve extends THREE.Curve<THREE.Vector3> {
 
 const glowTextureCache = new Map<string, THREE.CanvasTexture>();
 const planetTextureCache = new Map<string, THREE.CanvasTexture>();
+const workflowTextureCache = new Map<string, THREE.CanvasTexture>();
+
+function workflowTexture(id: string, color: string): THREE.CanvasTexture {
+  const key = `${id}:${color}`;
+  const cached = workflowTextureCache.get(key);
+  if (cached) return cached;
+  const canvas = document.createElement('canvas');
+  canvas.width = 192;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d')!;
+  const base = new THREE.Color(color);
+  const dark = base.clone().multiplyScalar(0.2);
+  const light = base.clone().lerp(new THREE.Color('#ffffff'), 0.55);
+  const rgb = (value: THREE.Color, alpha = 1) => `rgba(${Math.round(value.r * 255)},${Math.round(value.g * 255)},${Math.round(value.b * 255)},${alpha})`;
+  let seed = [...id].reduce((sum, char) => (sum * 33 + char.charCodeAt(0)) >>> 0, 5381);
+  const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+
+  const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  background.addColorStop(0, rgb(dark));
+  background.addColorStop(0.48, rgb(base));
+  background.addColorStop(1, rgb(dark.clone().multiplyScalar(0.6)));
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let row = -1; row < 5; row += 1) {
+    for (let column = -1; column < 9; column += 1) {
+      const size = 28;
+      const x = column * size + (row % 2) * size * 0.5;
+      const y = row * 24;
+      const bright = random();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + size, y + 8);
+      ctx.lineTo(x + size * 0.5, y + 25);
+      ctx.closePath();
+      ctx.fillStyle = rgb(bright > 0.65 ? light : bright > 0.3 ? base : dark, 0.2 + bright * 0.42);
+      ctx.fill();
+      ctx.strokeStyle = rgb(light, 0.14);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  workflowTextureCache.set(key, texture);
+  return texture;
+}
 
 function planetTexture(id: string, color: string): THREE.CanvasTexture {
   const key = `${id}:${color}`;
@@ -149,12 +198,6 @@ function healthColor(health: number | null): string {
   return '#f87171';
 }
 
-/** Position of ring slot `i` of `count`, on the sphere's equator. */
-function slotPosition(i: number, count: number, radius = RING_RADIUS): THREE.Vector3 {
-  const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-  return new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
-}
-
 function departmentPosition(i: number, count: number): THREE.Vector3 {
   if (count <= 1) return new THREE.Vector3(0, 0, SPHERE_RADIUS);
   const y = 1 - (i / (count - 1)) * 2;
@@ -193,7 +236,7 @@ function dynamicDepartmentPositions(nodes: SupercycleNode[], cycles: SupercycleC
 
 // ── The enclosing sphere ─────────────────────────────────────────────────────
 
-function CycleSphere() {
+function CycleSphere({ color = '#4fd8ff' }: { color?: string }) {
   const guidesRef = useRef<THREE.LineSegments>(null);
   const guideGeometry = useMemo(() => {
     const vertices: number[] = [];
@@ -242,7 +285,7 @@ function CycleSphere() {
       <mesh>
         <sphereGeometry args={[SPHERE_RADIUS, 48, 32]} />
         <meshBasicMaterial
-          color="#4fd8ff"
+          color={color}
           transparent
           opacity={0.025}
           side={THREE.BackSide}
@@ -251,7 +294,7 @@ function CycleSphere() {
         />
       </mesh>
       <lineSegments ref={guidesRef} geometry={guideGeometry} raycast={() => undefined}>
-        <lineBasicMaterial color="#4fd8ff" transparent opacity={0.075} depthWrite={false} toneMapped={false} />
+        <lineBasicMaterial color={color} transparent opacity={0.075} depthWrite={false} toneMapped={false} />
       </lineSegments>
     </group>
   );
@@ -259,7 +302,7 @@ function CycleSphere() {
 
 // ── The cycle ring ───────────────────────────────────────────────────────────
 
-function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, planetActive, routeStyle, onSelect }: {
+function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, planetActive, routeStyle, interactive = true, onSelect }: {
   cycle: SupercycleCycle;
   nodePositions: Map<string, THREE.Vector3>;
   lane: number;
@@ -267,6 +310,7 @@ function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, pla
   anotherSelected: boolean;
   planetActive: boolean;
   routeStyle: SupercycleRouteStyle;
+  interactive?: boolean;
   onSelect: () => void;
 }) {
   const materialRef = useRef<THREE.MeshBasicMaterial>(null);
@@ -317,18 +361,146 @@ function CycleRoute({ cycle, nodePositions, lane, selected, anotherSelected, pla
   if (!curve) return null;
   return (
     <group>
-      <mesh>
+      <mesh renderOrder={30}>
         <tubeGeometry args={[curve, 160, selected ? 0.012 : 0.007, 8, true]} />
         <meshBasicMaterial ref={materialRef} color={cycle.color} transparent opacity={opacity} depthWrite={false} toneMapped={false} />
       </mesh>
+      {interactive && (
+        <mesh
+          onClick={(event) => { event.stopPropagation(); onSelect(); }}
+          onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={(event) => { event.stopPropagation(); document.body.style.cursor = 'auto'; }}
+        >
+          <tubeGeometry args={[curve, 128, 0.04, 6, true]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+const NESTED_PLANET_COLORS = ['#4fa8ff', '#a855f7', '#22c55e', '#f0a83f', '#2dd4bf', '#f05ca8'];
+
+function HypercubeDepthMask() {
+  return (
+    <mesh renderOrder={20} raycast={() => undefined}>
+      <boxGeometry args={[40, 40, 40]} />
+      <meshBasicMaterial
+        transparent
+        opacity={0}
+        colorWrite={false}
+        depthTest
+        depthWrite
+        side={THREE.FrontSide}
+      />
+    </mesh>
+  );
+}
+
+function DepartmentDepthMask() {
+  return (
+    <mesh renderOrder={20} raycast={() => undefined}>
+      <boxGeometry args={[12, 20, 12]} />
+      <meshBasicMaterial
+        transparent
+        opacity={0}
+        colorWrite={false}
+        depthTest
+        depthWrite
+        side={THREE.FrontSide}
+      />
+    </mesh>
+  );
+}
+
+function NestedStagePlanet({ stage, color, position, dimmed, onOpen }: {
+  stage: string;
+  color: string;
+  position: THREE.Vector3;
+  dimmed: boolean;
+  onOpen: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const surface = useMemo(() => workflowTexture(stage, color), [stage, color]);
+
+  return (
+    <group position={position}>
       <mesh
-        onClick={(event) => { event.stopPropagation(); onSelect(); }}
-        onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={(event) => { event.stopPropagation(); document.body.style.cursor = 'auto'; }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen();
+        }}
+        onPointerOver={(event) => {
+          event.stopPropagation();
+          setHovered(true);
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={(event) => {
+          event.stopPropagation();
+          setHovered(false);
+          document.body.style.cursor = 'auto';
+        }}
       >
-        <tubeGeometry args={[curve, 128, 0.04, 6, true]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        <sphereGeometry args={[0.12, 24, 20]} />
+        <meshBasicMaterial map={surface} color="#ffffff" transparent opacity={dimmed ? 0.1 : 1} toneMapped={false} />
       </mesh>
+      <Glow color={color} scale={dimmed ? 0.12 : 0.75} />
+      <Billboard position={[0, 0.27, 0]}>
+        <Text
+          fontSize={hovered ? 0.092 : 0.078}
+          color={dimmed ? '#334155' : hovered ? '#ffffff' : '#cfdaea'}
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.009}
+          outlineColor="#030711"
+        >
+          {stage}
+        </Text>
+      </Billboard>
+    </group>
+  );
+}
+
+function NestedDepartmentSupercycle({ node, cycles, selectedCycleId, onSelectCycle, onOpenStage }: {
+  node: SupercycleNode;
+  cycles: PmsDepartmentCycle[];
+  selectedCycleId: string | null;
+  onSelectCycle: (cycleId: string | null) => void;
+  onOpenStage: (stage: string, stageIndex: number) => void;
+}) {
+  const stages = node.subCycle.stages;
+  const selectedCycle = cycles.find((cycle) => cycle.id === selectedCycleId) ?? null;
+  const positions = useMemo(
+    () => new Map(stages.map((stage, index) => [stage, departmentPosition(index, stages.length)])),
+    [stages],
+  );
+
+  return (
+    <group scale={0.36}>
+      <CycleSphere color={node.color} />
+      {cycles.map((cycle, lane) => (
+        <CycleRoute
+          key={cycle.id}
+          cycle={{ id: cycle.id, name: cycle.name, color: cycle.color, departmentIds: cycle.stageIds }}
+          nodePositions={positions}
+          lane={lane}
+          selected={selectedCycleId === cycle.id}
+          anotherSelected={selectedCycleId !== null && selectedCycleId !== cycle.id}
+          planetActive={false}
+          routeStyle="spherical"
+          onSelect={() => onSelectCycle(cycle.id)}
+        />
+      ))}
+      {stages.map((stage, index) => (
+        <NestedStagePlanet
+          key={stage}
+          stage={stage}
+          color={NESTED_PLANET_COLORS[index % NESTED_PLANET_COLORS.length]}
+          position={positions.get(stage)!}
+          dimmed={selectedCycle !== null && !selectedCycle.stageIds.includes(stage)}
+          onOpen={() => onOpenStage(stage, index)}
+        />
+      ))}
     </group>
   );
 }
@@ -340,6 +512,13 @@ function CycleNode({
   position,
   health,
   dimmed,
+  focusDimmed,
+  departmentCycles,
+  selectedDepartmentCycleId,
+  onSelectDepartmentCycle,
+  onOpenStage,
+  selectedIslandStageIndex,
+  onOpenCenteredIsland,
   selected,
   onSelect,
 }: {
@@ -347,12 +526,23 @@ function CycleNode({
   position: THREE.Vector3;
   health: number | null;
   dimmed: boolean;
+  focusDimmed: boolean;
+  departmentCycles: PmsDepartmentCycle[];
+  selectedDepartmentCycleId: string | null;
+  onSelectDepartmentCycle: (cycleId: string | null) => void;
+  onOpenStage: (stage: string, stageIndex: number) => void;
+  selectedIslandStageIndex: number | null;
+  onOpenCenteredIsland: () => void;
   selected: boolean;
   onSelect: () => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const positionRef = useRef<THREE.Group>(null);
   const surfaceRef = useRef<THREE.Mesh>(null);
+  const planetVisualRef = useRef<THREE.Group>(null);
+  const hypercubeVisualRef = useRef<THREE.Group>(null);
+  const departmentModelRef = useRef<THREE.Group>(null);
+  const islandModelRef = useRef<THREE.Group>(null);
   const pulseRef = useRef(0);
 
   useFrame((_, delta) => {
@@ -360,10 +550,42 @@ function CycleNode({
     if (surfaceRef.current) surfaceRef.current.rotation.y += delta * (selected ? 0.28 : 0.055);
     const group = groupRef.current;
     if (!group) return;
-    const target = selected ? 1.45 : dimmed ? 0.75 : 1;
-    const breathe = 1 + Math.sin(pulseRef.current * 1.4) * 0.04;
+    const target = selected ? 1.45 : focusDimmed ? 0.42 : dimmed ? 0.75 : 1;
+    const breathe = selectedIslandStageIndex === null ? 1 + Math.sin(pulseRef.current * 1.4) * 0.04 : 1;
     const next = THREE.MathUtils.lerp(group.scale.x, target * breathe, 0.12);
     group.scale.setScalar(next);
+    if (planetVisualRef.current) {
+      const planetScale = THREE.MathUtils.damp(planetVisualRef.current.scale.x, selected ? 0.001 : 1, 9, delta);
+      planetVisualRef.current.scale.setScalar(planetScale);
+    }
+    if (hypercubeVisualRef.current) {
+      const hypercubeScale = THREE.MathUtils.damp(hypercubeVisualRef.current.scale.x, selected ? 1 : 0.001, 9, delta);
+      hypercubeVisualRef.current.scale.setScalar(hypercubeScale);
+    }
+    if (departmentModelRef.current) {
+      if (selectedIslandStageIndex === null) departmentModelRef.current.visible = true;
+      const departmentScale = THREE.MathUtils.damp(
+        departmentModelRef.current.scale.x,
+        selectedIslandStageIndex === null ? 0.026 : 0.00001,
+        8,
+        delta,
+      );
+      departmentModelRef.current.scale.setScalar(departmentScale);
+      if (selectedIslandStageIndex !== null && departmentScale < 0.0015) {
+        departmentModelRef.current.visible = false;
+      }
+      departmentModelRef.current.rotation.x += delta * 0.12;
+      departmentModelRef.current.rotation.y += delta * 0.18;
+    }
+    if (islandModelRef.current) {
+      const islandScale = THREE.MathUtils.damp(
+        islandModelRef.current.scale.x,
+        selectedIslandStageIndex === null ? 0.001 : 0.064,
+        8,
+        delta,
+      );
+      islandModelRef.current.scale.setScalar(islandScale);
+    }
     if (positionRef.current) {
       positionRef.current.position.x = THREE.MathUtils.damp(positionRef.current.position.x, position.x, 5.5, delta);
       positionRef.current.position.y = THREE.MathUtils.damp(positionRef.current.position.y, position.y, 5.5, delta);
@@ -371,7 +593,7 @@ function CycleNode({
     }
   });
 
-  const opacity = dimmed ? 0.25 : 1;
+  const opacity = focusDimmed ? 0.045 : dimmed ? 0.25 : 1;
   const surface = useMemo(() => planetTexture(node.id, node.color), [node.id, node.color]);
 
   return (
@@ -391,36 +613,80 @@ function CycleNode({
           document.body.style.cursor = 'auto';
         }}
       >
-        <mesh ref={surfaceRef}>
-          <sphereGeometry args={[NODE_RADIUS, 40, 28]} />
-          <meshBasicMaterial map={surface} color="#ffffff" transparent opacity={opacity} toneMapped={false} />
+        <mesh>
+          <sphereGeometry args={[NODE_RADIUS * 1.45, 16, 16]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
-        <mesh raycast={() => undefined}>
-          <sphereGeometry args={[NODE_RADIUS * 1.09, 32, 24]} />
-          <meshBasicMaterial color={node.color} transparent opacity={dimmed ? 0.025 : 0.12} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-        </mesh>
-        <Glow color={node.color} scale={NODE_RADIUS * (dimmed ? 4.5 : selected ? 10 : 7.5)} />
+        <group ref={planetVisualRef}>
+          <mesh ref={surfaceRef}>
+            <sphereGeometry args={[NODE_RADIUS, 40, 28]} />
+            <meshBasicMaterial map={surface} color="#ffffff" transparent opacity={opacity} toneMapped={false} />
+          </mesh>
+          <mesh raycast={() => undefined}>
+            <sphereGeometry args={[NODE_RADIUS * 1.09, 32, 24]} />
+            <meshBasicMaterial color={node.color} transparent opacity={focusDimmed ? 0.006 : dimmed ? 0.025 : 0.12} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+          </mesh>
+        </group>
+        <group ref={hypercubeVisualRef} scale={0.001} raycast={() => undefined}>
+          <NestedDepartmentSupercycle
+            node={node}
+            cycles={departmentCycles}
+            selectedCycleId={selectedDepartmentCycleId}
+            onSelectCycle={onSelectDepartmentCycle}
+            onOpenStage={onOpenStage}
+          />
+          <group ref={departmentModelRef} scale={0.026}>
+            <NewPmsDepartmentModel />
+            <DepartmentDepthMask />
+          </group>
+          <group
+            ref={islandModelRef}
+            scale={0.001}
+            rotation={[0, 0, 0]}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (selectedIslandStageIndex !== null) onOpenCenteredIsland();
+            }}
+            onPointerOver={(event) => {
+              if (selectedIslandStageIndex === null) return;
+              event.stopPropagation();
+              document.body.style.cursor = 'pointer';
+            }}
+            onPointerOut={(event) => {
+              if (selectedIslandStageIndex === null) return;
+              event.stopPropagation();
+              document.body.style.cursor = 'auto';
+            }}
+          >
+            <NewPmsIslandModel islandId={selectedIslandStageIndex ?? 0} />
+          </group>
+        </group>
+        {!selected && (
+          <Glow color={node.color} scale={NODE_RADIUS * (focusDimmed ? 2.2 : dimmed ? 4.5 : 7.5)} />
+        )}
         {!selected && (
           <mesh rotation={[Math.PI / 2, 0, 0]} raycast={() => undefined}>
             <torusGeometry args={[NODE_RADIUS * 2.08, 0.005, 8, 96]} />
-            <meshBasicMaterial color={node.color} transparent opacity={dimmed ? 0.04 : 0.28} depthWrite={false} toneMapped={false} />
+            <meshBasicMaterial color={node.color} transparent opacity={focusDimmed ? 0.008 : dimmed ? 0.04 : 0.28} depthWrite={false} toneMapped={false} />
           </mesh>
         )}
       </group>
 
-      <Billboard position={[0, NODE_RADIUS * 2.9, 0]}>
-        <Text
-          fontSize={0.088}
-          color={dimmed ? '#5b6b86' : '#e7edf7'}
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.004}
-          outlineColor="#05070f"
-        >
-          {node.label}
-        </Text>
-      </Billboard>
-      {!dimmed && (
+      {!focusDimmed && !selected && (
+        <Billboard position={[0, NODE_RADIUS * 2.9, 0]}>
+          <Text
+            fontSize={0.088}
+            color={dimmed ? '#5b6b86' : '#e7edf7'}
+            anchorX="center"
+            anchorY="middle"
+            outlineWidth={0.004}
+            outlineColor="#05070f"
+          >
+            {node.label}
+          </Text>
+        </Billboard>
+      )}
+      {!dimmed && !selected && (
         <Billboard position={[0, NODE_RADIUS * 2.9 - 0.1, 0]}>
           <Text fontSize={0.055} color={healthColor(health)} anchorX="center" anchorY="middle">
             {health === null ? 'No execution' : `${health}%`}
@@ -433,23 +699,66 @@ function CycleNode({
 
 // ── The supercycle-specific execution hypercube ─────────────────────────────
 
-function SupercycleCore({ health, archetype, overviewMuted }: { health: number | null; archetype: SupercycleArchetype; overviewMuted: boolean }) {
+function SupercycleCore({
+  health,
+  archetype,
+  overviewMuted,
+  hidden,
+  interactive,
+  onOpen,
+}: {
+  health: number | null;
+  archetype: SupercycleArchetype;
+  overviewMuted: boolean;
+  hidden: boolean;
+  interactive: boolean;
+  onOpen: () => void;
+}) {
   const cubeRef = useRef<THREE.Group>(null);
+  const shellRef = useRef<THREE.Group>(null);
+  const [hovered, setHovered] = useState(false);
 
   useFrame((_, delta) => {
-    if (!cubeRef.current) return;
-    cubeRef.current.rotation.x += delta * 0.07;
-    cubeRef.current.rotation.y += delta * 0.11;
+    if (cubeRef.current) {
+      cubeRef.current.rotation.x += delta * 0.07;
+      cubeRef.current.rotation.y += delta * 0.11;
+    }
+    if (shellRef.current) {
+      const scale = THREE.MathUtils.damp(shellRef.current.scale.x, hidden ? 0.001 : 1, 8, delta);
+      shellRef.current.scale.setScalar(scale);
+    }
   });
 
   return (
-    <group>
+    <group ref={shellRef}>
       <group ref={cubeRef}>
-        <Glow color={healthColor(health)} scale={1.15} />
+        <Glow color={hovered ? '#67e8ff' : healthColor(health)} scale={hovered ? 1.55 : 1.15} />
         <group scale={0.012}>
           <NewPmsHypercubeModel interactive={false} overviewMuted={overviewMuted} />
+          <HypercubeDepthMask />
         </group>
       </group>
+      {interactive && (
+        <mesh
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+          onPointerOver={(event) => {
+            event.stopPropagation();
+            setHovered(true);
+            document.body.style.cursor = 'pointer';
+          }}
+          onPointerOut={(event) => {
+            event.stopPropagation();
+            setHovered(false);
+            document.body.style.cursor = 'auto';
+          }}
+        >
+          <boxGeometry args={[0.62, 0.62, 0.62]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
       <Billboard position={[0, -0.34, 0]}>
         <Text fontSize={0.075} color="#e7edf7" anchorX="center" anchorY="middle" outlineWidth={0.004} outlineColor="#05070f">
           {archetype.label} Hypercube
@@ -464,125 +773,6 @@ function SupercycleCore({ health, archetype, overviewMuted }: { health: number |
   );
 }
 
-// ── Sub-cycle track (a node opened) ──────────────────────────────────────────
-
-/**
- * The opened node's workflow, as a closed track of stage stations with live
- * instances parked on whichever stage they've reached. This is the level a
- * manager actually reads: "where is our revenue stuck right now".
- */
-function SubCycleTrack({
-  node,
-  instances,
-  onOpenInstance,
-  open,
-}: {
-  node: SupercycleNode;
-  instances: SupercycleInstance[];
-  onOpenInstance: (instance: SupercycleInstance) => void;
-  open: boolean;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const contentsRef = useRef<THREE.Group>(null);
-  const stages = node.subCycle.stages;
-  const trackRadius = 0.72;
-  const collapsedScale = (NODE_RADIUS * 2.08) / trackRadius;
-
-  const torusGeometry = useMemo(
-    () => new THREE.TorusGeometry(trackRadius, 0.005, 8, 96),
-    [],
-  );
-
-  useFrame((_, delta) => {
-    if (!groupRef.current) return;
-    const target = open ? 1 : collapsedScale;
-    const next = THREE.MathUtils.damp(groupRef.current.scale.x, target, 7, delta);
-    groupRef.current.scale.setScalar(next);
-    groupRef.current.visible = open || next > collapsedScale + 0.006;
-    if (contentsRef.current) {
-      contentsRef.current.visible = open && next > collapsedScale + 0.08;
-    }
-  });
-
-  return (
-    <group ref={groupRef} scale={collapsedScale}>
-      <mesh geometry={torusGeometry} rotation={[Math.PI / 2, 0, 0]}>
-        <meshBasicMaterial color={node.color} transparent opacity={0.8} depthWrite={false} toneMapped={false} />
-      </mesh>
-
-      <group ref={contentsRef} visible={false}>
-        {stages.map((stage, i) => {
-          const pos = slotPosition(i, stages.length, trackRadius);
-          return (
-            <group key={stage} position={pos}>
-              <mesh>
-                <sphereGeometry args={[0.035, 16, 16]} />
-                <meshBasicMaterial color={node.color} toneMapped={false} />
-              </mesh>
-              <Glow color={node.color} scale={0.22} />
-              <Billboard position={[0, 0.11, 0]}>
-                <Text
-                  fontSize={0.05}
-                  color="#cfd8e8"
-                  anchorX="center"
-                  anchorY="middle"
-                  outlineWidth={0.003}
-                  outlineColor="#05070f"
-                >
-                  {stage}
-                </Text>
-              </Billboard>
-            </group>
-          );
-        })}
-
-      {/* Live instances parked on their current stage. Several on the same
-          stage are fanned outward so they don't occupy the same point. */}
-        {instances.map((instance) => {
-        const sameStage = instances.filter((i) => i.stageIndex === instance.stageIndex);
-        const orderInStage = sameStage.indexOf(instance);
-        const fan = trackRadius + 0.13 + orderInStage * 0.1;
-        const pos = slotPosition(instance.stageIndex, stages.length, fan);
-        return (
-          <group key={instance.id} position={pos}>
-            <mesh
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenInstance(instance);
-              }}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                document.body.style.cursor = 'pointer';
-              }}
-              onPointerOut={(e) => {
-                e.stopPropagation();
-                document.body.style.cursor = 'auto';
-              }}
-            >
-              <boxGeometry args={[0.055, 0.055, 0.055]} />
-              <meshBasicMaterial color={healthColor(instance.health)} toneMapped={false} />
-            </mesh>
-            <Glow color={healthColor(instance.health)} scale={0.2} />
-            <Billboard position={[0, -0.075, 0]}>
-              <Text
-                fontSize={0.04}
-                color="#8b96ab"
-                anchorX="center"
-                anchorY="middle"
-                outlineWidth={0.003}
-                outlineColor="#05070f"
-              >
-                {instance.label}
-              </Text>
-            </Billboard>
-          </group>
-        );
-        })}
-      </group>
-    </group>
-  );
-}
-
 // ── Scene root ───────────────────────────────────────────────────────────────
 
 export type SupercycleSceneProps = {
@@ -590,10 +780,16 @@ export type SupercycleSceneProps = {
   instances: SupercycleInstance[];
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
-  onOpenInstance: (instance: SupercycleInstance) => void;
+  selectedStageIsland: { nodeId: string; stage: string; stageIndex: number } | null;
+  onSelectStageIsland: (selection: { nodeId: string; stage: string; stageIndex: number }) => void;
+  onOpenStageIsland: (node: SupercycleNode, stage: string, stageIndex: number) => void;
   cycles: SupercycleCycle[];
+  departmentCycles: PmsDepartmentCycle[];
   selectedCycleId: string | null;
   onSelectCycle: (cycleId: string | null) => void;
+  selectedDepartmentCycleId: string | null;
+  onSelectDepartmentCycle: (cycleId: string | null) => void;
+  onOpenHypercube: (cycle: SupercycleCycle) => void;
   routeStyle: SupercycleRouteStyle;
   /** 0 while diving in, 1 once arrived — fades the whole thing in with the dive. */
   visibility?: number;
@@ -604,28 +800,26 @@ export function SupercycleScene({
   instances,
   selectedNodeId,
   onSelectNode,
-  onOpenInstance,
+  selectedStageIsland,
+  onSelectStageIsland,
+  onOpenStageIsland,
   cycles,
+  departmentCycles,
   selectedCycleId,
   onSelectCycle,
+  selectedDepartmentCycleId,
+  onSelectDepartmentCycle,
+  onOpenHypercube,
   routeStyle,
 }: SupercycleSceneProps) {
   const contentRef = useRef<THREE.Group>(null);
-  const [displayedNodeId, setDisplayedNodeId] = useState<string | null>(selectedNodeId);
   const nodes = archetype.nodes;
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
-  const displayedNode = nodes.find((n) => n.id === displayedNodeId) ?? null;
   const selectedIndex = selectedNode ? nodes.findIndex((n) => n.id === selectedNode.id) : -1;
-  const displayedIndex = displayedNode ? nodes.findIndex((n) => n.id === displayedNode.id) : -1;
   const nodePositions = useMemo(() => dynamicDepartmentPositions(nodes, cycles), [nodes, cycles]);
   const selectedPosition = selectedIndex >= 0 ? nodePositions.get(selectedNode!.id) ?? null : null;
-  const displayedPosition = displayedIndex >= 0 ? nodePositions.get(displayedNode!.id) ?? null : null;
   const selectedCycle = cycles.find((cycle) => cycle.id === selectedCycleId) ?? null;
   const health = useMemo(() => supercycleHealth(nodes, instances), [nodes, instances]);
-
-  useEffect(() => {
-    if (selectedNodeId) setDisplayedNodeId(selectedNodeId);
-  }, [selectedNodeId]);
 
   useFrame((_, delta) => {
     const content = contentRef.current;
@@ -655,13 +849,19 @@ export function SupercycleScene({
           anotherSelected={selectedCycleId !== null && selectedCycleId !== cycle.id}
           planetActive={selectedNode !== null}
           routeStyle={routeStyle}
-          onSelect={() => onSelectCycle(selectedCycleId === cycle.id ? null : cycle.id)}
+          interactive={selectedNode === null}
+          onSelect={() => onSelectCycle(cycle.id)}
         />
       ))}
       <SupercycleCore
         health={health}
         archetype={archetype}
         overviewMuted={selectedCycleId === null && selectedNode === null}
+        hidden={selectedNode !== null}
+        interactive={selectedCycle !== null && selectedNode === null}
+        onOpen={() => {
+          if (selectedCycle) onOpenHypercube(selectedCycle);
+        }}
       />
 
       {nodes.map((n, i) => (
@@ -671,21 +871,22 @@ export function SupercycleScene({
           position={nodePositions.get(n.id) ?? departmentPosition(i, nodes.length)}
           health={nodeHealth(n.id, instances)}
           dimmed={(selectedNode !== null && selectedNode.id !== n.id) || (selectedCycle !== null && !selectedCycle.departmentIds.includes(n.id))}
+          focusDimmed={selectedNode !== null && selectedNode.id !== n.id}
+          departmentCycles={departmentCycles.filter((cycle) => cycle.departmentId === n.id && cycle.archetypeId === archetype.id)}
+          selectedDepartmentCycleId={selectedNode?.id === n.id ? selectedDepartmentCycleId : null}
+          onSelectDepartmentCycle={onSelectDepartmentCycle}
+          onOpenStage={(stage, stageIndex) => onSelectStageIsland({ nodeId: n.id, stage, stageIndex })}
+          selectedIslandStageIndex={selectedStageIsland?.nodeId === n.id ? selectedStageIsland.stageIndex : null}
+          onOpenCenteredIsland={() => {
+            if (selectedStageIsland?.nodeId === n.id) {
+              onOpenStageIsland(n, selectedStageIsland.stage, selectedStageIsland.stageIndex);
+            }
+          }}
           selected={selectedNode?.id === n.id}
-          onSelect={() => onSelectNode(selectedNode?.id === n.id ? null : n.id)}
+          onSelect={() => onSelectNode(n.id)}
         />
       ))}
 
-      {displayedNode && displayedPosition && (
-        <group position={displayedPosition}>
-          <SubCycleTrack
-            node={displayedNode}
-            instances={instances.filter((i) => i.nodeId === displayedNode.id)}
-            onOpenInstance={onOpenInstance}
-            open={selectedNode?.id === displayedNode.id}
-          />
-        </group>
-      )}
     </group>
   );
 }

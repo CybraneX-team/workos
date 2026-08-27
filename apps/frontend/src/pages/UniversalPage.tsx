@@ -12,6 +12,7 @@ import type { CoreDestination } from '../lib/coreWorkspaceTransition';
 import { SupercycleScene } from '../components/supercycle/SupercycleScene';
 import type { SupercycleRouteStyle } from '../components/supercycle/SupercycleScene';
 import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleEditor';
+import { DepartmentCycleEditor } from '../components/supercycle/DepartmentCycleEditor';
 import {
   DEFAULT_ARCHETYPE,
   SUPERCYCLE_ARCHETYPES,
@@ -38,6 +39,15 @@ export default function UniversalPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const replayTrailId = searchParams.get('replayTrail');
   const focusKey = searchParams.get('focus');
+  const returnCycleId = searchParams.get('supercycle');
+  const returnPlanetId = searchParams.get('planet');
+  const returnDepartmentCycleId = searchParams.get('departmentCycle');
+  const returnIslandStage = searchParams.get('islandStage');
+  const returnIslandIndexParam = Number.parseInt(searchParams.get('islandIndex') ?? '', 10);
+  const returnArchetypeParam = searchParams.get('archetype');
+  const returnArchetypeId: SupercycleArchetypeId = returnArchetypeParam && returnArchetypeParam in SUPERCYCLE_ARCHETYPES
+    ? returnArchetypeParam as SupercycleArchetypeId
+    : DEFAULT_ARCHETYPE;
   const { user, profile, canRead, canWrite, role: authRole } = useAuth();
   const canCreateDepartments = canWrite('twin') && canWrite('team');
   const { company } = useCompany(profile?.company_id);
@@ -316,7 +326,7 @@ export default function UniversalPage() {
 
   // Core dive state. `coreDestination` records WHERE the dive is heading —
   // the supercycle sphere (clicking the core) or Voice AI (its own button).
-  const [corePhase, setCorePhase] = useState<CoreWorkspacePhase>('idle');
+  const [corePhase, setCorePhase] = useState<CoreWorkspacePhase>(() => returnCycleId ? 'workspace' : 'idle');
   const [coreDestination, setCoreDestination] = useState<CoreDestination>('supercycle');
   const isPolytopeInteractive = corePhase === 'idle';
 
@@ -330,15 +340,37 @@ export default function UniversalPage() {
   }, []);
 
   // ── Supercycle (inside the core) ──────────────────────────────────────────
-  const [archetypeId, setArchetypeId] = useState<SupercycleArchetypeId>(DEFAULT_ARCHETYPE);
-  const [selectedCycleNodeId, setSelectedCycleNodeId] = useState<string | null>(null);
-  const [selectedValueCycleId, setSelectedValueCycleId] = useState<string | null>(null);
+  const [archetypeId, setArchetypeId] = useState<SupercycleArchetypeId>(returnArchetypeId);
+  const [selectedCycleNodeId, setSelectedCycleNodeId] = useState<string | null>(returnPlanetId);
+  const [selectedValueCycleId, setSelectedValueCycleId] = useState<string | null>(returnCycleId);
+  const [selectedDepartmentCycleId, setSelectedDepartmentCycleId] = useState<string | null>(returnDepartmentCycleId);
+  const [selectedStageIsland, setSelectedStageIsland] = useState<{
+    nodeId: string;
+    stage: string;
+    stageIndex: number;
+  } | null>(() => returnPlanetId && returnIslandStage && Number.isFinite(returnIslandIndexParam)
+    ? { nodeId: returnPlanetId, stage: returnIslandStage, stageIndex: returnIslandIndexParam }
+    : null);
   const [cycleRouteStyle, setCycleRouteStyle] = useState<SupercycleRouteStyle>('curved');
   const archetype = SUPERCYCLE_ARCHETYPES[archetypeId];
   const valueCycles = pms.state.cycles.filter((cycle) => cycle.archetypeId === archetypeId);
   const selectedValueCycle = valueCycles.find((cycle) => cycle.id === selectedValueCycleId) ?? null;
   const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
   const selectedCycleNode = archetype.nodes.find((n) => n.id === selectedCycleNodeId) ?? null;
+
+  useEffect(() => {
+    if (!returnCycleId) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('supercycle');
+      next.delete('archetype');
+      next.delete('planet');
+      next.delete('departmentCycle');
+      next.delete('islandStage');
+      next.delete('islandIndex');
+      return next;
+    }, { replace: true });
+  }, [returnCycleId, setSearchParams]);
 
   const supercycleInstances = useMemo<SupercycleInstance[]>(
     () => pms.state.instances
@@ -353,9 +385,31 @@ export default function UniversalPage() {
     [archetype, pms.state],
   );
 
-  const handleOpenInstance = useCallback((instance: SupercycleInstance) => {
-    navigate(`/pms?view=hypercube&instance=${encodeURIComponent(instance.id)}`);
-  }, [navigate]);
+  const handleOpenStageIsland = useCallback((nodeId: string, stage: string, stageIndex: number) => {
+    const returnParams = new URLSearchParams({
+      supercycle: selectedValueCycleId ?? valueCycles[0]?.id ?? 'overview',
+      archetype: archetypeId,
+      planet: nodeId,
+    });
+    if (selectedDepartmentCycleId) returnParams.set('departmentCycle', selectedDepartmentCycleId);
+    returnParams.set('islandStage', stage);
+    returnParams.set('islandIndex', String(stageIndex));
+    navigate(
+      `/pms?view=island&island=${stageIndex % 4}&department=${encodeURIComponent(nodeId)}&stage=${encodeURIComponent(stage)}`,
+      { state: { pmsReturnTo: `/universal?${returnParams.toString()}` } },
+    );
+  }, [archetypeId, navigate, selectedDepartmentCycleId, selectedValueCycleId, valueCycles]);
+
+  const handleOpenCycleHypercube = useCallback((cycleId: string) => {
+    const returnParams = new URLSearchParams({
+      supercycle: cycleId,
+      archetype: archetypeId,
+    });
+    navigate(
+      `/pms?view=hypercube&cycle=${encodeURIComponent(cycleId)}&archetype=${encodeURIComponent(archetypeId)}`,
+      { state: { pmsReturnTo: `/universal?${returnParams.toString()}` } },
+    );
+  }, [archetypeId, navigate]);
 
   // Voice keeps driving the dive, but ONLY while voice is the destination.
   // Previously this effect ran unconditionally, which meant any dive was
@@ -608,11 +662,28 @@ export default function UniversalPage() {
                   archetype={archetype}
                   instances={supercycleInstances}
                   selectedNodeId={selectedCycleNodeId}
-                  onSelectNode={setSelectedCycleNodeId}
-                  onOpenInstance={handleOpenInstance}
+                  onSelectNode={(nodeId) => {
+                    if (nodeId !== selectedCycleNodeId) {
+                      setSelectedDepartmentCycleId(null);
+                      setSelectedStageIsland(null);
+                    }
+                    setSelectedCycleNodeId(nodeId);
+                  }}
+                  selectedStageIsland={selectedStageIsland}
+                  onSelectStageIsland={setSelectedStageIsland}
+                  onOpenStageIsland={(node, stage, stageIndex) => handleOpenStageIsland(node.id, stage, stageIndex)}
                   cycles={valueCycles}
+                  departmentCycles={pms.state.departmentCycles}
                   selectedCycleId={selectedValueCycleId}
-                  onSelectCycle={(cycleId) => { setSelectedValueCycleId(cycleId); setSelectedCycleNodeId(null); }}
+                  onSelectCycle={(cycleId) => {
+                    setSelectedValueCycleId(cycleId);
+                    setSelectedCycleNodeId(null);
+                    setSelectedDepartmentCycleId(null);
+                    setSelectedStageIsland(null);
+                  }}
+                  selectedDepartmentCycleId={selectedDepartmentCycleId}
+                  onSelectDepartmentCycle={setSelectedDepartmentCycleId}
+                  onOpenHypercube={(cycle) => handleOpenCycleHypercube(cycle.id)}
                   routeStyle={cycleRouteStyle}
                 />
               ) : undefined
@@ -651,11 +722,31 @@ export default function UniversalPage() {
       {showSupercycle && corePhase !== 'surfacing' && (
         <>
           <button
-            onClick={() => (selectedCycleNode ? setSelectedCycleNodeId(null) : surfaceFromCore())}
+            onClick={() => {
+              if (selectedStageIsland) {
+                setSelectedStageIsland(null);
+              } else if (selectedDepartmentCycleId) {
+                setSelectedDepartmentCycleId(null);
+              } else if (selectedCycleNode) {
+                setSelectedCycleNodeId(null);
+              } else if (selectedValueCycleId) {
+                setSelectedValueCycleId(null);
+              } else {
+                surfaceFromCore();
+              }
+            }}
             className="fixed top-20 left-6 z-[60] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 border backdrop-blur-md transition-all hover:text-white hover:border-cyan-400/30"
             style={{ background: 'rgba(0,0,0,0.55)', borderColor: 'rgba(148,163,184,0.1)' }}
           >
-            &larr; {selectedCycleNode ? SUPERCYCLE_LABEL : 'Back to Polytope'}
+            &larr; {selectedStageIsland
+              ? selectedCycleNode?.label ?? SUPERCYCLE_LABEL
+              : selectedDepartmentCycleId
+              ? selectedCycleNode?.label ?? SUPERCYCLE_LABEL
+              : selectedCycleNode
+                ? SUPERCYCLE_LABEL
+                : selectedValueCycleId
+                  ? SUPERCYCLE_LABEL
+                  : 'Back to Polytope'}
           </button>
 
           <div
@@ -663,10 +754,10 @@ export default function UniversalPage() {
             style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
           >
             <div className="text-[10px] tracking-[3px] uppercase" style={{ color: '#4fd8ff' }}>
-              {selectedCycleNode ? selectedCycleNode.subCycle.label : selectedValueCycle ? 'Selected cycle' : 'Supercycle'}
+              {selectedStageIsland ? 'Selected island' : selectedCycleNode ? selectedCycleNode.subCycle.label : selectedValueCycle ? 'Selected cycle' : 'Supercycle'}
             </div>
             <div className="text-sm font-semibold text-slate-100">
-              {selectedCycleNode ? selectedCycleNode.label : selectedValueCycle?.name ?? SUPERCYCLE_LABEL}
+              {selectedStageIsland?.stage ?? (selectedCycleNode ? selectedCycleNode.label : selectedValueCycle?.name ?? SUPERCYCLE_LABEL)}
             </div>
             {selectedCycleNode && (
               <div className="text-[10px] text-slate-400 mt-0.5">
@@ -695,19 +786,29 @@ export default function UniversalPage() {
             </button>
           )}
 
-          <SupercycleCycleEditor
-            cycles={valueCycles}
-            departments={archetype.nodes}
-            onCreate={(draft) => {
-              const cycleId = pms.createCycle({ ...draft, archetypeId });
-              setSelectedValueCycleId(cycleId);
-            }}
-            onUpdate={(cycleId, draft) => pms.updateCycle(cycleId, draft)}
-            onDelete={(cycleId) => {
-              pms.deleteCycle(cycleId);
-              if (selectedValueCycleId === cycleId) setSelectedValueCycleId(null);
-            }}
-          />
+          {selectedCycleNode ? (
+            <DepartmentCycleEditor
+              node={selectedCycleNode}
+              cycles={pms.state.departmentCycles.filter((cycle) => cycle.archetypeId === archetypeId && cycle.departmentId === selectedCycleNode.id)}
+              onCreate={(draft) => pms.createDepartmentCycle({ ...draft, archetypeId, departmentId: selectedCycleNode.id })}
+              onUpdate={(cycleId, draft) => pms.updateDepartmentCycle(cycleId, draft)}
+              onDelete={pms.deleteDepartmentCycle}
+            />
+          ) : (
+            <SupercycleCycleEditor
+              cycles={valueCycles}
+              departments={archetype.nodes}
+              onCreate={(draft) => {
+                const cycleId = pms.createCycle({ ...draft, archetypeId });
+                setSelectedValueCycleId(cycleId);
+              }}
+              onUpdate={(cycleId, draft) => pms.updateCycle(cycleId, draft)}
+              onDelete={(cycleId) => {
+                pms.deleteCycle(cycleId);
+                if (selectedValueCycleId === cycleId) setSelectedValueCycleId(null);
+              }}
+            />
+          )}
 
           <div className="fixed right-6 top-32 z-[70] flex rounded-lg border border-white/10 bg-black/65 p-1 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-xl">
             {(['curved', 'spherical'] as const).map((style) => (
@@ -721,8 +822,21 @@ export default function UniversalPage() {
             <div className="fixed bottom-20 left-1/2 z-[60] flex -translate-x-1/2 gap-1.5 rounded-xl border border-white/10 bg-black/65 p-1.5 backdrop-blur-xl">
               {valueCycles.map((cycle) => {
                 const active = selectedValueCycleId === cycle.id;
-                return <button key={cycle.id} onClick={() => setSelectedValueCycleId(active ? null : cycle.id)} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-medium transition" style={{ background: active ? `${cycle.color}22` : 'transparent', color: active ? cycle.color : '#7c879b' }}><span className="h-2 w-2 rounded-full" style={{ background: cycle.color, boxShadow: active ? `0 0 10px ${cycle.color}` : 'none' }} />{cycle.name}</button>;
+                return <button key={cycle.id} onClick={() => setSelectedValueCycleId(cycle.id)} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-medium transition" style={{ background: active ? `${cycle.color}22` : 'transparent', color: active ? cycle.color : '#7c879b' }}><span className="h-2 w-2 rounded-full" style={{ background: cycle.color, boxShadow: active ? `0 0 10px ${cycle.color}` : 'none' }} />{cycle.name}</button>;
               })}
+            </div>
+          )}
+
+          {selectedCycleNode && (
+            <div className="fixed bottom-20 left-1/2 z-[60] flex max-w-[70vw] -translate-x-1/2 gap-1.5 rounded-xl border border-white/10 bg-black/65 p-1.5 backdrop-blur-xl">
+              {pms.state.departmentCycles
+                .filter((cycle) => cycle.archetypeId === archetypeId && cycle.departmentId === selectedCycleNode.id)
+                .map((cycle) => (
+                  <div key={cycle.id} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-medium" style={{ color: cycle.color }}>
+                    <span className="h-2 w-2 rounded-full" style={{ background: cycle.color, boxShadow: `0 0 10px ${cycle.color}` }} />
+                    {cycle.name}
+                  </div>
+                ))}
             </div>
           )}
 
@@ -736,7 +850,7 @@ export default function UniversalPage() {
               {SUPERCYCLE_ARCHETYPE_LIST.map((a) => (
                 <button
                   key={a.id}
-                  onClick={() => { setArchetypeId(a.id); pms.setArchetype(a.id); setSelectedCycleNodeId(null); setSelectedValueCycleId(null); }}
+                  onClick={() => { setArchetypeId(a.id); pms.setArchetype(a.id); setSelectedCycleNodeId(null); setSelectedValueCycleId(null); setSelectedDepartmentCycleId(null); }}
                   title={a.revenueModel}
                   className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
                   style={
