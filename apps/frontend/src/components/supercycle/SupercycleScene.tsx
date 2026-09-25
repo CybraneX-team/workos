@@ -11,7 +11,7 @@
 // on screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Billboard, Text } from '@react-three/drei';
@@ -23,6 +23,7 @@ import {
   type SupercycleInstance,
   type SupercycleNode,
   type SupercycleCycle,
+  type SubNode,
 } from '../../lib/supercycleData';
 import type { PmsDepartmentCycle } from '../../lib/usePmsStore';
 
@@ -507,6 +508,78 @@ function NestedDepartmentSupercycle({ node, cycles, selectedCycleId, onSelectCyc
 
 // ── A department node on the ring ────────────────────────────────────────────
 
+function DepartmentMembershipRing({ node, dimmed, focusDimmed, cycleFocused, activeColor, active }: {
+  node: SupercycleNode;
+  dimmed: boolean;
+  focusDimmed: boolean;
+  cycleFocused: boolean;
+  activeColor: string | null;
+  active: boolean;
+}) {
+  const ringRef = useRef<THREE.Group>(null);
+  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  useFrame((_, delta) => {
+    if (ringRef.current) {
+      const scale = THREE.MathUtils.damp(ringRef.current.scale.x, active ? 1.24 : 1, 7, delta);
+      ringRef.current.scale.setScalar(scale);
+    }
+    if (materialRef.current) {
+      const opacity = active ? 0.72 : focusDimmed ? 0.008 : dimmed ? cycleFocused ? 0.004 : 0.04 : 0.28;
+      materialRef.current.opacity = THREE.MathUtils.damp(materialRef.current.opacity, opacity, 7, delta);
+    }
+  });
+
+  return (
+    <group ref={ringRef}>
+      <mesh rotation={[Math.PI / 2, 0, 0]} raycast={() => undefined}>
+        <torusGeometry args={[NODE_RADIUS * 2.08, active ? 0.008 : 0.005, 8, 96]} />
+        <meshBasicMaterial ref={materialRef} color={activeColor ?? node.color} transparent opacity={0} depthWrite={false} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+function CycleSubNodeBead({ subNode, color, index, total }: {
+  subNode: SubNode;
+  color: string;
+  index: number;
+  total: number;
+}) {
+  const beadRef = useRef<THREE.Group>(null);
+  const radius = NODE_RADIUS * 2.08 * 1.24;
+  const angle = -Math.PI / 2 + (index / Math.max(total, 1)) * Math.PI * 2;
+  const position = useMemo(() => new THREE.Vector3(Math.cos(angle) * radius, 0.012, Math.sin(angle) * radius), [angle, radius]);
+
+  useFrame((_, delta) => {
+    if (!beadRef.current) return;
+    const scale = THREE.MathUtils.damp(beadRef.current.scale.x, 1, 9, delta);
+    beadRef.current.scale.setScalar(scale);
+  });
+
+  return (
+    <group ref={beadRef} position={position} scale={0.001}>
+      <mesh
+        onClick={(event) => event.stopPropagation()}
+        onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = 'default'; }}
+        onPointerOut={(event) => { event.stopPropagation(); document.body.style.cursor = 'auto'; }}
+      >
+        <sphereGeometry args={[0.052, 24, 18]} />
+        <meshBasicMaterial color={color} toneMapped={false} />
+      </mesh>
+      <mesh raycast={() => undefined}>
+        <sphereGeometry args={[0.078, 20, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.17} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+      </mesh>
+      <Billboard position={[0, 0.105, 0]}>
+        <Text fontSize={0.048} color="#eef7ff" anchorX="center" anchorY="middle" outlineWidth={0.004} outlineColor="#05070f">
+          {subNode.label}
+        </Text>
+      </Billboard>
+    </group>
+  );
+}
+
 function CycleNode({
   node,
   position,
@@ -519,6 +592,9 @@ function CycleNode({
   onOpenStage,
   selectedIslandStageIndex,
   onOpenCenteredIsland,
+  activeCycleColor,
+  activeSubNodes,
+  cycleFocused,
   selected,
   onSelect,
 }: {
@@ -533,6 +609,9 @@ function CycleNode({
   onOpenStage: (stage: string, stageIndex: number) => void;
   selectedIslandStageIndex: number | null;
   onOpenCenteredIsland: () => void;
+  activeCycleColor: string | null;
+  activeSubNodes: SubNode[];
+  cycleFocused: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -550,7 +629,7 @@ function CycleNode({
     if (surfaceRef.current) surfaceRef.current.rotation.y += delta * (selected ? 0.28 : 0.055);
     const group = groupRef.current;
     if (!group) return;
-    const target = selected ? 1.45 : focusDimmed ? 0.42 : dimmed ? 0.75 : 1;
+    const target = selected ? 1.45 : focusDimmed ? 0.42 : dimmed ? cycleFocused ? 0.3 : 0.75 : 1;
     const breathe = selectedIslandStageIndex === null ? 1 + Math.sin(pulseRef.current * 1.4) * 0.04 : 1;
     const next = THREE.MathUtils.lerp(group.scale.x, target * breathe, 0.12);
     group.scale.setScalar(next);
@@ -564,9 +643,9 @@ function CycleNode({
     }
     if (departmentModelRef.current) {
       if (selectedIslandStageIndex === null) departmentModelRef.current.visible = true;
-      const departmentScale = THREE.MathUtils.damp(
-        departmentModelRef.current.scale.x,
-        selectedIslandStageIndex === null ? 0.026 : 0.00001,
+    const departmentScale = THREE.MathUtils.damp(
+      departmentModelRef.current.scale.x,
+      selectedIslandStageIndex === null ? 0.019 : 0.00001,
         8,
         delta,
       );
@@ -574,8 +653,6 @@ function CycleNode({
       if (selectedIslandStageIndex !== null && departmentScale < 0.0015) {
         departmentModelRef.current.visible = false;
       }
-      departmentModelRef.current.rotation.x += delta * 0.12;
-      departmentModelRef.current.rotation.y += delta * 0.18;
     }
     if (islandModelRef.current) {
       const islandScale = THREE.MathUtils.damp(
@@ -593,7 +670,7 @@ function CycleNode({
     }
   });
 
-  const opacity = focusDimmed ? 0.045 : dimmed ? 0.25 : 1;
+  const opacity = focusDimmed ? 0.045 : dimmed ? cycleFocused ? 0.012 : 0.25 : 1;
   const surface = useMemo(() => planetTexture(node.id, node.color), [node.id, node.color]);
 
   return (
@@ -624,7 +701,7 @@ function CycleNode({
           </mesh>
           <mesh raycast={() => undefined}>
             <sphereGeometry args={[NODE_RADIUS * 1.09, 32, 24]} />
-            <meshBasicMaterial color={node.color} transparent opacity={focusDimmed ? 0.006 : dimmed ? 0.025 : 0.12} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+            <meshBasicMaterial color={node.color} transparent opacity={focusDimmed ? 0.006 : dimmed ? cycleFocused ? 0.001 : 0.025 : 0.12} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
           </mesh>
         </group>
         <group ref={hypercubeVisualRef} scale={0.001} raycast={() => undefined}>
@@ -635,7 +712,7 @@ function CycleNode({
             onSelectCycle={onSelectDepartmentCycle}
             onOpenStage={onOpenStage}
           />
-          <group ref={departmentModelRef} scale={0.026}>
+      <group ref={departmentModelRef} scale={0.019} rotation={[0, 0, 0]}>
             <NewPmsDepartmentModel />
             <DepartmentDepthMask />
           </group>
@@ -662,17 +739,24 @@ function CycleNode({
           </group>
         </group>
         {!selected && (
-          <Glow color={node.color} scale={NODE_RADIUS * (focusDimmed ? 2.2 : dimmed ? 4.5 : 7.5)} />
+          <Glow color={node.color} scale={NODE_RADIUS * (focusDimmed ? 2.2 : dimmed ? cycleFocused ? 0.45 : 4.5 : 7.5)} />
         )}
         {!selected && (
-          <mesh rotation={[Math.PI / 2, 0, 0]} raycast={() => undefined}>
-            <torusGeometry args={[NODE_RADIUS * 2.08, 0.005, 8, 96]} />
-            <meshBasicMaterial color={node.color} transparent opacity={focusDimmed ? 0.008 : dimmed ? 0.04 : 0.28} depthWrite={false} toneMapped={false} />
-          </mesh>
+          <DepartmentMembershipRing
+            node={node}
+            dimmed={dimmed}
+            focusDimmed={focusDimmed}
+            cycleFocused={cycleFocused}
+            activeColor={activeCycleColor}
+            active={activeSubNodes.length > 0}
+          />
         )}
+        {!selected && activeCycleColor && activeSubNodes.map((subNode, index) => (
+          <CycleSubNodeBead key={subNode.id} subNode={subNode} color={activeCycleColor} index={index} total={activeSubNodes.length} />
+        ))}
       </group>
 
-      {!focusDimmed && !selected && (
+      {!focusDimmed && !selected && !(cycleFocused && dimmed) && (
         <Billboard position={[0, NODE_RADIUS * 2.9, 0]}>
           <Text
             fontSize={0.088}
@@ -819,6 +903,7 @@ export function SupercycleScene({
   const nodePositions = useMemo(() => dynamicDepartmentPositions(nodes, cycles), [nodes, cycles]);
   const selectedPosition = selectedIndex >= 0 ? nodePositions.get(selectedNode!.id) ?? null : null;
   const selectedCycle = cycles.find((cycle) => cycle.id === selectedCycleId) ?? null;
+  const activeSubNodeIds = useMemo(() => new Set(selectedCycle?.subNodeIds ?? []), [selectedCycle?.subNodeIds]);
   const health = useMemo(() => supercycleHealth(nodes, instances), [nodes, instances]);
 
   useFrame((_, delta) => {
@@ -882,6 +967,9 @@ export function SupercycleScene({
               onOpenStageIsland(n, selectedStageIsland.stage, selectedStageIsland.stageIndex);
             }
           }}
+          activeCycleColor={selectedCycle && n.subNodes.some((subNode) => activeSubNodeIds.has(subNode.id)) ? selectedCycle.color : null}
+          activeSubNodes={n.subNodes.filter((subNode) => activeSubNodeIds.has(subNode.id))}
+          cycleFocused={selectedCycle !== null}
           selected={selectedNode?.id === n.id}
           onSelect={() => onSelectNode(n.id)}
         />

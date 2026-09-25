@@ -62,6 +62,8 @@ export type SupercycleCycle = {
   name: string;
   color: string;
   departmentIds: string[];
+  /** Optional sub-node memberships, scoped to the selected departments. */
+  subNodeIds?: string[];
 };
 
 // Slot colours. Index 0-4 map to the five ring positions, so "the money slot"

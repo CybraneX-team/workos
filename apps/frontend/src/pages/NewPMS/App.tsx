@@ -49,6 +49,7 @@ import {
 import { CinematicDirector, type CineControls, type CineScript } from "../PMS3D/arcade/cinematic";
 import { QuartermasterPage } from "../PMS3D/arcade/QuartermasterPage";
 import { DEMOS } from "../PMS3D/arcade/demos";
+import ObjectSpace from "./ObjectSpace";
 
 // ---------------------------------------------------------------------------
 // MODEL
@@ -61,7 +62,7 @@ type ComponentKind =
   | "cottage" | "watermill" | "taco_stand" | "watchtower"
   | "ship" | "castle_gate" | "windmill" | "manor" | "grand_fountain";
 type PlacementState = "under_review" | "established" | "demolished";
-type AppTab = "world" | "tasks" | "review" | "gallery" | "all" | "catalog" | "kits" | "stats" | "roadmap" | "demos" | "quartermaster";
+type AppTab = "world" | "tasks" | "review" | "gallery" | "objects" | "all" | "catalog" | "kits" | "stats" | "roadmap" | "demos" | "quartermaster";
 type TaskSource = "slack" | "email" | "telegram";
 type TaskStatus = "assigned" | "cleared" | "building" | "under_review" | "established" | "demolished";
 type Subtask = { id: string; title: string; done: boolean };
@@ -3000,9 +3001,9 @@ function App() {
     }
   }, [assignTaskFn, refreshTasks, flash, activeSprint, teamMembers]);
 
-  const NAV_TABS: AppTab[] = ["world", "tasks", "review", "gallery"];
+  const NAV_TABS: AppTab[] = ["world", "tasks", "review", "gallery", "objects"];
   const tabLabel: Record<AppTab, string> = {
-    world: "World", tasks: "Tasks", review: "Review", gallery: "Gallery", all: "All",
+    world: "World", tasks: "Tasks", review: "Review", gallery: "Gallery", objects: "Object Space", all: "All",
     catalog: "Catalog", kits: "Kits", stats: "Stats",
     roadmap: "Roadmap", demos: "Demos", quartermaster: "QM",
   };
@@ -3025,6 +3026,7 @@ function App() {
       />
 
       {activeTab === "roadmap" && <VisualProductDoc />}
+      {activeTab === "objects" && <ObjectSpace />}
 
       {/* ── DEMOS ─────────────────────────────────────── */}
       {activeTab === "demos" && (
@@ -3201,8 +3203,8 @@ function App() {
         aria-label="3D task arcade world"
         ref={stageRef}
         style={{
-          visibility: activeTab === "gallery" ? "hidden" : "visible",
-          pointerEvents: activeTab === "gallery" ? "none" : undefined,
+          visibility: activeTab === "gallery" || activeTab === "objects" ? "hidden" : "visible",
+          pointerEvents: activeTab === "gallery" || activeTab === "objects" ? "none" : undefined,
         }}
       >
         <Canvas gl={{ antialias: true }}>

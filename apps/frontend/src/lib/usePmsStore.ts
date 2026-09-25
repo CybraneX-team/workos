@@ -50,6 +50,7 @@ export type PmsCycle = {
   name: string;
   color: string;
   departmentIds: string[];
+  subNodeIds?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -120,6 +121,7 @@ function defaultCycle(archetypeId: SupercycleArchetypeId): PmsCycle {
     name: 'Revenue & Growth',
     color: '#4fd8ff',
     departmentIds: SUPERCYCLE_ARCHETYPES[archetypeId].nodes.map((node) => node.id),
+    subNodeIds: SUPERCYCLE_ARCHETYPES[archetypeId].nodes.map((node) => node.subNodes[0]?.id).filter((id): id is string => Boolean(id)),
     createdAt: now,
     updatedAt: now,
   };
@@ -271,13 +273,13 @@ export function usePmsStore(companyId: string | null | undefined) {
         ? current.departmentCycles
         : [...current.departmentCycles, ...defaultDepartmentCycles(archetypeId)],
     })), [update]),
-    createCycle: useCallback((input: Pick<PmsCycle, 'archetypeId' | 'name' | 'color' | 'departmentIds'>) => {
+    createCycle: useCallback((input: Pick<PmsCycle, 'archetypeId' | 'name' | 'color' | 'departmentIds' | 'subNodeIds'>) => {
       const now = new Date().toISOString();
       const cycle: PmsCycle = { ...input, id: id('cycle'), createdAt: now, updatedAt: now };
       update((current) => ({ ...current, cycles: [...current.cycles, cycle] }));
       return cycle.id;
     }, [update]),
-    updateCycle: useCallback((cycleId: string, patch: Partial<Pick<PmsCycle, 'name' | 'color' | 'departmentIds'>>) => update((current) => ({
+    updateCycle: useCallback((cycleId: string, patch: Partial<Pick<PmsCycle, 'name' | 'color' | 'departmentIds' | 'subNodeIds'>>) => update((current) => ({
       ...current,
       cycles: current.cycles.map((cycle) => cycle.id === cycleId ? { ...cycle, ...patch, updatedAt: new Date().toISOString() } : cycle),
     })), [update]),
