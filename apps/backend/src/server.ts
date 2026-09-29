@@ -38,6 +38,7 @@ import { incubatorDiscoverRouter } from './routes/incubatorDiscover.js';
 import { initializeRbac } from './rbac.js';
 import { metaAdsOperatingRouter } from './domains/meta-ads/router.js';
 import { businessDiagnosisRouter } from './routes/businessDiagnosis.js';
+import { pmsSupercycleRouter } from './routes/pmsSupercycle.js';
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -87,6 +88,7 @@ app.use('/api/incubator/portfolio', incubatorPortfolioRouter);
 app.use('/api/incubator/cohorts', incubatorCohortsRouter);
 app.use('/api/incubator/dashboard', incubatorDashboardRouter);
 app.use('/api/incubator/discover', incubatorDiscoverRouter);
+app.use('/api/pms/supercycle', pmsSupercycleRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (res.headersSent) {

@@ -15,13 +15,15 @@ import { SupercycleCycleEditor } from '../components/supercycle/SupercycleCycleE
 import { DepartmentCycleEditor } from '../components/supercycle/DepartmentCycleEditor';
 import {
   DEFAULT_ARCHETYPE,
-  SUPERCYCLE_ARCHETYPES,
-  SUPERCYCLE_ARCHETYPE_LIST,
+  ARCHETYPE_META,
   SUPERCYCLE_LABEL,
+  isArchetypeId,
+  type SupercycleArchetype,
   type SupercycleArchetypeId,
   type SupercycleInstance,
 } from '../lib/supercycleData';
 import { instanceHealth, usePmsStore } from '../lib/usePmsStore';
+import { pmsSupercycle, type NodeDetail, type StageDetail } from '../lib/db/pmsSupercycle';
 import { getAllIndustries } from '../lib/db/industries';
 import { getAllSubdomains } from '../lib/db/subdomains';
 import { useVoice } from '../context/VoiceContext';
@@ -45,8 +47,8 @@ export default function UniversalPage() {
   const returnIslandStage = searchParams.get('islandStage');
   const returnIslandIndexParam = Number.parseInt(searchParams.get('islandIndex') ?? '', 10);
   const returnArchetypeParam = searchParams.get('archetype');
-  const returnArchetypeId: SupercycleArchetypeId = returnArchetypeParam && returnArchetypeParam in SUPERCYCLE_ARCHETYPES
-    ? returnArchetypeParam as SupercycleArchetypeId
+  const returnArchetypeId: SupercycleArchetypeId = returnArchetypeParam && isArchetypeId(returnArchetypeParam)
+    ? returnArchetypeParam
     : DEFAULT_ARCHETYPE;
   const { user, profile, canRead, canWrite, role: authRole } = useAuth();
   const canCreateDepartments = canWrite('twin') && canWrite('team');
@@ -352,7 +354,62 @@ export default function UniversalPage() {
     ? { nodeId: returnPlanetId, stage: returnIslandStage, stageIndex: returnIslandIndexParam }
     : null);
   const [cycleRouteStyle, setCycleRouteStyle] = useState<SupercycleRouteStyle>('curved');
-  const archetype = SUPERCYCLE_ARCHETYPES[archetypeId];
+  // Phase 5: the node/sub-node/stage skeleton comes ONLY from the server
+  // (per-company, editable). Until the fetch lands we render an empty skeleton
+  // (no hardcoded catalogue) — the ring fills in as soon as the data arrives.
+  const archetype = useMemo<SupercycleArchetype>(() => {
+    const fromServer = pms.state.archetypes?.[archetypeId];
+    if (fromServer) return fromServer;
+    const meta = ARCHETYPE_META.find((a) => a.id === archetypeId);
+    return { id: archetypeId, label: meta?.label ?? archetypeId, revenueModel: meta?.revenueModel ?? '', nodes: [], optionalNodes: [] };
+  }, [pms.state.archetypes, archetypeId]);
+
+  // Phase 3: drilling into a planet or a stage lazily calls its own endpoint
+  // (GET /nodes/:id, /nodes/:id/stages/:id). Results are parked here for the
+  // detail panels (Phase 4) — the point today is that each drill level fetches
+  // from its own API rather than everything living in one payload.
+  const [nodeDetail, setNodeDetail] = useState<NodeDetail | null>(null);
+  const [stageDetail, setStageDetail] = useState<StageDetail | null>(null);
+
+  useEffect(() => {
+    if (!profile?.company_id || !selectedCycleNodeId) { setNodeDetail(null); return; }
+    let cancelled = false;
+    pmsSupercycle.getNode(archetypeId, selectedCycleNodeId)
+      .then((detail) => { if (!cancelled) setNodeDetail(detail); })
+      .catch((err) => {
+        if (cancelled) return;
+        setNodeDetail(null);
+        if (import.meta.env.DEV) console.warn('[pms] node detail fetch failed', err);
+      });
+    return () => { cancelled = true; };
+  }, [profile?.company_id, archetypeId, selectedCycleNodeId]);
+
+  useEffect(() => {
+    if (!profile?.company_id || !selectedStageIsland) { setStageDetail(null); return; }
+    let cancelled = false;
+    const { nodeId, stage } = selectedStageIsland;
+    pmsSupercycle.getStage(archetypeId, nodeId, stage)
+      .then((detail) => { if (!cancelled) setStageDetail(detail); })
+      .catch((err) => {
+        if (cancelled) return;
+        setStageDetail(null);
+        if (import.meta.env.DEV) console.warn('[pms] stage detail fetch failed', err);
+      });
+    return () => { cancelled = true; };
+  }, [profile?.company_id, archetypeId, selectedStageIsland]);
+
+  // Surface what the lazy drill endpoints returned (dev only) until the detail
+  // panels consume nodeDetail / stageDetail directly in Phase 4.
+  useEffect(() => {
+    if (import.meta.env.DEV && nodeDetail) {
+      console.debug('[pms] node drill', nodeDetail.node.id, '→ subnodes', nodeDetail.subNodes.length, 'stages', nodeDetail.stages.length, 'instances', nodeDetail.instances.length);
+    }
+  }, [nodeDetail]);
+  useEffect(() => {
+    if (import.meta.env.DEV && stageDetail) {
+      console.debug('[pms] stage drill', stageDetail.nodeId, '/', stageDetail.stage.id, '→ instances', stageDetail.instances.length);
+    }
+  }, [stageDetail]);
   const valueCycles = pms.state.cycles.filter((cycle) => cycle.archetypeId === archetypeId);
   const selectedValueCycle = valueCycles.find((cycle) => cycle.id === selectedValueCycleId) ?? null;
   const showSupercycle = coreDestination === 'supercycle' && corePhase !== 'idle';
@@ -847,7 +904,7 @@ export default function UniversalPage() {
               className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex gap-1 p-1.5 rounded-xl border backdrop-blur-md"
               style={{ background: 'rgba(8,13,26,0.68)', borderColor: 'rgba(79,216,255,0.18)' }}
             >
-              {SUPERCYCLE_ARCHETYPE_LIST.map((a) => (
+              {ARCHETYPE_META.map((a) => (
                 <button
                   key={a.id}
                   onClick={() => { setArchetypeId(a.id); pms.setArchetype(a.id); setSelectedCycleNodeId(null); setSelectedValueCycleId(null); setSelectedDepartmentCycleId(null); }}

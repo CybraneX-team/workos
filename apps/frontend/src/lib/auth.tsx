@@ -56,17 +56,41 @@ interface AuthContextValue extends AuthState {
 ────────────────────────────────────────────────── */
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const PROFILE_CACHE_KEY = 'workos_profile_cache_v1';
+function readCachedProfile(): DbUserProfile | null {
+  try { const raw = localStorage.getItem(PROFILE_CACHE_KEY); return raw ? (JSON.parse(raw) as DbUserProfile) : null; }
+  catch { return null; }
+}
+function writeCachedProfile(profile: DbUserProfile | null) {
+  try {
+    if (profile) localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    else localStorage.removeItem(PROFILE_CACHE_KEY);
+  } catch { /* ignore */ }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
     session: null,
-    profile: null,
+    profile: readCachedProfile(),
     loading: true,
   });
 
-  /* Load profile from DB */
+  /* Load profile from DB. Retries transient backend failures and caches the
+     last-known-good profile so a slow/failed /api/me never demotes the user. */
   async function loadProfile(): Promise<DbUserProfile | null> {
-    return api.get<DbUserProfile>('/api/me');
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const profile = await api.get<DbUserProfile>('/api/me');
+        writeCachedProfile(profile);
+        return profile;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+    throw lastErr;
   }
 
   async function refreshProfile() {
@@ -108,6 +132,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             profile = await loadProfile();
           } catch (err) {
             console.error('[auth] bootstrap profile', session.user.id, err);
+            // Transient backend failure must NOT demote an onboarded user into the
+            // onboarding flow — reuse the last-known-good profile for this user.
+            const cached = readCachedProfile();
+            profile = cached && cached.id === session.user.id ? cached : null;
           }
         }
         setAuthState(session, profile);
@@ -138,10 +166,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   // Keep the known profile for this same signed-in user when
                   // the backend is only temporarily unavailable.
                   console.error('[auth] profile refresh', session.user.id, err);
+                  const cached = readCachedProfile();
                   setState(current => ({
                     user: session.user,
                     session,
-                    profile: current.user?.id === session.user.id ? current.profile : null,
+                    profile: (current.user?.id === session.user.id ? current.profile : null)
+                      ?? (cached && cached.id === session.user.id ? cached : null),
                     loading: false,
                   }));
                   return;

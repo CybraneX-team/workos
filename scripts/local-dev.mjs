@@ -14,11 +14,14 @@ if (!['setup', 'backend', 'worker', 'frontend', 'both', 'test-native', 'test-sal
   process.exit(1);
 }
 
+const isWin = process.platform === 'win32';
+
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: isWin,
     ...options,
   });
 }
@@ -72,7 +75,7 @@ function localSupabaseEnv() {
 }
 
 function child(command, args, env) {
-  return spawn(command, args, { cwd: root, env, stdio: 'inherit' });
+  return spawn(command, args, { cwd: root, env, stdio: 'inherit', shell: isWin });
 }
 
 ensureSupabase();

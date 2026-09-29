@@ -18,28 +18,31 @@ meRouter.get('/', async (req: any, res: any) => {
     return res.status(500).json({ error: 'profile_lookup_failed' });
   }
 
-  const roleId = req.auth.role ?? (req.auth.companyId && profile?.role ? profile.role : DEFAULT_MEMBER_ROLE);
-  const role = getRoleDefinition(roleId, req.auth.companyId);
+  // Fall back to the profile's stored company when the live membership lookup
+  // momentarily resolves empty, so a transient miss never zeroes out the workspace.
+  const effectiveCompanyId = req.auth.companyId ?? profile?.company_id ?? null;
+  const roleId = req.auth.role ?? (effectiveCompanyId && profile?.role ? profile.role : DEFAULT_MEMBER_ROLE);
+  const role = getRoleDefinition(roleId, effectiveCompanyId);
 
   let bdtCompanySize: string | null = null;
-  if (req.auth.companyId) {
+  if (effectiveCompanyId) {
     const { rows } = await pool.query<{ bdt_company_size: string | null }>(
       `SELECT bdt_company_size FROM public.companies WHERE id = $1`,
-      [req.auth.companyId],
+      [effectiveCompanyId],
     );
     bdtCompanySize = rows[0]?.bdt_company_size ?? null;
   }
 
   return res.status(200).json({
     id: req.auth.userId,
-    company_id: req.auth.companyId,
+    company_id: effectiveCompanyId,
     bdt_company_size: bdtCompanySize,
     ...shapeProfileRole(role),
     first_name: profile?.first_name ?? null,
     last_name: profile?.last_name ?? null,
     title: profile?.title ?? null,
     avatar_url: profile?.avatar_url ?? null,
-    onboarding_completed: Boolean(req.auth.companyId) || Boolean(profile?.onboarding_completed),
+    onboarding_completed: Boolean(effectiveCompanyId) || Boolean(profile?.onboarding_completed),
     created_at: profile?.created_at ?? new Date().toISOString(),
     updated_at: profile?.updated_at ?? new Date().toISOString(),
   });

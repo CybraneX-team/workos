@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { SUPERCYCLE_ARCHETYPES, type SupercycleArchetypeId } from './supercycleData';
+import type { SupercycleArchetypeId } from './supercycleData';
+import { pmsSupercycle, type WireArchetypes } from './db/pmsSupercycle';
 
 export type PmsView = 'gallery' | 'department' | 'org' | 'hypercube';
 export type PmsProjectStatus = 'on_track' | 'at_risk' | 'delayed' | 'done';
@@ -105,6 +106,10 @@ export type PmsState = {
   instances: PmsLiveInstance[];
   cycles: PmsCycle[];
   departmentCycles: PmsDepartmentCycle[];
+  // The company-owned skeleton fetched from the server (Phase 2). Cached in
+  // localStorage for instant paint; falls back to the hardcoded catalogue when
+  // absent. Never pushed back to the server (read-only through this endpoint).
+  archetypes?: WireArchetypes;
 };
 
 export type PmsRepository = {
@@ -113,53 +118,10 @@ export type PmsRepository = {
   subscribe(listener: () => void): () => void;
 };
 
-function defaultCycle(archetypeId: SupercycleArchetypeId): PmsCycle {
-  const now = new Date().toISOString();
-  return {
-    id: `cycle_default_${archetypeId}`,
-    archetypeId,
-    name: 'Revenue & Growth',
-    color: '#4fd8ff',
-    departmentIds: SUPERCYCLE_ARCHETYPES[archetypeId].nodes.map((node) => node.id),
-    subNodeIds: SUPERCYCLE_ARCHETYPES[archetypeId].nodes.map((node) => node.subNodes[0]?.id).filter((id): id is string => Boolean(id)),
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-const DEPARTMENT_CYCLE_COLORS = ['#4fd8ff', '#c1aeff', '#22c55e', '#f0a83f'];
-
-function defaultDepartmentCycles(archetypeId: SupercycleArchetypeId): PmsDepartmentCycle[] {
-  const now = new Date().toISOString();
-  return SUPERCYCLE_ARCHETYPES[archetypeId].nodes.flatMap((node) => {
-    const stages = node.subCycle.stages;
-    const middle = stages.slice(1, Math.min(stages.length, 4));
-    const closing = [...stages.slice(Math.max(0, stages.length - 3)), stages[0]].filter((stage, index, all) => all.indexOf(stage) === index);
-    const memberships = [
-      stages,
-      stages.slice(0, Math.max(2, Math.ceil(stages.length * 0.6))),
-      middle.length >= 2 ? middle : stages.slice(0, 2),
-      closing.length >= 2 ? closing : stages.slice(-2),
-    ];
-    const names = [
-      node.subCycle.label,
-      `${node.subNodes[0]?.label ?? 'Planning'} loop`,
-      `${node.subNodes[1]?.label ?? 'Delivery'} loop`,
-      `${node.label} optimisation`,
-    ];
-    return names.map((name, index) => ({
-      id: `department_cycle_${archetypeId}_${node.id}_${index + 1}`,
-      archetypeId,
-      departmentId: node.id,
-      name,
-      color: DEPARTMENT_CYCLE_COLORS[index],
-      stageIds: memberships[index],
-      createdAt: now,
-      updatedAt: now,
-    }));
-  });
-}
-
+// Phase 5: default cycles are seeded SERVER-side (ensureCompanyDefaults) from
+// the per-company skeleton, so the client no longer generates them from a
+// hardcoded catalogue. A fresh browser starts empty and adopts the server's
+// seeded cycles on first fetch.
 const emptyState = (): PmsState => ({
   version: 1,
   archetypeId: 'b2b_saas',
@@ -171,10 +133,28 @@ const emptyState = (): PmsState => ({
   files: [],
   messages: [],
   instances: [],
-  cycles: [defaultCycle('b2b_saas')],
-  departmentCycles: (Object.keys(SUPERCYCLE_ARCHETYPES) as SupercycleArchetypeId[])
-    .flatMap(defaultDepartmentCycles),
+  cycles: [],
+  departmentCycles: [],
 });
+
+// The full slice mirrored to Postgres (per company). Phase 4: this now covers
+// the whole PmsState — the supercycle slice AND the execution layer — so the
+// server is authoritative for everything and localStorage is only a cache.
+function supercycleSlice(state: PmsState) {
+  return {
+    archetypeId: state.archetypeId,
+    cycles: state.cycles,
+    departmentCycles: state.departmentCycles,
+    instances: state.instances,
+    projects: state.projects,
+    tasks: state.tasks,
+    milestones: state.milestones,
+    risks: state.risks,
+    decisions: state.decisions,
+    files: state.files,
+    messages: state.messages,
+  };
+}
 
 const repositories = new Map<string, PmsRepository>();
 
@@ -212,6 +192,137 @@ function storageRepository(companyId: string): PmsRepository {
   };
   repositories.set(companyId, repository);
   return repository;
+}
+
+// Item 1.1: Postgres is the source of truth for the supercycle slice. Each
+// company gets one long-lived sync controller (cached), created lazily by the
+// hook. localStorage is only an offline cache so the first paint is instant;
+// the server is fetched on mount and re-fetched whenever the window/tab regains
+// focus, so a change made in one browser shows up in another. Local edits are
+// pushed (debounced) as a full-replace mirror. If the server has never been
+// saved for this company it is bootstrapped once from the local defaults.
+
+type SupercycleSync = { refetch: () => void };
+const supercycleControllers = new Map<string, SupercycleSync>();
+
+function createSupercycleSync(companyId: string, repository: PmsRepository): SupercycleSync {
+  let pushTimer: ReturnType<typeof setTimeout> | null = null;
+  let getInFlight = false;
+  // Signature of the slice we last know is in sync with the server, so we don't
+  // re-push what we just adopted or re-adopt what we just pushed.
+  let lastSynced = '';
+
+  const pushSlice = () => {
+    const slice = supercycleSlice(repository.read());
+    const sig = JSON.stringify(slice);
+    if (sig === lastSynced) return;
+    lastSynced = sig;
+    pmsSupercycle.save(slice).catch((err) => {
+      // Allow a later change (or refetch) to retry instead of silently wedging.
+      lastSynced = '';
+      console.warn('[pms-supercycle] save failed', err);
+    });
+  };
+
+  const adopt = (server: Awaited<ReturnType<typeof pmsSupercycle.get>>) => {
+    const now = new Date().toISOString();
+    const current = repository.read();
+    const withStamps = <T,>(rows: T[]) => rows.map((r) => ({
+      createdAt: now, updatedAt: now, ...(r as Record<string, unknown>),
+    }));
+    // No-data-loss backfill: if the server has never stored execution data but
+    // this browser has some locally, keep the local copy (it gets pushed up)
+    // instead of letting the server's empty arrays clobber it.
+    const serverHasExec = (server.projects?.length ?? 0) > 0
+      || (server.tasks?.length ?? 0) > 0 || (server.milestones?.length ?? 0) > 0
+      || (server.risks?.length ?? 0) > 0 || (server.decisions?.length ?? 0) > 0
+      || (server.files?.length ?? 0) > 0 || (server.messages?.length ?? 0) > 0;
+    const localHasExec = current.projects.length > 0 || current.tasks.length > 0
+      || current.milestones.length > 0 || current.risks.length > 0
+      || current.decisions.length > 0 || current.files.length > 0 || current.messages.length > 0;
+    const keepLocalExec = !serverHasExec && localHasExec;
+    const pick = <T,>(srv: T[] | undefined, loc: T[]) => (keepLocalExec ? loc : (srv ?? loc));
+
+    const merged: PmsState = {
+      ...current,
+      archetypeId: server.archetypeId ?? current.archetypeId,
+      cycles: withStamps(server.cycles) as PmsState['cycles'],
+      departmentCycles: withStamps(server.departmentCycles) as PmsState['departmentCycles'],
+      instances: withStamps(server.instances) as PmsState['instances'],
+      // Execution layer round-trips exactly (own ids/timestamps kept), so adopt
+      // it as-is — unless we're backfilling local data into an empty server.
+      projects: pick(server.projects, current.projects),
+      tasks: pick(server.tasks, current.tasks),
+      milestones: pick(server.milestones, current.milestones),
+      risks: pick(server.risks, current.risks),
+      decisions: pick(server.decisions, current.decisions),
+      files: pick(server.files, current.files),
+      messages: pick(server.messages, current.messages),
+    };
+    const mergedSig = JSON.stringify(supercycleSlice(merged));
+    // Avoid a redundant write/re-render when the server matches what we have.
+    if (JSON.stringify(supercycleSlice(current)) !== mergedSig) repository.write(merged);
+    if (keepLocalExec) {
+      // Force the kept-local execution up to the empty server.
+      lastSynced = '';
+      pushSlice();
+    } else {
+      lastSynced = mergedSig;
+    }
+  };
+
+  const refetch = () => {
+    if (getInFlight) return;
+    // A local edit is queued to be saved — don't let a focus refetch clobber it.
+    if (pushTimer) return;
+    getInFlight = true;
+    void (async () => {
+      try {
+        const server = await pmsSupercycle.get();
+        // Always cache the server skeleton (Phase 2). It is server-authoritative
+        // and seeded for every company, so adopt it independently of whether the
+        // data slice (cycles/instances) has rows yet.
+        if (server.archetypes) {
+          const current = repository.read();
+          if (JSON.stringify(current.archetypes) !== JSON.stringify(server.archetypes)) {
+            repository.write({ ...current, archetypes: server.archetypes });
+          }
+        }
+        const hasServer = (server.cycles?.length ?? 0) > 0
+          || (server.departmentCycles?.length ?? 0) > 0
+          || (server.instances?.length ?? 0) > 0;
+        if (hasServer) {
+          adopt(server);
+        } else {
+          // Company has never saved: bootstrap the server from local defaults.
+          pushSlice();
+        }
+      } catch (err) {
+        console.warn('[pms-supercycle] refetch failed (using local cache)', err);
+      } finally {
+        getInFlight = false;
+      }
+    })();
+  };
+
+  repository.subscribe(() => {
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+      pushTimer = null;
+      pushSlice();
+    }, 600);
+  });
+
+  return { refetch };
+}
+
+function getSupercycleSync(companyId: string, repository: PmsRepository): SupercycleSync | null {
+  if (!companyId || companyId === 'unscoped') return null;
+  const existing = supercycleControllers.get(companyId);
+  if (existing) return existing;
+  const controller = createSupercycleSync(companyId, repository);
+  supercycleControllers.set(companyId, controller);
+  return controller;
 }
 
 function id(prefix: string) {
@@ -253,8 +364,24 @@ export function usePmsStore(companyId: string | null | undefined) {
 
   useEffect(() => {
     setState(repository.read());
-    return repository.subscribe(() => setState(repository.read()));
-  }, [repository]);
+    const unsubscribe = repository.subscribe(() => setState(repository.read()));
+
+    const sync = getSupercycleSync(companyId || 'unscoped', repository);
+    if (!sync) return unsubscribe;
+
+    // DB is the source of truth: pull on mount (screen open) and whenever the
+    // window/tab regains focus, so changes made in another browser show up here.
+    sync.refetch();
+    const onFocus = () => sync.refetch();
+    const onVisibility = () => { if (document.visibilityState === 'visible') sync.refetch(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [repository, companyId]);
 
   const update = useCallback((mutate: (current: PmsState) => PmsState) => {
     const next = mutate(repository.read());
@@ -263,15 +390,11 @@ export function usePmsStore(companyId: string | null | undefined) {
 
   return {
     state,
+    // Just switch the active archetype. Its cycles are seeded server-side and
+    // arrive via the fetch, so there is nothing to generate client-side.
     setArchetype: useCallback((archetypeId: SupercycleArchetypeId) => update((current) => ({
       ...current,
       archetypeId,
-      cycles: current.cycles.some((cycle) => cycle.archetypeId === archetypeId)
-        ? current.cycles
-        : [...current.cycles, defaultCycle(archetypeId)],
-      departmentCycles: current.departmentCycles.some((cycle) => cycle.archetypeId === archetypeId)
-        ? current.departmentCycles
-        : [...current.departmentCycles, ...defaultDepartmentCycles(archetypeId)],
     })), [update]),
     createCycle: useCallback((input: Pick<PmsCycle, 'archetypeId' | 'name' | 'color' | 'departmentIds' | 'subNodeIds'>) => {
       const now = new Date().toISOString();
