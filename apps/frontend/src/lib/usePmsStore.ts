@@ -205,7 +205,7 @@ function storageRepository(companyId: string): PmsRepository {
 type SupercycleSync = { refetch: () => void };
 const supercycleControllers = new Map<string, SupercycleSync>();
 
-function createSupercycleSync(companyId: string, repository: PmsRepository): SupercycleSync {
+function createSupercycleSync(_companyId: string, repository: PmsRepository): SupercycleSync {
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
   let getInFlight = false;
   // Signature of the slice we last know is in sync with the server, so we don't

@@ -1777,9 +1777,6 @@ const NAV_TABS: AppTab[] = ["world", "tasks", "review"];
               {tab === "review" && pendingCount > 0 && <i className="tab-badge">{pendingCount}</i>}
             </button>
           ))}
-          <a href="#/quartermaster" className="tab tab--qm-link" type="button">
-            <Sparkles size={12} /> QM
-          </a>
         </nav>
         <div className="header-right">
           <div className="user-pill">

@@ -34,6 +34,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import * as THREE from "three";
 import { useAuth, useFunctionRun, useRecords } from "./localBackend";
 import VisualProductDoc from "../PMS3D/arcade/VisualProductDoc";
@@ -49,7 +50,7 @@ import {
 import { CinematicDirector, type CineControls, type CineScript } from "../PMS3D/arcade/cinematic";
 import { QuartermasterPage } from "../PMS3D/arcade/QuartermasterPage";
 import { DEMOS } from "../PMS3D/arcade/demos";
-import ObjectSpace from "./ObjectSpace";
+import ObjectSpace, { type ObjectSpaceNavbarContext } from "./ObjectSpace";
 
 // ---------------------------------------------------------------------------
 // MODEL
@@ -1036,7 +1037,7 @@ function World({
         enableDamping
         dampingFactor={0.05}
         target={[0, 0, 0]}
-        minZoom={75}
+        minZoom={30}
         maxZoom={200}
         minPolarAngle={0.2}
         maxPolarAngle={1.25}
@@ -2521,14 +2522,59 @@ function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const getTabFromUrl = useCallback((): AppTab => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view") || params.get("tab");
+    if (view === "objects" || view === "object-space") return "objects";
+    if (view === "tasks") return "tasks";
+    if (view === "review") return "review";
+    if (view === "gallery" || ["island", "department", "org", "orgAdmin", "hypercube"].includes(view ?? "")) return "gallery";
+
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes("/object-space") || path.endsWith("/objects")) return "objects";
+    if (path.endsWith("/tasks")) return "tasks";
+    if (path.endsWith("/review")) return "review";
+    if (path.endsWith("/gallery")) return "gallery";
+    if (path.endsWith("/demos")) return "demos";
+    if (path.endsWith("/roadmap")) return "roadmap";
+    return "world";
+  }, []);
+
   const initialPmsView = new URLSearchParams(window.location.search).get("view");
   const initialIslandParam = Number.parseInt(new URLSearchParams(window.location.search).get("island") ?? "", 10);
   const initialIslandId = Number.isFinite(initialIslandParam)
     ? Math.max(0, Math.min(GALLERY_ISLAND_COUNT - 1, initialIslandParam))
     : null;
-  const [activeTab, setActiveTab] = useState<AppTab>(() =>
-    ["gallery", "island", "department", "org", "orgAdmin", "hypercube"].includes(initialPmsView ?? "") ? "gallery" : "world",
-  );
+
+  const [activeTab, setActiveTabState] = useState<AppTab>(() => getTabFromUrl());
+
+  useEffect(() => {
+    const currentTab = getTabFromUrl();
+    setActiveTabState(currentTab);
+  }, [location.pathname, location.search, getTabFromUrl]);
+
+  const setActiveTab = useCallback((tab: AppTab) => {
+    setActiveTabState(tab);
+    const isRootObjectSpace = window.location.pathname.startsWith("/object-space");
+
+    let targetPath = "/new-pms";
+    if (tab === "objects") {
+      targetPath = isRootObjectSpace ? "/object-space" : "/new-pms/object-space";
+    } else if (tab === "world") {
+      targetPath = "/new-pms";
+    } else {
+      targetPath = `/new-pms/${tab}`;
+    }
+
+    if (window.location.pathname !== targetPath) {
+      navigate(targetPath);
+    }
+  }, [navigate]);
+
+  const [objectSpaceTaskCtx, setObjectSpaceTaskCtx] = useState<ObjectSpaceNavbarContext | null>(null);
 
   // The gallery tab's <Canvas> mounts fresh each time it's switched to,
   // inside a conditionally-rendered section — react-three-fiber's resize
@@ -3026,7 +3072,12 @@ function App() {
       />
 
       {activeTab === "roadmap" && <VisualProductDoc />}
-      {activeTab === "objects" && <ObjectSpace />}
+      {activeTab === "objects" && (
+        <ObjectSpace
+          currentUser={currentUser}
+          onNavbarContextChange={setObjectSpaceTaskCtx}
+        />
+      )}
 
       {/* ── DEMOS ─────────────────────────────────────── */}
       {activeTab === "demos" && (
@@ -3269,46 +3320,90 @@ function App() {
       )}
 
       <header className="app-header">
-        <button className="brand-pill" type="button" onClick={() => setActiveTab("world")}>
-          <Castle size={22} />
-          Task Arcade
-        </button>
-        <nav className="app-tabs" aria-label="Desk sections">
-          {NAV_TABS.map((tab) => (
-            <button
-              key={tab}
-              className={activeTab === tab ? "tab active" : "tab"}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-            >
-              {tabLabel[tab]}
-              {tab === "review" && pendingCount > 0 && <i className="tab-badge">{pendingCount}</i>}
-            </button>
-          ))}
-          <a href="#/quartermaster" className="tab tab--qm-link" type="button">
-            <Sparkles size={12} /> QM
-          </a>
-        </nav>
-        <div className="header-right">
-          <div className="user-pill">
-            <Avatar name={currentUser.name} color={colorForBuilder(currentUser.email, teamMembers)} email={currentUser.email} size={24} />
-            <span className="user-pill-name">{currentUser.name}</span>
-            <span className={`role-chip role-chip--${currentUser.role}`}>
-              {currentUser.role === "manager" ? "Manager" : currentUser.role === "viewer" ? "Viewer" : "Member"}
-            </span>
-          </div>
-          <button
-            className="cine-launch"
-            type="button"
-            title="Browse cinematic walkthroughs"
-            onClick={() => setActiveTab("demos")}
-          >
-            <Film size={16} /> Demos
+        <div className="header-left">
+          <button className="brand-pill" type="button" onClick={() => setActiveTab("world")}>
+            <Castle size={22} />
+            Task Arcade
           </button>
-          <div className="world-count">
-            <Layers size={16} />
-            <span>{isLoading && view.length === 0 ? "Loading…" : `${placed} placed`}</span>
-          </div>
+          <nav className="app-tabs" aria-label="Desk sections">
+            {NAV_TABS.map((tab) => (
+              <button
+                key={tab}
+                className={activeTab === tab ? "tab active" : "tab"}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+              >
+                {tabLabel[tab]}
+                {tab === "review" && pendingCount > 0 && <i className="tab-badge">{pendingCount}</i>}
+              </button>
+            ))}
+          </nav>
+        </div>
+        <div className="header-right">
+          {activeTab === "objects" && objectSpaceTaskCtx?.task ? (
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={objectSpaceTaskCtx.onBackToHub}
+                className="flex items-center gap-1.5 h-[42px] px-4 rounded-full bg-white/95 hover:bg-white text-slate-700 border-2 border-white/80 font-bold text-xs shadow-[0_10px_24px_rgba(79,116,89,0.12)] transition-all hover:-translate-x-0.5 cursor-pointer"
+                title="Return to Object Space Hub"
+              >
+                <ChevronLeft size={15} />
+                <span>My Tasks Hub</span>
+              </button>
+
+              <div className="hidden sm:flex items-center gap-2 h-[42px] px-3.5 rounded-full bg-white/95 border-2 border-white/80 shadow-[0_10px_24px_rgba(79,116,89,0.12)] text-xs">
+                <span className="text-[11px] text-slate-400 font-medium">Assignee:</span>
+                <div className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-[10px]">
+                  {objectSpaceTaskCtx.task.assignee.name.charAt(0)}
+                </div>
+                <span className="font-bold text-slate-800">{objectSpaceTaskCtx.task.assignee.name}</span>
+              </div>
+
+              <div className="flex items-center gap-2 h-[42px] px-3.5 rounded-full bg-white/95 border-2 border-white/80 shadow-[0_10px_24px_rgba(79,116,89,0.12)]">
+                <div className="w-16 h-2 rounded-full bg-slate-200 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                    style={{ width: `${objectSpaceTaskCtx.task.progress}%` }}
+                  />
+                </div>
+                <span className="text-xs font-mono font-bold text-emerald-600">
+                  {objectSpaceTaskCtx.task.progress}%
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={objectSpaceTaskCtx.onOpenReportModal}
+                className="flex items-center gap-1.5 h-[42px] px-4 rounded-full text-xs font-extrabold bg-[#2f8d4d] hover:bg-[#25733e] text-white shadow-[0_5px_0_#1e5e32,0_16px_34px_rgba(40,93,59,0.2)] active:translate-y-0.5 active:shadow-[0_2px_0_#1e5e32] transition-all cursor-pointer"
+              >
+                <Send size={13} />
+                <span>Submit Task</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="user-pill">
+                <Avatar name={currentUser.name} color={colorForBuilder(currentUser.email, teamMembers)} email={currentUser.email} size={24} />
+                <span className="user-pill-name">{currentUser.name}</span>
+                <span className={`role-chip role-chip--${currentUser.role}`}>
+                  {currentUser.role === "manager" ? "Manager" : currentUser.role === "viewer" ? "Viewer" : "Member"}
+                </span>
+              </div>
+              <button
+                className="cine-launch"
+                type="button"
+                title="Browse cinematic walkthroughs"
+                onClick={() => setActiveTab("demos")}
+              >
+                <Film size={16} /> Demos
+              </button>
+              <div className="world-count">
+                <Layers size={16} />
+                <span>{isLoading && view.length === 0 ? "Loading…" : `${placed} placed`}</span>
+              </div>
+            </>
+          )}
         </div>
       </header>
 

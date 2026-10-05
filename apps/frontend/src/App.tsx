@@ -123,12 +123,12 @@ function AppRoutes() {
     );
   }
 
-  // /new-pms — same task-management UI as /3d-pms, but the 3D canvas is a
-  // fresh empty scene being built from scratch (see pages/NewPMS/App.tsx).
-  if (location.pathname.startsWith('/new-pms')) {
+  // /new-pms and /object-space — task arcade and 3D Object Space routes
+  if (location.pathname.startsWith('/new-pms') || location.pathname.startsWith('/object-space')) {
     return (
       <Routes>
         <Route path="/new-pms/*" element={<NewPMSApp />} />
+        <Route path="/object-space/*" element={<NewPMSApp />} />
       </Routes>
     );
   }

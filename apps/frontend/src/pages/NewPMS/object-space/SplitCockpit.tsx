@@ -1,0 +1,251 @@
+import React, { useState } from 'react';
+import {
+  Save,
+  MessageSquare,
+  Edit2,
+  Trash2,
+  ShieldCheck,
+  Lock,
+} from 'lucide-react';
+import type { ImplementationTask, TaskStep } from './types';
+import { canEditTask, canDeleteTask } from './types';
+import { StepTimeline } from './components/StepTimeline';
+import { StepWorkspace } from './components/StepWorkspace';
+import { AddStepModal } from './components/AddStepModal';
+import { TaskReportModal } from './components/TaskReportModal';
+
+interface SplitCockpitProps {
+  task: ImplementationTask;
+  currentUser?: { name: string; email: string };
+  onUpdateTask: (updatedTask: ImplementationTask) => void;
+  onBackToHub: () => void;
+  onToast: (msg: string, tone?: 'good' | 'bad') => void;
+  onEditTask?: (task: ImplementationTask) => void;
+  onDeleteTask?: (task: ImplementationTask) => void;
+  isReportOpen?: boolean;
+  setIsReportOpen?: (open: boolean) => void;
+}
+
+export const SplitCockpit: React.FC<SplitCockpitProps> = ({
+  task,
+  currentUser = { name: 'Ronak', email: 'manager@example.com' },
+  onUpdateTask,
+  onToast,
+  onEditTask,
+  onDeleteTask,
+  isReportOpen: controlledReportOpen,
+  setIsReportOpen: controlledSetReportOpen,
+}) => {
+  const [activeStepId, setActiveStepId] = useState<string>(
+    task.steps[0]?.id || ''
+  );
+  const [isAddStepOpen, setIsAddStepOpen] = useState(false);
+  const [internalReportOpen, setInternalReportOpen] = useState(false);
+  const [isNotesDrawerOpen, setIsNotesDrawerOpen] = useState(false);
+  const [assigneeNotes, setAssigneeNotes] = useState(task.notes || '');
+
+  const isReportOpen = controlledReportOpen ?? internalReportOpen;
+  const setIsReportOpen = controlledSetReportOpen ?? setInternalReportOpen;
+
+  const isOwner = canEditTask(task, currentUser.email);
+  const isDeletable = canDeleteTask(task, currentUser.email);
+
+  const activeStepIndex = task.steps.findIndex((s) => s.id === activeStepId);
+  const activeStep = task.steps[activeStepIndex] || task.steps[0];
+
+  const handleUpdateStep = (updatedStep: TaskStep) => {
+    const updatedSteps = task.steps.map((s) =>
+      s.id === updatedStep.id ? updatedStep : s
+    );
+
+    const completedCount = updatedSteps.filter((s) => s.isCompleted).length;
+    const progress = Math.round((completedCount / updatedSteps.length) * 100);
+
+    onUpdateTask({
+      ...task,
+      steps: updatedSteps,
+      progress,
+    });
+  };
+
+  const handleAddStep = (newStep: TaskStep) => {
+    const updatedSteps = [...task.steps, newStep];
+    const completedCount = updatedSteps.filter((s) => s.isCompleted).length;
+    const progress = Math.round((completedCount / updatedSteps.length) * 100);
+
+    onUpdateTask({
+      ...task,
+      steps: updatedSteps,
+      progress,
+    });
+    setActiveStepId(newStep.id);
+    onToast(`Added custom step: "${newStep.title}"`, 'good');
+  };
+
+  const handleSaveDraft = () => {
+    onUpdateTask({
+      ...task,
+      notes: assigneeNotes,
+    });
+    onToast('Implementation draft saved', 'good');
+  };
+
+  const handleSubmitFinalReport = (summaryNotes: string) => {
+    onUpdateTask({
+      ...task,
+      status: 'completed',
+      progress: 100,
+      notes: summaryNotes,
+      submittedAt: new Date().toISOString(),
+    });
+    setIsReportOpen(false);
+    onToast('Task submitted successfully! Department rollups updated.', 'good');
+  };
+
+  const isFirstStep = activeStepIndex === 0;
+  const isLastStep = activeStepIndex === task.steps.length - 1;
+
+  const handlePrevStep = () => {
+    if (!isFirstStep) {
+      setActiveStepId(task.steps[activeStepIndex - 1].id);
+    }
+  };
+
+  const handleNextStep = () => {
+    if (!isLastStep) {
+      setActiveStepId(task.steps[activeStepIndex + 1].id);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full w-full bg-[#f8fafc] text-slate-800 absolute inset-0 overflow-hidden font-sans z-10 pt-[84px]">
+      {/* Main Split View: Left Stepper + Right Workspace (Light Mode) */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-5 p-5 overflow-hidden z-10 min-h-0">
+        <StepTimeline
+          steps={task.steps}
+          activeStepId={activeStep?.id || ''}
+          onSelectStep={(id) => setActiveStepId(id)}
+          onOpenAddStepModal={() => setIsAddStepOpen(true)}
+        />
+
+        {activeStep && (
+          <StepWorkspace
+            step={activeStep}
+            isFirstStep={isFirstStep}
+            isLastStep={isLastStep}
+            onUpdateStep={handleUpdateStep}
+            onPrevStep={handlePrevStep}
+            onNextStep={handleNextStep}
+          />
+        )}
+      </div>
+
+      {/* Bottom Sticky Action Tray with Ownership & CRUD actions */}
+      <footer className="px-6 py-2.5 bg-white border-t border-slate-200 flex items-center justify-between z-20 text-xs shrink-0 shadow-sm flex-wrap gap-2">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium transition-colors"
+          >
+            <Save size={13} />
+            <span>Save Draft</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsNotesDrawerOpen(!isNotesDrawerOpen)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium transition-colors"
+          >
+            <MessageSquare size={13} />
+            <span>Assignee Working Notes {assigneeNotes ? '●' : ''}</span>
+          </button>
+
+          {/* Owner Edit & Delete Actions */}
+          {isOwner && onEditTask && (
+            <button
+              type="button"
+              onClick={() => onEditTask(task)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200 text-slate-700 border border-slate-200 font-medium transition-colors"
+              title="Edit Task Details"
+            >
+              <Edit2 size={13} />
+              <span>Edit Details</span>
+            </button>
+          )}
+
+          {isDeletable && onDeleteTask && (
+            <button
+              type="button"
+              onClick={() => onDeleteTask(task)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 border border-slate-200 font-medium transition-colors"
+              title="Delete Task"
+            >
+              <Trash2 size={13} />
+              <span>Delete</span>
+            </button>
+          )}
+        </div>
+
+        {/* Ownership & Permission Pill */}
+        <div className="flex items-center gap-3">
+          {isOwner ? (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold">
+              <ShieldCheck size={12} className="text-emerald-600" />
+              <span>Created by You (Full Permissions)</span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-medium">
+              <Lock size={12} className="text-slate-400" />
+              <span>Assigned by {task.createdByName || task.createdBy || 'Team Lead'} (Read-Only)</span>
+            </span>
+          )}
+
+          <div className="text-[11px] text-slate-500 font-mono hidden md:block">
+            Due: {task.due} · {task.estimatedMinutes} mins
+          </div>
+        </div>
+      </footer>
+
+      {/* Floating Notes Drawer (Light Mode) */}
+      {isNotesDrawerOpen && (
+        <div className="absolute bottom-14 left-6 w-96 bg-white border border-slate-200 rounded-2xl p-4 shadow-xl z-30 space-y-2 animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-900">Assignee Scratchpad Notes</span>
+            <button
+              type="button"
+              onClick={() => setIsNotesDrawerOpen(false)}
+              className="text-slate-400 hover:text-slate-700 text-xs"
+            >
+              ✕
+            </button>
+          </div>
+          <textarea
+            rows={4}
+            value={assigneeNotes}
+            onChange={(e) => setAssigneeNotes(e.target.value)}
+            placeholder="Log thoughts, customer context, or handoff notes here..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-violet-500 resize-none font-mono"
+          />
+        </div>
+      )}
+
+      {/* Modals */}
+      {isAddStepOpen && (
+        <AddStepModal
+          currentStepCount={task.steps.length}
+          onAddStep={handleAddStep}
+          onClose={() => setIsAddStepOpen(false)}
+        />
+      )}
+
+      {isReportOpen && (
+        <TaskReportModal
+          task={task}
+          onSubmitReport={handleSubmitFinalReport}
+          onClose={() => setIsReportOpen(false)}
+        />
+      )}
+    </div>
+  );
+};

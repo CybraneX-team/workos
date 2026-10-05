@@ -130,6 +130,7 @@ export function DemoControls() {
 
   return (
     <div
+      className="demo-controls-bar"
       style={{
         position: "fixed",
         bottom: 14,
