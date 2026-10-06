@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Save,
   MessageSquare,
@@ -6,6 +6,9 @@ import {
   Trash2,
   ShieldCheck,
   Lock,
+  Sparkles,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import type { ImplementationTask, TaskStep } from './types';
 import { canEditTask, canDeleteTask } from './types';
@@ -13,6 +16,8 @@ import { StepTimeline } from './components/StepTimeline';
 import { StepWorkspace } from './components/StepWorkspace';
 import { AddStepModal } from './components/AddStepModal';
 import { TaskReportModal } from './components/TaskReportModal';
+import { usePlaybook } from './utils/usePlaybook';
+import { archetypeLabel } from './utils/playbook';
 
 interface SplitCockpitProps {
   task: ImplementationTask;
@@ -43,6 +48,13 @@ export const SplitCockpit: React.FC<SplitCockpitProps> = ({
   const [internalReportOpen, setInternalReportOpen] = useState(false);
   const [isNotesDrawerOpen, setIsNotesDrawerOpen] = useState(false);
   const [assigneeNotes, setAssigneeNotes] = useState(task.notes || '');
+
+  const { generating, regenerate } = usePlaybook(task, onUpdateTask, onToast);
+
+  // Steps can arrive after the cockpit opens (AI playbook): select the first one when they do.
+  useEffect(() => {
+    if (!task.steps.some((st) => st.id === activeStepId)) setActiveStepId(task.steps[0]?.id || '');
+  }, [task.steps, activeStepId]);
 
   const isReportOpen = controlledReportOpen ?? internalReportOpen;
   const setIsReportOpen = controlledSetReportOpen ?? setInternalReportOpen;
@@ -119,7 +131,42 @@ export const SplitCockpit: React.FC<SplitCockpitProps> = ({
 
   return (
     <div className="flex flex-col h-full w-full bg-[#f8fafc] text-slate-800 absolute inset-0 overflow-hidden font-sans z-10 pt-[84px]">
-      {/* Main Split View: Left Stepper + Right Workspace (Light Mode) */}
+      {task.steps.length > 0 && task.playbook && (
+        <div className="mx-5 mt-4 -mb-1 flex items-center gap-2 text-[11px] text-slate-600 shrink-0">
+          <Sparkles size={12} className={task.playbook.status === 'ready' ? 'text-violet-600' : 'text-slate-400'} />
+          {task.playbook.status === 'ready' && (
+            <span>
+              AI playbook
+              {task.archetypes?.length ? ` · ${task.archetypes.map((a) => archetypeLabel(a.key)).join(' + ')}` : ''}
+            </span>
+          )}
+          {task.playbook.status === 'fallback' && <span>Standard playbook (AI output was unusable)</span>}
+          {task.playbook.status === 'local' && <span>Standard playbook (AI unavailable here)</span>}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={regenerate}
+              disabled={generating}
+              className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-200 bg-white hover:bg-violet-50 hover:text-violet-700 disabled:opacity-60 font-semibold transition-colors"
+              title="Replace these steps with a freshly generated playbook"
+            >
+              {generating ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+              <span>{generating ? 'Generating…' : 'Regenerate'}</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {task.steps.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 p-5 text-center z-10">
+          <Loader2 size={26} className="animate-spin text-violet-600" />
+          <div className="text-sm font-bold text-slate-800">Building your playbook…</div>
+          <p className="max-w-sm text-xs text-slate-500">
+            Reading the task, working out what kind of work it is, and writing steps for {task.assignee.name} in {task.departmentName}.
+          </p>
+        </div>
+      ) : (
+      /* Main Split View: Left Stepper + Right Workspace (Light Mode) */
       <div className="flex-1 flex flex-col lg:flex-row gap-5 p-5 overflow-hidden z-10 min-h-0">
         <StepTimeline
           steps={task.steps}
@@ -139,6 +186,7 @@ export const SplitCockpit: React.FC<SplitCockpitProps> = ({
           />
         )}
       </div>
+      )}
 
       {/* Bottom Sticky Action Tray with Ownership & CRUD actions */}
       <footer className="px-6 py-2.5 bg-white border-t border-slate-200 flex items-center justify-between z-20 text-xs shrink-0 shadow-sm flex-wrap gap-2">

@@ -1,26 +1,7 @@
-export type DepartmentCategory =
-  | 'Revenue & Commercial Operations'
-  | 'Marketing, Growth & Brand'
-  | 'Product, Design & Engineering'
-  | 'Operations, Supply Chain & Legal'
-  | 'People, Talent & HR'
-  | 'Finance, Accounting & RevOps';
-
-export type DepartmentKey =
-  | 'outbound_sales'
-  | 'inbound_sales'
-  | 'customer_success'
-  | 'paid_marketing'
-  | 'content_seo'
-  | 'engineering'
-  | 'qa_release'
-  | 'uiux_design'
-  | 'inventory_logistics'
-  | 'legal_compliance'
-  | 'recruiting'
-  | 'people_ops'
-  | 'accounts_receivable'
-  | 'accounts_payable';
+// Departments come from the company's real departments table (see GET /api/pms/object-space/context).
+// Seed/demo tasks carry their own free-text department names, so these are plain strings.
+export type DepartmentCategory = string;
+export type DepartmentKey = string;
 
 export type StepType = 'checklist' | 'script_viewer' | 'input_form' | 'connector_action';
 
@@ -110,8 +91,37 @@ export interface AssigneeInfo {
   role: string;
 }
 
+/**
+ * Where a task's steps came from. Steps live on the task (localStorage), so this is what stops us
+ * regenerating (and losing progress) every time a task is opened.
+ *  - pending:    no steps yet; generate on first open
+ *  - generating: a request is in flight
+ *  - ready:      steps came from the AI playbook
+ *  - fallback:   server answered but had to use its archetype template (model output unusable)
+ *  - local:      AI unavailable here (signed out, quota, offline); generic template used
+ */
+export type PlaybookStatus = 'pending' | 'generating' | 'ready' | 'fallback' | 'local';
+
+export interface PlaybookMeta {
+  status: PlaybookStatus;
+  generatedAt?: string;
+  model?: string;
+  promptVersion?: string;
+  confidence?: number;
+  /** Short machine reason when status is local, e.g. ai_unavailable, signed_out, rate_limited. */
+  reason?: string;
+}
+
+export interface TaskArchetypeTag {
+  key: string;
+  weight: number;
+}
+
 export interface ImplementationTask {
   id: string;
+  /** AI playbook bookkeeping. Absent on tasks created before AI playbooks (they already have steps). */
+  playbook?: PlaybookMeta;
+  archetypes?: TaskArchetypeTag[];
   title: string;
   departmentKey: DepartmentKey;
   departmentName: string;
@@ -133,15 +143,6 @@ export interface ImplementationTask {
     metricsLogged: Record<string, number | string>;
     notes: string;
   };
-}
-
-export interface DepartmentInfo {
-  key: DepartmentKey;
-  name: string;
-  category: DepartmentCategory;
-  icon: string;
-  color: string;
-  description: string;
 }
 
 export function canEditTask(task: ImplementationTask, currentUserEmail: string = 'manager@example.com'): boolean {

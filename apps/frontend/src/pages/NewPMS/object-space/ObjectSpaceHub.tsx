@@ -4,7 +4,6 @@ import { Billboard, OrbitControls, OrthographicCamera, Text } from '@react-three
 import * as THREE from 'three';
 import { ArrowRight, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ImplementationTask } from './types';
-import { DEPARTMENTS } from './fixtures';
 import { ObjectSpaceTaskSidebar } from './ObjectSpaceTaskSidebar';
 
 interface ObjectSpaceHubProps {
@@ -586,12 +585,8 @@ export const ObjectSpaceHub: React.FC<ObjectSpaceHubProps> = ({
     setFocusZoom(null);
   };
 
-  // Department is fixed for the individual employee (Sales & BDR default)
-  const employeeDept = DEPARTMENTS[0];
-
-  const employeeTasks = useMemo(() => {
-    return tasks.filter((t) => t.departmentKey === employeeDept.key);
-  }, [tasks, employeeDept.key]);
+  // Every task in this space belongs to the signed-in user; department is just a label on each task.
+  const employeeTasks = tasks;
 
   // Total pages based on 12 tasks per constellation page
   const totalPages = Math.max(1, Math.ceil(employeeTasks.length / PAGE_SIZE));
@@ -632,8 +627,8 @@ export const ObjectSpaceHub: React.FC<ObjectSpaceHubProps> = ({
         <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, alpha: false }}>
           <OrbitScene
             tasks={paginated3DTasks}
-            departmentName={employeeDept.name}
-            departmentColor={employeeDept.color}
+            departmentName="Object Space"
+            departmentColor="#8b5cf6"
             filterStatus={filterStatus}
             selectedTaskId={selectedTaskId || undefined}
             focusedPosition={focusedPosition}

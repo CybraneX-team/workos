@@ -12,7 +12,7 @@ import {
   Globe,
   ShieldCheck,
 } from 'lucide-react';
-import type { TaskStep, StepType, ConnectorType, ConnectorConfig } from '../types';
+import type { TaskStep, StepType, ConnectorType } from '../types';
 import { buildConnectorUrl } from '../utils/connectorUtils';
 
 interface AddStepModalProps {
