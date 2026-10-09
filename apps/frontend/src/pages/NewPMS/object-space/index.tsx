@@ -3,7 +3,7 @@ import type { ImplementationTask } from './types';
 import { canEditTask, canDeleteTask } from './types';
 import { INITIAL_TASKS } from './fixtures';
 import { ObjectSpaceHub } from './ObjectSpaceHub';
-import { SplitCockpit } from './SplitCockpit';
+import { TaskStudio } from './TaskStudio';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
 import { DeleteTaskModal } from './components/DeleteTaskModal';
@@ -159,7 +159,7 @@ export default function ObjectSpace({
   };
 
   return (
-    <div className="w-full h-full relative overflow-hidden bg-[#f8fafc] text-slate-800 flex flex-col font-sans">
+    <div className="w-full h-full relative overflow-hidden bg-[#05070f] text-slate-100 flex flex-col font-sans">
       <style>{`
         body.in-object-space .demo-controls-bar {
           display: none !important;
@@ -174,27 +174,27 @@ export default function ObjectSpace({
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-20 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur-md animate-slideIn ${
+          className={`fixed top-20 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl border shadow-2xl text-xs font-semibold backdrop-blur-md animate-slideIn ${
             toast.tone === 'good'
-              ? 'bg-white border-emerald-300 text-emerald-800'
-              : 'bg-white border-rose-300 text-rose-800'
+              ? 'bg-[#0c101d]/95 border-emerald-500/40 text-emerald-300'
+              : 'bg-[#0c101d]/95 border-rose-500/40 text-rose-300'
           }`}
         >
-          <Sparkles size={14} className={toast.tone === 'good' ? 'text-emerald-600' : 'text-rose-600'} />
+          <Sparkles size={14} className={toast.tone === 'good' ? 'text-emerald-400' : 'text-rose-400'} />
           <span>{toast.message}</span>
           <button
             type="button"
             onClick={() => setToast(null)}
-            className="ml-2 text-slate-400 hover:text-slate-700"
+            className="ml-2 text-slate-400 hover:text-slate-200"
           >
             <X size={12} />
           </button>
         </div>
       )}
 
-      {/* Toggle between Macro Hub and Micro Split Cockpit */}
+      {/* Toggle between Macro Hub and Micro Task Studio */}
       {activeTask ? (
-        <SplitCockpit
+        <TaskStudio
           task={activeTask}
           currentUser={currentUser}
           onUpdateTask={handleUpdateTask}
@@ -212,7 +212,7 @@ export default function ObjectSpace({
         <ObjectSpaceHub
           tasks={tasks}
           currentUser={currentUser}
-          onOpenTaskCockpit={(task) => setActiveTask(task)}
+          onOpenTaskStudio={(task) => setActiveTask(task)}
           onOpenCreateModal={() => setIsCreateOpen(true)}
           onEditTask={handleOpenEdit}
           onDeleteTask={handlePromptDelete}

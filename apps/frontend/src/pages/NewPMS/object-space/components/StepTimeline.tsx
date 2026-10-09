@@ -26,19 +26,19 @@ export const StepTimeline: React.FC<StepTimelineProps> = ({
 }) => {
   const getStepIcon = (type: StepType, isCompleted: boolean) => {
     if (isCompleted) {
-      return <CheckCircle2 size={16} className="text-emerald-600 fill-emerald-100" />;
+      return <CheckCircle2 size={16} className="text-emerald-400 fill-emerald-950" />;
     }
     switch (type) {
       case 'checklist':
-        return <ListChecks size={15} className="text-emerald-600" />;
+        return <ListChecks size={15} className="text-emerald-400" />;
       case 'script_viewer':
-        return <MessageSquare size={15} className="text-violet-600" />;
+        return <MessageSquare size={15} className="text-violet-400" />;
       case 'input_form':
-        return <FormInput size={15} className="text-blue-600" />;
+        return <FormInput size={15} className="text-blue-400" />;
       case 'connector_action':
-        return <Zap size={15} className="text-amber-600" />;
+        return <Zap size={15} className="text-amber-400" />;
       default:
-        return <Circle size={15} className="text-slate-400" />;
+        return <Circle size={15} className="text-slate-500" />;
     }
   };
 
@@ -46,18 +46,18 @@ export const StepTimeline: React.FC<StepTimelineProps> = ({
   const progressPercent = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
 
   return (
-    <aside className="w-full lg:w-80 shrink-0 bg-white border border-slate-200 rounded-2xl p-4 flex flex-col h-full shadow-sm">
+    <aside className="w-full lg:w-80 shrink-0 bg-[#0c101d]/90 rounded-2xl p-4 flex flex-col h-full shadow-2xl backdrop-blur-xl text-slate-200">
       {/* Header */}
-      <div className="pb-4 mb-3 border-b border-slate-100">
+      <div className="pb-4 mb-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Implementation Flow
           </span>
-          <span className="text-xs font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+          <span className="text-xs font-mono font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded">
             {progressPercent}% Complete
           </span>
         </div>
-        <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+        <div className="w-full h-1.5 rounded-full bg-slate-900 overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-violet-500 to-emerald-500 rounded-full transition-all duration-300"
             style={{ width: `${progressPercent}%` }}
@@ -74,31 +74,31 @@ export const StepTimeline: React.FC<StepTimelineProps> = ({
               key={step.id}
               type="button"
               onClick={() => onSelectStep(step.id)}
-              className={`w-full text-left p-3 rounded-xl border transition-all flex items-start gap-3 relative ${
+              className={`w-full text-left p-3 rounded-xl transition-all flex items-start gap-3 relative ${
                 isActive
-                  ? 'bg-violet-50/80 border-violet-400 shadow-sm text-slate-900'
+                  ? 'bg-violet-950/70 shadow-md text-white'
                   : step.isCompleted
-                  ? 'bg-emerald-50/40 border-emerald-200/80 hover:border-emerald-300 text-slate-800'
-                  : 'bg-slate-50/60 border-slate-200 hover:border-slate-300 text-slate-700'
+                  ? 'bg-emerald-950/25 hover:bg-emerald-950/40 text-slate-200'
+                  : 'bg-slate-900/50 hover:bg-slate-850 text-slate-300'
               }`}
             >
               {/* Vertical connecting line indicator */}
               {index < steps.length - 1 && (
                 <div
                   className={`absolute left-[21px] top-9 bottom-[-10px] w-0.5 ${
-                    step.isCompleted ? 'bg-emerald-200' : 'bg-slate-200'
+                    step.isCompleted ? 'bg-emerald-700/60' : 'bg-slate-800'
                   }`}
                 />
               )}
 
               {/* Step number badge / icon */}
               <div
-                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border z-10 ${
+                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 z-10 ${
                   isActive
-                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                    ? 'bg-violet-600 text-white shadow-sm'
                     : step.isCompleted
-                    ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                    : 'bg-white text-slate-600 border-slate-200'
+                    ? 'bg-emerald-950/80 text-emerald-400'
+                    : 'bg-slate-850 text-slate-400'
                 }`}
               >
                 {getStepIcon(step.type, step.isCompleted)}
@@ -110,22 +110,22 @@ export const StepTimeline: React.FC<StepTimelineProps> = ({
                   <span
                     className={`text-xs font-semibold truncate ${
                       isActive
-                        ? 'text-violet-950 font-bold'
+                        ? 'text-white font-bold'
                         : step.isCompleted
-                        ? 'text-slate-800'
-                        : 'text-slate-700'
+                        ? 'text-slate-200'
+                        : 'text-slate-300'
                     }`}
                   >
                     {step.title}
                   </span>
-                  {isActive && <ChevronRight size={14} className="text-violet-600 shrink-0" />}
+                  {isActive && <ChevronRight size={14} className="text-violet-400 shrink-0" />}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[10px] uppercase font-mono tracking-wider text-slate-500">
                     Step {step.stepOrder} · {step.type.replace('_', ' ')}
                   </span>
                   {step.completedAt && (
-                    <span className="text-[10px] text-emerald-600 font-mono font-medium">
+                    <span className="text-[10px] text-emerald-400 font-mono font-medium">
                       ✓ {step.completedAt}
                     </span>
                   )}
@@ -137,13 +137,13 @@ export const StepTimeline: React.FC<StepTimelineProps> = ({
       </div>
 
       {/* Add Custom Step CTA */}
-      <div className="pt-3 mt-2 border-t border-slate-100">
+      <div className="pt-3 mt-2">
         <button
           type="button"
           onClick={onOpenAddStepModal}
-          className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 hover:border-violet-400 bg-slate-50 hover:bg-violet-50 text-xs font-semibold text-slate-700 hover:text-violet-700 transition-all flex items-center justify-center gap-2 group"
+          className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-700 hover:border-violet-500 bg-slate-900/60 hover:bg-violet-950/40 text-xs font-semibold text-slate-300 hover:text-violet-300 transition-all flex items-center justify-center gap-2 group"
         >
-          <Plus size={14} className="group-hover:scale-110 transition-transform text-violet-600" />
+          <Plus size={14} className="group-hover:scale-110 transition-transform text-violet-400" />
           <span>Add Custom Sub-Step</span>
         </button>
       </div>

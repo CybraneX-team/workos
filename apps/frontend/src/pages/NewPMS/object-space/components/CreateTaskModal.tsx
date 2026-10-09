@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { X, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { ImplementationTask, TaskStatus } from '../types';
-import { useAuth } from '../../../../lib/auth';
 import { useObjectSpaceContext } from '../utils/useObjectSpaceContext';
 
 const domainLabel = (domain: string) => (domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : 'General');
@@ -18,21 +17,21 @@ const STATUS_CONFIG: { id: TaskStatus; label: string; activeClass: string; inact
     id: 'active',
     label: 'Active',
     activeClass: 'bg-purple-600 border-purple-600 text-white shadow-xs font-bold',
-    inactiveClass: 'bg-purple-50/50 border-purple-200/80 text-purple-700 hover:bg-purple-100/70',
+    inactiveClass: 'bg-slate-900 border-slate-800 text-slate-400 hover:text-purple-300 hover:bg-slate-850',
     dotClass: 'bg-purple-500',
   },
   {
     id: 'in_progress',
     label: 'In Progress',
     activeClass: 'bg-blue-600 border-blue-600 text-white shadow-xs font-bold',
-    inactiveClass: 'bg-blue-50/50 border-blue-200/80 text-blue-700 hover:bg-blue-100/70',
+    inactiveClass: 'bg-slate-900 border-slate-800 text-slate-400 hover:text-blue-300 hover:bg-slate-850',
     dotClass: 'bg-blue-500',
   },
   {
     id: 'completed',
     label: 'Completed',
     activeClass: 'bg-emerald-600 border-emerald-600 text-white shadow-xs font-bold',
-    inactiveClass: 'bg-emerald-50/50 border-emerald-200/80 text-emerald-700 hover:bg-emerald-100/70',
+    inactiveClass: 'bg-slate-900 border-slate-800 text-slate-400 hover:text-emerald-300 hover:bg-slate-850',
     dotClass: 'bg-emerald-500',
   },
 ];
@@ -57,24 +56,22 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [dueDate, setDueDate] = useState(getTodayDateString());
   const [dueTime, setDueTime] = useState('18:00');
   const [estimatedMinutes, setEstimatedMinutes] = useState(60);
-  const { profile } = useAuth();
-  // Real departments and the caller's own title/department, from the DB. Loaded when the modal first opens.
   const ctx = useObjectSpaceContext(isOpen);
+
   const departments = ctx.status === 'ready' ? ctx.data.departments : [];
+  const defaultDeptId = ctx.status === 'ready' ? ctx.data.me.departmentId ?? '' : '';
   const [departmentId, setDepartmentId] = useState('');
   const [departmentText, setDepartmentText] = useState('');
   const [jobTitle, setJobTitle] = useState('');
 
-
-  // Pre-fill from the DB, but never overwrite something the person has already typed or picked.
+  // Pre-fill once when the context resolves.
   React.useEffect(() => {
-    if (!isOpen) return;
-    const me = ctx.status === 'ready' ? ctx.data.me : null;
-    setJobTitle((v) => v || me?.jobTitle || profile?.title || '');
-    setDepartmentId((v) => v || me?.departmentId || '');
-  }, [isOpen, ctx, profile?.title]);
+    if (ctx.status !== 'ready') return;
+    if (defaultDeptId && !departmentId) setDepartmentId(defaultDeptId);
+    if (ctx.data.me.jobTitle && !jobTitle) setJobTitle(ctx.data.me.jobTitle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.status]);
 
-  // Hide global navigation bars when modal is open
   React.useEffect(() => {
     if (isOpen) {
       document.body.classList.add('modal-open');
@@ -88,22 +85,22 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const picked = departments.find((d) => d.id === departmentId);
-    const department = picked
-      ? { key: picked.id, name: picked.label, category: domainLabel(picked.domain) }
-      : departmentText.trim()
-        ? { key: departmentText.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_'), name: departmentText.trim(), category: 'General' }
-        : null;
-    if (!title.trim() || !department || !jobTitle.trim()) return;
+    if (!title.trim()) return;
+
+    const chosenDept = departments.find((d) => d.id === departmentId);
+    const departmentName = (chosenDept?.label || departmentText).trim();
+    if (!departmentName) return;
+    if (!jobTitle.trim()) return;
 
     const formattedDue = `${dueDate} at ${dueTime}`;
+    const generatedId = `task-${Date.now()}`;
 
     const newTask: ImplementationTask = {
-      id: `task-personal-${Date.now()}`,
+      id: generatedId,
       title: title.trim(),
-      departmentKey: department.key,
-      departmentName: department.name,
-      category: department.category,
+      departmentKey: chosenDept?.id || departmentName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+      departmentName,
+      category: chosenDept ? domainLabel(chosenDept.domain) : 'General Operations',
       goal: goal.trim() || 'Execute standard operating procedure and achieve target deliverable.',
       priority: 'medium',
       status,
@@ -124,34 +121,32 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn font-sans">
-      {/* Modal Card without border and hidden scrollbars */}
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header without icon on the top left */}
-        <div className="px-6 py-4 bg-gradient-to-r from-violet-600 to-indigo-700 text-white flex items-center justify-between shrink-0">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn font-sans">
+      {/* Modal Card with dark theme and hidden scrollbars */}
+      <div className="relative w-full max-w-lg bg-[#0c101d] text-slate-100 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header - color-coordinated with the dark universe interface */}
+        <div className="px-6 pt-6 pb-2 bg-[#0c101d] flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-base font-bold tracking-tight">Create Object Task</h2>
-            <p className="text-[11px] text-violet-200">
-              Personal task assignment
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold tracking-tight text-white">Create Object Task</h2>
+              <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-violet-950/80 text-violet-300">
+                Object Space
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Personal task assignment with AI playbook generation
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         {/* Live Form with hidden scrollbar */}
         <form
           onSubmit={handleSubmit}
-          className="p-6 space-y-4 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-1 text-xs"
+          className="p-6 space-y-4 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-1 text-xs text-slate-200"
         >
           {/* Task Title */}
           <div className="space-y-1">
-            <label className="block text-slate-700 font-bold">
+            <label className="block text-slate-300 font-bold">
               Task Title <span className="text-rose-500">*</span>
             </label>
             <input
@@ -161,14 +156,14 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Enterprise Multi-Threading & Executive Alignment"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white focus:ring-1 focus:ring-violet-200 transition-all text-xs"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all text-xs"
             />
           </div>
 
           {/* Department & job title: context for the AI playbook */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">
+              <label className="block text-slate-300 font-bold">
                 Department <span className="text-rose-500">*</span>
               </label>
               {ctx.status === 'ready' && departments.length > 0 ? (
@@ -176,11 +171,11 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   required
                   value={departmentId}
                   onChange={(e) => setDepartmentId(e.target.value)}
-                  className="w-full px-2.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                  className="w-full px-2.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium focus:outline-none focus:border-violet-500 text-xs"
                 >
-                  <option value="" disabled>Select department</option>
+                  <option value="" disabled className="bg-slate-900 text-slate-400">Select department</option>
                   {departments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.label}</option>
+                    <option key={d.id} value={d.id} className="bg-slate-900 text-white">{d.label}</option>
                   ))}
                 </select>
               ) : (
@@ -191,12 +186,12 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   value={departmentText}
                   onChange={(e) => setDepartmentText(e.target.value)}
                   placeholder={ctx.status === 'loading' ? 'Loading departments…' : 'e.g., Outbound Sales'}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white text-xs"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium placeholder-slate-500 focus:outline-none focus:border-violet-500 text-xs"
                 />
               )}
             </div>
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">
+              <label className="block text-slate-300 font-bold">
                 Your Job Title <span className="text-rose-500">*</span>
               </label>
               <input
@@ -206,7 +201,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
                 placeholder="e.g., Outbound SDR"
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white text-xs"
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium placeholder-slate-500 focus:outline-none focus:border-violet-500 text-xs"
               />
             </div>
           </div>
@@ -214,7 +209,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
           {/* Status Selection (Active: purple, In Progress: blue, Completed: emerald) */}
           <div className="space-y-1.5">
-            <label className="block text-slate-700 font-bold">Status</label>
+            <label className="block text-slate-300 font-bold">Status</label>
             <div className="grid grid-cols-3 gap-2">
               {STATUS_CONFIG.map((opt) => {
                 const isSelected = status === opt.id;
@@ -240,29 +235,29 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           {/* Date, Time & Estimated Minutes */}
           <div className="grid grid-cols-3 gap-2.5">
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">Due Date</label>
+              <label className="block text-slate-300 font-bold">Due Date</label>
               <input
                 type="date"
                 required
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium focus:outline-none focus:border-violet-500 text-xs"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">Due Time</label>
+              <label className="block text-slate-300 font-bold">Due Time</label>
               <input
                 type="time"
                 required
                 value={dueTime}
                 onChange={(e) => setDueTime(e.target.value)}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium focus:outline-none focus:border-violet-500 text-xs"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">Est. Mins</label>
+              <label className="block text-slate-300 font-bold">Est. Mins</label>
               <input
                 type="number"
                 min={5}
@@ -270,36 +265,36 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 step={5}
                 value={estimatedMinutes}
                 onChange={(e) => setEstimatedMinutes(Number(e.target.value))}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium focus:outline-none focus:border-violet-500 text-xs"
               />
             </div>
           </div>
 
           {/* Goal & Objective */}
           <div className="space-y-1">
-            <label className="block text-slate-700 font-bold">Goal / SOP Objective</label>
+            <label className="block text-slate-300 font-bold">Goal / SOP Objective</label>
             <textarea
               rows={2}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="Provide context, deliverables, or success metrics for this task..."
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium placeholder-slate-400 focus:outline-none focus:border-violet-500 text-xs resize-none"
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-medium placeholder-slate-500 focus:outline-none focus:border-violet-500 text-xs resize-none"
             />
           </div>
 
           {/* Bottom Action Footer */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          <div className="pt-3 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80 font-semibold transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!title.trim() || !(departmentId || departmentText.trim()) || !jobTitle.trim()}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold shadow-md shadow-violet-200 active:scale-95 transition-all"
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold shadow-md shadow-violet-900/30 active:scale-95 transition-all"
             >
               <Plus size={14} />
               <span>Create Task</span>

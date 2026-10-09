@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { Save } from 'lucide-react';
 import type { ImplementationTask, TaskPriority, TaskStatus } from '../types';
 
 interface EditTaskModalProps {
@@ -15,21 +15,21 @@ const STATUS_CONFIG: { id: TaskStatus; label: string; activeClass: string; inact
     id: 'active',
     label: 'Active',
     activeClass: 'bg-purple-600 border-purple-600 text-white shadow-xs font-bold',
-    inactiveClass: 'bg-purple-50/50 border-purple-200/80 text-purple-700 hover:bg-purple-100/70',
+    inactiveClass: 'bg-slate-900 border-slate-800 text-slate-400 hover:text-purple-300 hover:bg-slate-850',
     dotClass: 'bg-purple-500',
   },
   {
     id: 'in_progress',
     label: 'In Progress',
     activeClass: 'bg-blue-600 border-blue-600 text-white shadow-xs font-bold',
-    inactiveClass: 'bg-blue-50/50 border-blue-200/80 text-blue-700 hover:bg-blue-100/70',
+    inactiveClass: 'bg-slate-900 border-slate-800 text-slate-400 hover:text-blue-300 hover:bg-slate-850',
     dotClass: 'bg-blue-500',
   },
   {
     id: 'completed',
     label: 'Completed',
     activeClass: 'bg-emerald-600 border-emerald-600 text-white shadow-xs font-bold',
-    inactiveClass: 'bg-emerald-50/50 border-emerald-200/80 text-emerald-700 hover:bg-emerald-100/70',
+    inactiveClass: 'bg-slate-900 border-slate-800 text-slate-400 hover:text-emerald-300 hover:bg-slate-850',
     dotClass: 'bg-emerald-500',
   },
 ];
@@ -110,24 +110,22 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn font-sans">
-      {/* Modal Card without border and hidden scrollbars */}
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header without icon on top left */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-violet-950 text-white flex items-center justify-between shrink-0">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fadeIn font-sans">
+      {/* Modal Card with dark glass border */}
+      <div className="relative w-full max-w-lg bg-[#0c101d] rounded-3xl shadow-2xl shadow-black/80 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header - color-coordinated with the dark universe interface */}
+        <div className="px-6 pt-6 pb-2 bg-[#0c101d] text-white flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-base font-bold tracking-tight">Edit Task Details</h2>
-            <p className="text-[11px] text-slate-300">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold tracking-tight text-slate-100">Edit Task Details</h2>
+              <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-violet-950/80 text-violet-300">
+                Object Space
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
               Created by {task.createdByName || task.createdBy || currentUser.name} · Full permissions active
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         {/* Form with hidden scrollbar */}
@@ -137,21 +135,21 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
         >
           {/* Task Title */}
           <div className="space-y-1">
-            <label className="block text-slate-700 font-bold">
-              Task Title <span className="text-rose-500">*</span>
+            <label className="block text-slate-300 font-bold">
+              Task Title <span className="text-rose-400">*</span>
             </label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white text-xs"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium placeholder-slate-500 focus:outline-none focus:border-violet-500 text-xs"
             />
           </div>
 
           {/* Status Selection (Active: purple, In Progress: blue, Completed: emerald) */}
           <div className="space-y-1.5">
-            <label className="block text-slate-700 font-bold">Status</label>
+            <label className="block text-slate-300 font-bold">Status</label>
             <div className="grid grid-cols-3 gap-2">
               {STATUS_CONFIG.map((opt) => {
                 const isSelected = status === opt.id;
@@ -161,7 +159,9 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
                     type="button"
                     onClick={() => setStatus(opt.id)}
                     className={`py-2 px-3 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 text-xs font-semibold ${
-                      isSelected ? opt.activeClass : opt.inactiveClass
+                      isSelected
+                        ? opt.activeClass
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                     }`}
                   >
                     <span
@@ -177,29 +177,29 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
           {/* Date, Time & Estimated Minutes */}
           <div className="grid grid-cols-3 gap-2.5">
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">Due Date</label>
+              <label className="block text-slate-300 font-bold">Due Date</label>
               <input
                 type="date"
                 required
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none focus:border-violet-500 text-xs [color-scheme:dark]"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">Due Time</label>
+              <label className="block text-slate-300 font-bold">Due Time</label>
               <input
                 type="time"
                 required
                 value={dueTime}
                 onChange={(e) => setDueTime(e.target.value)}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none focus:border-violet-500 text-xs [color-scheme:dark]"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-slate-700 font-bold">Est. Mins</label>
+              <label className="block text-slate-300 font-bold">Est. Mins</label>
               <input
                 type="number"
                 min={5}
@@ -207,34 +207,34 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
                 step={5}
                 value={estimatedMinutes}
                 onChange={(e) => setEstimatedMinutes(Number(e.target.value))}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs"
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none focus:border-violet-500 text-xs"
               />
             </div>
           </div>
 
           {/* Goal & Objective */}
           <div className="space-y-1">
-            <label className="block text-slate-700 font-bold">Goal / Objective</label>
+            <label className="block text-slate-300 font-bold">Goal / Objective</label>
             <textarea
               rows={2}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-violet-500 text-xs resize-none"
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none focus:border-violet-500 text-xs resize-none placeholder-slate-500"
             />
           </div>
 
           {/* Bottom Action Footer */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          <div className="pt-3 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80 font-semibold transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold shadow-md shadow-violet-200 active:scale-95 transition-all"
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold shadow-md shadow-violet-900/50 active:scale-95 transition-all"
             >
               <Save size={14} />
               <span>Save Changes</span>

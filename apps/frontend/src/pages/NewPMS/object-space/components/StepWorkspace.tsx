@@ -80,7 +80,7 @@ export const StepWorkspace: React.FC<StepWorkspaceProps> = ({
         );
       default:
         return (
-          <div className="p-8 text-center text-slate-400 text-sm">
+          <div className="p-8 text-center text-slate-500 text-sm">
             Unknown step type.
           </div>
         );
@@ -88,19 +88,19 @@ export const StepWorkspace: React.FC<StepWorkspaceProps> = ({
   };
 
   return (
-    <section className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 flex flex-col h-full shadow-sm overflow-y-auto">
+    <section className="flex-1 bg-[#0c101d]/90 rounded-2xl p-6 flex flex-col h-full shadow-2xl backdrop-blur-xl text-slate-100 overflow-y-auto">
       {/* Workspace Step Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-5 border-b border-slate-100 gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-5 gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-violet-950/80 text-violet-300">
               Step {step.stepOrder}
             </span>
-            <span className="text-xs text-slate-500 uppercase font-mono tracking-wider">
+            <span className="text-xs text-slate-400 uppercase font-mono tracking-wider">
               {step.type.replace('_', ' ')}
             </span>
           </div>
-          <h2 className="text-lg font-bold text-slate-900 mt-1">{step.title}</h2>
+          <h2 className="text-lg font-bold text-white mt-1">{step.title}</h2>
         </div>
 
         {/* Mark Step Completed Toggle */}
@@ -109,11 +109,11 @@ export const StepWorkspace: React.FC<StepWorkspaceProps> = ({
           onClick={handleToggleComplete}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 ${
             step.isCompleted
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm'
-              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/80 shadow-sm'
+              : 'bg-slate-900 hover:bg-slate-850 text-slate-300 border-slate-700'
           }`}
         >
-          <CheckCircle2 size={15} className={step.isCompleted ? 'text-emerald-600' : 'text-slate-400'} />
+          <CheckCircle2 size={15} className={step.isCompleted ? 'text-emerald-400' : 'text-slate-400'} />
           <span>{step.isCompleted ? 'Completed ✓' : 'Mark Step Complete'}</span>
         </button>
       </div>
@@ -124,15 +124,15 @@ export const StepWorkspace: React.FC<StepWorkspaceProps> = ({
       </div>
 
       {/* Step Navigation Controls */}
-      <div className="flex items-center justify-between pt-4 mt-6 border-t border-slate-100">
+      <div className="flex items-center justify-between pt-4 mt-6">
         <button
           type="button"
           onClick={onPrevStep}
           disabled={isFirstStep}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
             isFirstStep
-              ? 'opacity-30 cursor-not-allowed border-slate-200 text-slate-400'
-              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+              ? 'opacity-30 cursor-not-allowed border-slate-800 text-slate-600 bg-slate-950'
+              : 'bg-slate-900 hover:bg-slate-850 text-slate-300 border-slate-800'
           }`}
         >
           <ChevronLeft size={14} />
@@ -145,8 +145,8 @@ export const StepWorkspace: React.FC<StepWorkspaceProps> = ({
           disabled={isLastStep}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
             isLastStep
-              ? 'opacity-30 cursor-not-allowed border-slate-200 text-slate-400'
-              : 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600 shadow-sm'
+              ? 'opacity-30 cursor-not-allowed border-slate-800 text-slate-600 bg-slate-950'
+              : 'bg-violet-600 hover:bg-violet-500 text-white border-violet-500 shadow-lg shadow-violet-900/30'
           }`}
         >
           <span>Next Step</span>

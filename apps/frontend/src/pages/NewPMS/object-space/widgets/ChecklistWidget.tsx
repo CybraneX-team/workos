@@ -89,23 +89,23 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm space-y-5 font-sans relative overflow-hidden">
-      {/* TOP COCKPIT HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+    <div className="bg-[#0f1424]/90 rounded-3xl p-6 shadow-xl space-y-5 font-sans relative overflow-hidden text-slate-200 backdrop-blur-xl">
+      {/* TOP HEADER */}
+      <div className="flex items-center justify-between pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shadow-xs">
+          <div className="w-8 h-8 rounded-xl bg-emerald-950/80 text-emerald-400 flex items-center justify-center shadow-xs">
             <Zap size={16} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-bold text-slate-900 tracking-tight">
+              <h4 className="text-sm font-bold text-white tracking-tight">
                 Skill-Tree Verification Rail
               </h4>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-slate-300 font-mono">
                 {completedCount}/{totalCount} Armed
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">
+            <p className="text-[11px] text-slate-400 font-medium">
               Sequential circuit waypoints · Click node to charge
             </p>
           </div>
@@ -118,8 +118,8 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
             onClick={() => setSoundEnabled((v) => !v)}
             className={`p-1.5 rounded-xl border transition-all ${
               soundEnabled
-                ? 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'
+                ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850 hover:text-white'
+                : 'bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-300'
             }`}
             title={soundEnabled ? 'Arcade Audio Chimes: Enabled' : 'Arcade Audio: Muted'}
           >
@@ -127,7 +127,7 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
           </button>
 
           {/* Glowing Mini Progress Bar */}
-          <div className="w-28 h-2.5 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200/80">
+          <div className="w-28 h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 isAllDone
@@ -142,8 +142,8 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
 
       {/* INSTRUCTIONS / GUIDANCE */}
       {instructions && (
-        <div className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/90 text-xs text-slate-600 flex items-start gap-2">
-          <ShieldCheck size={15} className="text-violet-600 shrink-0 mt-0.5" />
+        <div className="p-3.5 rounded-2xl bg-slate-900/80 text-xs text-slate-300 flex items-start gap-2">
+          <ShieldCheck size={15} className="text-violet-400 shrink-0 mt-0.5" />
           <span>{instructions}</span>
         </div>
       )}
@@ -152,7 +152,7 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
       <div className="relative py-1 space-y-3">
         {/* Glowing Vertical Circuit Line Track */}
         {totalCount > 1 && (
-          <div className="absolute left-[15px] top-6 bottom-6 w-0.5 bg-slate-200 rounded-full overflow-hidden pointer-events-none">
+          <div className="absolute left-[15px] top-6 bottom-6 w-0.5 bg-slate-800 rounded-full overflow-hidden pointer-events-none">
             <div
               className="w-full bg-gradient-to-b from-emerald-400 via-emerald-500 to-teal-400 rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]"
               style={{
@@ -177,8 +177,8 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 ${
                     isArmed
-                      ? 'bg-gradient-to-tr from-emerald-600 to-emerald-400 text-white shadow-[0_0_14px_rgba(16,185,129,0.8)] border-2 border-white scale-105'
-                      : 'bg-white border-2 border-slate-300 text-slate-500 group-hover:border-violet-500 group-hover:text-violet-600 shadow-xs'
+                      ? 'bg-gradient-to-tr from-emerald-600 to-emerald-400 text-white shadow-[0_0_16px_rgba(16,185,129,0.9)] scale-105'
+                      : 'bg-[#12182b] border-2 border-slate-700 text-slate-400 group-hover:border-violet-500 group-hover:text-violet-400 shadow-xs'
                   }`}
                 >
                   {isArmed ? (
@@ -208,25 +208,25 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
 
               {/* REQUIREMENT CONTENT CARD */}
               <div
-                className={`flex-1 flex items-center justify-between p-3.5 rounded-2xl border transition-all duration-200 active:scale-[0.99] ${
+                className={`flex-1 flex items-center justify-between p-3.5 rounded-2xl transition-all duration-200 active:scale-[0.99] ${
                   isArmed
-                    ? 'bg-gradient-to-r from-emerald-50/80 via-emerald-50/30 to-white border-emerald-300 shadow-sm shadow-emerald-500/5'
-                    : 'bg-white border-slate-200 group-hover:border-slate-300 group-hover:bg-slate-50/60 shadow-2xs'
+                    ? 'bg-gradient-to-r from-emerald-950/40 via-emerald-950/20 to-slate-900/60 shadow-md shadow-emerald-950/30'
+                    : 'bg-[#13192b]/70 group-hover:bg-[#161d31] shadow-2xs'
                 }`}
               >
                 <div className="min-w-0 pr-3">
                   <div
                     className={`text-xs font-semibold leading-relaxed transition-colors ${
                       isArmed
-                        ? 'text-slate-900 font-bold'
-                        : 'text-slate-700 group-hover:text-slate-900'
+                        ? 'text-white font-bold'
+                        : 'text-slate-300 group-hover:text-white'
                     }`}
                   >
                     {item.label}
                   </div>
                   <div
                     className={`text-[10px] font-mono mt-0.5 ${
-                      isArmed ? 'text-emerald-600 font-semibold' : 'text-slate-400'
+                      isArmed ? 'text-emerald-400 font-semibold' : 'text-slate-500'
                     }`}
                   >
                     Waypoint {idx + 1} · {isArmed ? 'Requirement Verified' : 'Pending Action'}
@@ -236,8 +236,8 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
                 <span
                   className={`shrink-0 text-[10px] font-mono font-bold px-2.5 py-1 rounded-full transition-all ${
                     isArmed
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs'
-                      : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
+                      ? 'bg-emerald-950/80 text-emerald-300'
+                      : 'bg-slate-900/90 text-slate-400 group-hover:bg-slate-800 group-hover:text-slate-200'
                   }`}
                 >
                   {isArmed ? 'CHARGED ✓' : 'STANDBY'}
@@ -248,7 +248,7 @@ export const ChecklistWidget: React.FC<ChecklistWidgetProps> = ({
         })}
 
         {items.length === 0 && (
-          <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+          <div className="p-6 text-center text-xs text-slate-500 bg-slate-900/50 rounded-2xl">
             No checklist requirements configured in this playbook.
           </div>
         )}

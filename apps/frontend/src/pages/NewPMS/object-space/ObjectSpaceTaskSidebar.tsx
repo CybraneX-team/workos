@@ -13,7 +13,8 @@ interface ObjectSpaceTaskSidebarProps {
   onPageChange: (page: number) => void;
   onFilterChange: (status: string) => void;
   onSelectAndZoomTask: (task: ImplementationTask) => void;
-  onOpenTaskCockpit: (task: ImplementationTask) => void;
+  onOpenTaskStudio?: (task: ImplementationTask) => void;
+  onOpenTaskCockpit?: (task: ImplementationTask) => void;
   onOpenCreateModal?: () => void;
   onEditTask?: (task: ImplementationTask) => void;
   onDeleteTask?: (task: ImplementationTask) => void;
@@ -29,11 +30,13 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
   onPageChange,
   onFilterChange,
   onSelectAndZoomTask,
+  onOpenTaskStudio,
   onOpenTaskCockpit,
   onOpenCreateModal,
   onEditTask,
   onDeleteTask,
 }) => {
+  const openTask = onOpenTaskStudio || onOpenTaskCockpit || (() => {});
   const [isOpen, setIsOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -77,23 +80,23 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="p-2.5 rounded-2xl bg-white/95 border border-slate-200 text-slate-700 shadow-xl backdrop-blur-md hover:bg-slate-50 hover:text-violet-600 transition-all active:scale-95 group flex items-center gap-2"
+          className="p-2.5 rounded-2xl bg-[#0c101d]/90 border border-slate-800 text-slate-200 shadow-2xl backdrop-blur-xl hover:bg-[#141a2e] hover:text-violet-300 transition-all active:scale-95 group flex items-center gap-2"
           title="Open Task Search (⌘K)"
         >
-          <Search size={14} className="text-slate-500 group-hover:text-violet-600" />
-          <span className="text-xs font-semibold text-slate-700">Tasks ({tasks.length})</span>
+          <Search size={14} className="text-slate-400 group-hover:text-violet-400" />
+          <span className="text-xs font-semibold text-slate-200">Tasks ({tasks.length})</span>
           <ChevronUp size={13} className="text-slate-400 group-hover:-translate-y-0.5 transition-transform" />
         </button>
       )}
 
       {/* Dynamic Height Floating Card at Bottom-Right */}
       {isOpen && (
-        <aside className="w-64 sm:w-72 flex flex-col bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl shadow-xl overflow-hidden transition-all duration-200 ease-out">
+        <aside className="w-64 sm:w-72 flex flex-col bg-[#0c101d]/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden text-slate-200">
           
           {/* Top Header with + Create Task button */}
-          <div className="p-2.5 border-b border-slate-100 bg-white/60 space-y-2">
+          <div className="p-2.5 bg-slate-950/40 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Tasks & Workflows
               </span>
               <div className="flex items-center gap-1.5">
@@ -101,7 +104,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                   <button
                     type="button"
                     onClick={onOpenCreateModal}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-bold shadow-xs active:scale-95 transition-all"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold shadow-xs active:scale-95 transition-all"
                     title="Create new task with real-time 3D preview"
                   >
                     <Plus size={11} />
@@ -111,7 +114,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 p-0.5 rounded-md hover:bg-slate-100 transition-colors"
+                  className="text-slate-400 hover:text-slate-200 p-0.5 rounded-md hover:bg-slate-800/60 transition-colors"
                   title="Collapse"
                 >
                   <ChevronDown size={13} />
@@ -119,7 +122,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
               </div>
             </div>
 
-            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-violet-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-violet-200 transition-all">
+            <div className="relative flex items-center bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 focus-within:border-violet-500 focus-within:ring-1 focus-within:ring-violet-500/30 transition-all">
               <Search size={13} className="text-slate-400 shrink-0 mr-1.5" />
               <input
                 id="object-space-search-input"
@@ -127,13 +130,13 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search universe..."
-                className="w-full bg-transparent text-[11px] text-slate-900 placeholder-slate-400 focus:outline-none"
+                className="w-full bg-transparent text-[11px] text-white placeholder-slate-500 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="text-slate-400 hover:text-slate-600 p-0.5"
+                  className="text-slate-400 hover:text-slate-200 p-0.5"
                 >
                   <X size={11} />
                 </button>
@@ -141,7 +144,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
             </div>
 
             {/* Micro Filter Tabs */}
-            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-100 text-[10px] font-medium">
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900/90 text-[10px] font-medium">
               {[
                 { id: 'all', label: 'All' },
                 { id: 'active', label: 'Active' },
@@ -154,8 +157,8 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                   onClick={() => onFilterChange(tab.id)}
                   className={`flex-1 py-0.5 rounded transition-all text-center ${
                     filterStatus === tab.id
-                      ? 'bg-white text-purple-700 shadow-2xs font-bold'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-violet-600 text-white shadow-xs font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   {tab.label}
@@ -173,19 +176,19 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
 
               const statusDotColor =
                 task.status === 'active'
-                  ? 'bg-purple-600'
+                  ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]'
                   : task.status === 'in_progress'
-                  ? 'bg-blue-600'
-                  : 'bg-emerald-600';
+                  ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
+                  : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]';
 
               return (
                 <div
                   key={task.id}
                   onClick={() => onSelectAndZoomTask(task)}
-                  className={`group relative flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
+                  className={`group relative flex items-center justify-between p-2 rounded-xl cursor-pointer ${
                     isSelected
-                      ? 'bg-violet-50/95 border-violet-300 shadow-2xs ring-1 ring-violet-200'
-                      : 'bg-white/70 border-transparent hover:bg-slate-50 hover:border-slate-200'
+                      ? 'bg-violet-950/70 text-white shadow-sm'
+                      : 'bg-slate-900/40 hover:bg-slate-850/80 text-slate-300 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0 pr-1.5 flex-1">
@@ -195,14 +198,14 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`text-[11px] font-bold truncate leading-tight transition-colors ${
-                            isSelected ? 'text-violet-950' : 'text-slate-800 group-hover:text-slate-900'
+                            isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'
                           }`}
                         >
                           {task.title}
                         </span>
                         {!isOwner && (
                           <span
-                            className="text-slate-400 hover:text-slate-600 shrink-0"
+                            className="text-slate-500 hover:text-slate-300 shrink-0"
                             title={`Created by ${task.createdByName || task.createdBy || 'another user'} (Read & execute only)`}
                           >
                             <Lock size={10} />
@@ -216,7 +219,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                         {isOwner && (
                           <>
                             <span>•</span>
-                            <span className="text-emerald-600 font-semibold">Owner</span>
+                            <span className="text-emerald-400 font-semibold">Owner</span>
                           </>
                         )}
                       </div>
@@ -233,7 +236,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                           e.stopPropagation();
                           onEditTask(task);
                         }}
-                        className="p-1 rounded-md text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-200 hover:text-slate-700 transition-all"
+                        className="p-1 rounded-md text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-800 hover:text-slate-200 transition-all"
                         title="Edit Task Details (Owner)"
                       >
                         <Edit2 size={11} />
@@ -248,22 +251,22 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                           e.stopPropagation();
                           onDeleteTask(task);
                         }}
-                        className="p-1 rounded-md text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-rose-100 hover:text-rose-600 transition-all"
+                        className="p-1 rounded-md text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-rose-950/60 hover:text-rose-400 transition-all"
                         title="Delete Task (Owner)"
                       >
                         <Trash2 size={11} />
                       </button>
                     )}
 
-                    {/* Launch into Cockpit */}
+                    {/* Launch into Studio */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onOpenTaskCockpit(task);
+                        openTask(task);
                       }}
-                      className="p-1 rounded-md text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-violet-100 hover:text-violet-700 transition-all"
-                      title="Open Task Cockpit"
+                      className="p-1 rounded-md text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-violet-950/60 hover:text-violet-300 transition-all"
+                      title="Open Task Studio"
                     >
                       <ArrowUpRight size={12} />
                     </button>
@@ -273,7 +276,7 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
             })}
 
             {filteredTasks.length === 0 && (
-              <div className="py-5 px-3 text-center text-[11px] text-slate-400">
+              <div className="py-5 px-3 text-center text-[11px] text-slate-500">
                 No matching tasks
               </div>
             )}
@@ -281,21 +284,21 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
 
           {/* Pagination Footer Controls */}
           {totalPages > 1 && (
-            <div className="p-2 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between text-[10px] font-semibold text-slate-600">
+            <div className="p-2 bg-slate-950/60 flex items-center justify-between text-[10px] font-semibold text-slate-400">
               <button
                 type="button"
                 disabled={currentPage <= 1}
                 onClick={() => onPageChange(currentPage - 1)}
                 className={`px-2 py-0.5 rounded-md border transition-all ${
                   currentPage <= 1
-                    ? 'opacity-40 cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400'
-                    : 'bg-white hover:bg-violet-50 hover:text-violet-700 border-slate-200'
+                    ? 'opacity-30 cursor-not-allowed bg-slate-950 border-slate-800 text-slate-600'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'
                 }`}
               >
                 Prev
               </button>
 
-              <span className="font-mono text-[10px] text-slate-500">
+              <span className="font-mono text-[10px] text-slate-400">
                 Page {currentPage} of {totalPages}
               </span>
 
@@ -305,8 +308,8 @@ export const ObjectSpaceTaskSidebar: React.FC<ObjectSpaceTaskSidebarProps> = ({
                 onClick={() => onPageChange(currentPage + 1)}
                 className={`px-2 py-0.5 rounded-md border transition-all ${
                   currentPage >= totalPages
-                    ? 'opacity-40 cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400'
-                    : 'bg-white hover:bg-violet-50 hover:text-violet-700 border-slate-200'
+                    ? 'opacity-30 cursor-not-allowed bg-slate-950 border-slate-800 text-slate-600'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'
                 }`}
               >
                 Next

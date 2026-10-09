@@ -31,13 +31,13 @@ export const ScriptTeleprompter: React.FC<ScriptTeleprompterProps> = ({
     return text.split('\n\n').map((paragraph, idx) => {
       const parts = paragraph.split(/(\[[^\]]+\]|\*\*[^*]+\*\*|\*[^*]+\*)/g);
       return (
-        <p key={idx} className="leading-relaxed text-sm text-slate-800 mb-3 last:mb-0">
+        <p key={idx} className="leading-relaxed text-sm text-slate-200 mb-3 last:mb-0">
           {parts.map((part, pIdx) => {
             if (part.startsWith('[') && part.endsWith(']')) {
               return (
                 <span
                   key={pIdx}
-                  className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold bg-violet-100 text-violet-800 border border-violet-200 mx-0.5"
+                  className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold bg-violet-950/80 text-violet-300 border border-violet-700/80 mx-0.5"
                 >
                   {part}
                 </span>
@@ -45,14 +45,14 @@ export const ScriptTeleprompter: React.FC<ScriptTeleprompterProps> = ({
             }
             if (part.startsWith('**') && part.endsWith('**')) {
               return (
-                <strong key={pIdx} className="font-bold text-slate-900 block mb-1 text-xs uppercase tracking-wider">
+                <strong key={pIdx} className="font-bold text-white block mb-1 text-xs uppercase tracking-wider">
                   {part.slice(2, -2)}
                 </strong>
               );
             }
             if (part.startsWith('*') && part.endsWith('*')) {
               return (
-                <em key={pIdx} className="italic text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                <em key={pIdx} className="italic text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
                   {part.slice(1, -1)}
                 </em>
               );
@@ -67,26 +67,26 @@ export const ScriptTeleprompter: React.FC<ScriptTeleprompterProps> = ({
   return (
     <div className="space-y-4">
       {/* Script Teleprompter Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm relative overflow-hidden">
-        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+      <div className="bg-[#0f1424]/90 rounded-2xl p-5 shadow-xl relative overflow-hidden backdrop-blur-xl">
+        <div className="flex items-center justify-between pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-violet-50 text-violet-700 border border-violet-200">
+            <span className="p-1.5 rounded-lg bg-violet-950/80 text-violet-400">
               <MessageSquare size={16} />
             </span>
             <div>
-              <h4 className="text-sm font-semibold text-slate-900">Live Script Teleprompter</h4>
-              <p className="text-xs text-slate-500">Verbatim talk track & opening hook</p>
+              <h4 className="text-sm font-semibold text-white">Live Script Teleprompter</h4>
+              <p className="text-xs text-slate-400">Verbatim talk track & opening hook</p>
             </div>
           </div>
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-800 transition-colors"
           >
             {copied ? (
               <>
-                <Check size={13} className="text-emerald-600" />
-                <span className="text-emerald-600 font-semibold">Copied!</span>
+                <Check size={13} className="text-emerald-400" />
+                <span className="text-emerald-400 font-semibold">Copied!</span>
               </>
             ) : (
               <>
@@ -97,21 +97,21 @@ export const ScriptTeleprompter: React.FC<ScriptTeleprompterProps> = ({
           </button>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+        <div className="p-4 rounded-xl bg-slate-950/80">
           {renderFormattedScript(scriptContent || 'No script content provided for this step.')}
         </div>
       </div>
 
       {/* Objection Handling Cheat Sheet */}
       {objectionCheats.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+        <div className="bg-[#0f1424]/90 rounded-2xl p-5 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2 mb-3">
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="p-1.5 rounded-lg bg-amber-950/80 text-amber-400">
               <Sparkles size={16} />
             </span>
             <div>
-              <h4 className="text-sm font-semibold text-slate-900">Objection Rebuttal Copilot</h4>
-              <p className="text-xs text-slate-500">Quick answers when prospects push back</p>
+              <h4 className="text-sm font-semibold text-white">Objection Rebuttal Copilot</h4>
+              <p className="text-xs text-slate-400">Quick answers when prospects push back</p>
             </div>
           </div>
 
@@ -124,8 +124,8 @@ export const ScriptTeleprompter: React.FC<ScriptTeleprompterProps> = ({
                 onClick={() => setActiveObjectionId(obj.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeObjectionId === obj.id
-                    ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-sm font-semibold'
-                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
+                    ? 'bg-amber-950/80 text-amber-300 border border-amber-700/80 shadow-sm font-semibold'
+                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                 }`}
               >
                 <HelpCircle size={12} />
@@ -136,20 +136,20 @@ export const ScriptTeleprompter: React.FC<ScriptTeleprompterProps> = ({
 
           {/* Active Objection Rebuttal Display */}
           {activeObjection && (
-            <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 space-y-2">
+            <div className="p-4 rounded-xl bg-slate-950/80 space-y-2">
               <div className="flex items-start gap-2">
-                <span className="text-xs font-mono font-semibold text-amber-800 uppercase tracking-wider shrink-0 mt-0.5">
+                <span className="text-xs font-mono font-semibold text-amber-400 uppercase tracking-wider shrink-0 mt-0.5">
                   Prospect says:
                 </span>
-                <span className="text-xs italic text-slate-800 font-medium">
+                <span className="text-xs italic text-slate-200 font-medium">
                   {activeObjection.trigger}
                 </span>
               </div>
-              <div className="pt-2 border-t border-amber-200/80 flex items-start gap-2">
-                <span className="text-xs font-mono font-semibold text-emerald-800 uppercase tracking-wider shrink-0 mt-0.5">
+              <div className="pt-2 flex items-start gap-2">
+                <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider shrink-0 mt-0.5">
                   Say this:
                 </span>
-                <p className="text-xs text-slate-800 leading-relaxed font-sans">
+                <p className="text-xs text-slate-300 leading-relaxed font-sans">
                   {activeObjection.rebuttal}
                 </p>
               </div>

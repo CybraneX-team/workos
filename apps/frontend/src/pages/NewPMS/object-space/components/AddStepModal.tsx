@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  X,
   ListChecks,
   Zap,
   Plus,
@@ -140,21 +139,19 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn font-sans">
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header without top-left icon */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fadeIn font-sans">
+      <div className="w-full max-w-lg bg-[#0c101d] rounded-3xl shadow-2xl shadow-black/80 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header - color-coordinated with the dark universe interface */}
+        <div className="px-6 pt-6 pb-2 flex items-center justify-between shrink-0 bg-[#0c101d]">
           <div>
-            <h3 className="text-base font-bold text-slate-900">Add Custom Implementation Step</h3>
-            <p className="text-[11px] text-slate-500">Configure playbook step instructions and actions</p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-100">Add Custom Implementation Step</h3>
+              <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-violet-950/80 text-violet-300">
+                Object Space
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">Configure playbook step instructions and actions</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         <form
@@ -162,7 +159,7 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
           className="p-6 space-y-4 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-1"
         >
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">Step Title</label>
+            <label className="text-xs font-semibold text-slate-300 block mb-1">Step Title</label>
             <input
               type="text"
               required
@@ -170,12 +167,12 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Secondary ICP Touchpoint & Follow-up"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white"
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
+            <label className="text-xs font-semibold text-slate-300 block mb-1">
               Instructions / Guidance Notes (Optional)
             </label>
             <input
@@ -183,12 +180,12 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="e.g., Follow standardized SOP before marking complete"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white"
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-2">Step Widget Type</label>
+            <label className="text-xs font-semibold text-slate-300 block mb-2">Step Widget Type</label>
             <div className="grid grid-cols-2 gap-2.5">
               {[
                 { type: 'checklist' as StepType, label: 'Checklist', icon: ListChecks, desc: 'SOP checkboxes' },
@@ -203,11 +200,11 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                     onClick={() => setType(opt.type)}
                     className={`flex items-start gap-2.5 p-3 rounded-2xl border text-left transition-all ${
                       isSelected
-                        ? 'bg-violet-50 border-violet-500 text-violet-900 shadow-xs'
-                        : 'bg-slate-50/70 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                        ? 'bg-violet-950/40 border-violet-500 text-violet-200 shadow-xs'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                     }`}
                   >
-                    <Icon size={16} className={isSelected ? 'text-violet-600' : 'text-slate-400'} />
+                    <Icon size={16} className={isSelected ? 'text-violet-400' : 'text-slate-500'} />
                     <div>
                       <div className="text-xs font-bold">{opt.label}</div>
                       <div className="text-[10px] text-slate-500">{opt.desc}</div>
@@ -221,34 +218,34 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
           {type === 'checklist' && (
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-700 block">
+                <label className="text-xs font-semibold text-slate-300 block">
                   Checklist Items
                 </label>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100">
+                <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/50 px-2 py-0.5 rounded-full border border-violet-800/60">
                   {checklistItems.length + (newItemText.trim() ? 1 : 0)} items
                 </span>
               </div>
 
               {/* Continuous List / Rail of items */}
-              <div className="space-y-2 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80">
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
                 {checklistItems.map((item, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs group hover:border-violet-300 transition-all"
+                    className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-xl border border-slate-800 shadow-2xs group hover:border-violet-500/50 transition-all"
                   >
-                    <div className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                    <div className="w-5 h-5 rounded-md bg-violet-950/60 text-violet-300 border border-violet-800/50 flex items-center justify-center text-[10px] font-bold shrink-0">
                       {idx + 1}
                     </div>
                     <input
                       type="text"
                       value={item}
                       onChange={(e) => handleUpdateChecklistItem(idx, e.target.value)}
-                      className="flex-1 bg-transparent text-xs text-slate-800 font-medium focus:outline-none focus:text-violet-900"
+                      className="flex-1 bg-transparent text-xs text-slate-200 font-medium focus:outline-none focus:text-violet-300"
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveChecklistItem(idx)}
-                      className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
                       title="Remove item"
                     >
                       <Trash2 size={13} />
@@ -270,21 +267,21 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                         }
                       }}
                       placeholder="Add next checklist item..."
-                      className="w-full bg-white border border-dashed border-violet-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                      className="w-full bg-slate-900 border border-dashed border-violet-500/40 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleAddChecklistItem}
                     disabled={!newItemText.trim()}
-                    className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-all shrink-0 active:scale-95"
+                    className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-all shrink-0 active:scale-95"
                   >
                     <Plus size={14} />
                     <span>Add</span>
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 pl-1">
+              <p className="text-[10px] text-slate-500 pl-1">
                 Press Enter or click Add to append item to checklist list.
               </p>
             </div>
@@ -293,16 +290,16 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
           {type === 'connector_action' && (
             <div className="space-y-3.5 pt-1">
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-2">
                   Select Action Connector Preset
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'whatsapp_chat' as ConnectorType, label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-600' },
-                    { id: 'gmail_sender' as ConnectorType, label: 'Gmail', icon: Mail, color: 'text-rose-600' },
-                    { id: 'google_calendar' as ConnectorType, label: 'Calendar', icon: Calendar, color: 'text-blue-600' },
-                    { id: 'google_meet' as ConnectorType, label: 'Meet Call', icon: Video, color: 'text-amber-600' },
-                    { id: 'custom_link' as ConnectorType, label: 'Custom URL', icon: Globe, color: 'text-violet-600' },
+                    { id: 'whatsapp_chat' as ConnectorType, label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-400' },
+                    { id: 'gmail_sender' as ConnectorType, label: 'Gmail', icon: Mail, color: 'text-rose-400' },
+                    { id: 'google_calendar' as ConnectorType, label: 'Calendar', icon: Calendar, color: 'text-blue-400' },
+                    { id: 'google_meet' as ConnectorType, label: 'Meet Call', icon: Video, color: 'text-amber-400' },
+                    { id: 'custom_link' as ConnectorType, label: 'Custom URL', icon: Globe, color: 'text-violet-400' },
                   ].map((preset) => {
                     const PresetIcon = preset.icon;
                     const isSelected = connectorType === preset.id;
@@ -313,8 +310,8 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                         onClick={() => setConnectorType(preset.id)}
                         className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
                           isSelected
-                            ? 'bg-violet-50 border-violet-500 text-violet-950 font-bold shadow-2xs'
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                            ? 'bg-violet-950/40 border-violet-500 text-violet-200 font-bold shadow-2xs'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                         }`}
                       >
                         <PresetIcon size={15} className={preset.color} />
@@ -326,25 +323,25 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
               </div>
 
               {/* Contextual Input Form depending on connectorType */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
                 {/* 1. WHATSAPP */}
                 {connectorType === 'whatsapp_chat' && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
                         <span>Recipient Phone Number</span>
-                        <span className="text-[10px] text-slate-400 font-normal">With country code</span>
+                        <span className="text-[10px] text-slate-500 font-normal">With country code</span>
                       </label>
                       <input
                         type="text"
                         value={phoneNumber}
                         onChange={(e) => setPhoneNumber(e.target.value)}
                         placeholder="e.g., +1 415 882 9012"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 block">
+                      <label className="text-[11px] font-bold text-slate-300 block">
                         Prefilled Message Text
                       </label>
                       <textarea
@@ -352,7 +349,7 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                         value={messageBody}
                         onChange={(e) => setMessageBody(e.target.value)}
                         placeholder="e.g., Hi, following up on our implementation..."
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500 resize-none"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
                       />
                     </div>
                   </>
@@ -363,34 +360,34 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                   <>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 block">Recipient Email</label>
+                        <label className="text-[11px] font-bold text-slate-300 block">Recipient Email</label>
                         <input
                           type="email"
                           value={emailRecipient}
                           onChange={(e) => setEmailRecipient(e.target.value)}
                           placeholder="client@company.com"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 block">Subject Line</label>
+                        <label className="text-[11px] font-bold text-slate-300 block">Subject Line</label>
                         <input
                           type="text"
                           value={emailSubject}
                           onChange={(e) => setEmailSubject(e.target.value)}
                           placeholder="Subject..."
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
                         />
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 block">Email Body</label>
+                      <label className="text-[11px] font-bold text-slate-300 block">Email Body</label>
                       <textarea
                         rows={2}
                         value={messageBody}
                         onChange={(e) => setMessageBody(e.target.value)}
                         placeholder="Type email draft..."
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500 resize-none"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
                       />
                     </div>
                   </>
@@ -400,43 +397,43 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                 {connectorType === 'google_calendar' && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 block">Event Title</label>
+                      <label className="text-[11px] font-bold text-slate-300 block">Event Title</label>
                       <input
                         type="text"
                         value={calendarTitle}
                         onChange={(e) => setCalendarTitle(e.target.value)}
                         placeholder="e.g., Client Architecture Sync"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 block">Date</label>
+                        <label className="text-[11px] font-bold text-slate-300 block">Date</label>
                         <input
                           type="date"
                           value={calendarDate}
                           onChange={(e) => setCalendarDate(e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500 [color-scheme:dark]"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 block">Time</label>
+                        <label className="text-[11px] font-bold text-slate-300 block">Time</label>
                         <input
                           type="time"
                           value={calendarTime}
                           onChange={(e) => setCalendarTime(e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500 [color-scheme:dark]"
                         />
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 block">Agenda / Notes</label>
+                      <label className="text-[11px] font-bold text-slate-300 block">Agenda / Notes</label>
                       <textarea
                         rows={2}
                         value={messageBody}
                         onChange={(e) => setMessageBody(e.target.value)}
                         placeholder="Meeting description..."
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500 resize-none"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
                       />
                     </div>
                   </>
@@ -444,11 +441,11 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
 
                 {/* 4. GOOGLE MEET */}
                 {connectorType === 'google_meet' && (
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600 flex items-center gap-2.5">
-                    <Video size={18} className="text-amber-600 shrink-0" />
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs text-slate-300 flex items-center gap-2.5">
+                    <Video size={18} className="text-amber-400 shrink-0" />
                     <div>
-                      <span className="font-bold text-slate-900 block">1-Click Instant Room</span>
-                      <span>Generates and launches a secure Google Meet conference room instantly.</span>
+                      <span className="font-bold text-slate-100 block">1-Click Instant Room</span>
+                      <span className="text-slate-400">Generates and launches a secure Google Meet conference room instantly.</span>
                     </div>
                   </div>
                 )}
@@ -457,23 +454,23 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
                 {connectorType === 'custom_link' && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 block">Tool / Destination Label</label>
+                      <label className="text-[11px] font-bold text-slate-300 block">Tool / Destination Label</label>
                       <input
                         type="text"
                         value={customLabel}
                         onChange={(e) => setCustomLabel(e.target.value)}
                         placeholder="e.g., Figma Prototype / Stripe Invoice"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 block">Target URL</label>
+                      <label className="text-[11px] font-bold text-slate-300 block">Target URL</label>
                       <input
                         type="url"
                         value={customUrl}
                         onChange={(e) => setCustomUrl(e.target.value)}
                         placeholder="https://example.com/item/123"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-violet-500"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
                       />
                     </div>
                   </>
@@ -481,26 +478,26 @@ export const AddStepModal: React.FC<AddStepModalProps> = ({
               </div>
 
               {/* Privacy & Usage Clarification Note */}
-              <div className="flex items-start gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] leading-relaxed">
-                <ShieldCheck size={15} className="text-violet-600 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 p-3 rounded-2xl bg-slate-900/60 text-slate-400 text-[11px] leading-relaxed">
+                <ShieldCheck size={15} className="text-violet-400 shrink-0 mt-0.5" />
                 <span>
-                  <span className="font-bold text-slate-900">Note:</span> These connector details are currently used only for live browser preview and task execution. They are not stored by the company or used for any further delegations.
+                  <span className="font-bold text-slate-200">Note:</span> These connector details are currently used only for live browser preview and task execution. They are not stored by the company or used for any further delegations.
                 </span>
               </div>
             </div>
           )}
 
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 shrink-0">
+          <div className="flex justify-end gap-2.5 pt-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80 hover:text-white transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-200 active:scale-95 transition-all"
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-900/50 active:scale-95 transition-all"
             >
               Add Step to Flow
             </button>

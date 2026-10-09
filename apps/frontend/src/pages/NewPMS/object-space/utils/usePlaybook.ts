@@ -3,7 +3,7 @@ import { objectSpacePlaybookApi, PlaybookError } from '../../../../lib/db/object
 import type { ImplementationTask } from '../types';
 import { applyLocalTemplate, applyPlaybook, buildPlaybookRequest } from './playbook';
 
-// One generation per task at a time, across remounts (React strict mode, reopening the cockpit).
+// One generation per task at a time, across remounts (React strict mode, reopening the workspace studio).
 // The backend also dedupes, but this avoids even sending the second request.
 const inflight = new Map<string, Promise<void>>();
 

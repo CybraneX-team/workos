@@ -3345,29 +3345,29 @@ function App() {
               <button
                 type="button"
                 onClick={objectSpaceTaskCtx.onBackToHub}
-                className="flex items-center gap-1.5 h-[42px] px-4 rounded-full bg-white/95 hover:bg-white text-slate-700 border-2 border-white/80 font-bold text-xs shadow-[0_10px_24px_rgba(79,116,89,0.12)] transition-all hover:-translate-x-0.5 cursor-pointer"
+                className="flex items-center gap-1.5 h-[42px] px-4 rounded-full bg-[#0c101d]/90 hover:bg-[#12182b] text-slate-200 border border-slate-800 font-bold text-xs shadow-lg shadow-black/40 transition-all hover:-translate-x-0.5 cursor-pointer"
                 title="Return to Object Space Hub"
               >
                 <ChevronLeft size={15} />
                 <span>My Tasks Hub</span>
               </button>
 
-              <div className="hidden sm:flex items-center gap-2 h-[42px] px-3.5 rounded-full bg-white/95 border-2 border-white/80 shadow-[0_10px_24px_rgba(79,116,89,0.12)] text-xs">
+              <div className="hidden sm:flex items-center gap-2 h-[42px] px-3.5 rounded-full bg-[#0c101d]/90 border border-slate-800 shadow-lg shadow-black/40 text-xs">
                 <span className="text-[11px] text-slate-400 font-medium">Assignee:</span>
                 <div className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-[10px]">
                   {objectSpaceTaskCtx.task.assignee.name.charAt(0)}
                 </div>
-                <span className="font-bold text-slate-800">{objectSpaceTaskCtx.task.assignee.name}</span>
+                <span className="font-bold text-slate-200">{objectSpaceTaskCtx.task.assignee.name}</span>
               </div>
 
-              <div className="flex items-center gap-2 h-[42px] px-3.5 rounded-full bg-white/95 border-2 border-white/80 shadow-[0_10px_24px_rgba(79,116,89,0.12)]">
-                <div className="w-16 h-2 rounded-full bg-slate-200 overflow-hidden">
+              <div className="flex items-center gap-2 h-[42px] px-3.5 rounded-full bg-[#0c101d]/90 border border-slate-800 shadow-lg shadow-black/40">
+                <div className="w-16 h-2 rounded-full bg-slate-800 overflow-hidden">
                   <div
                     className="h-full bg-emerald-500 rounded-full transition-all duration-300"
                     style={{ width: `${objectSpaceTaskCtx.task.progress}%` }}
                   />
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-600">
+                <span className="text-xs font-mono font-bold text-emerald-400">
                   {objectSpaceTaskCtx.task.progress}%
                 </span>
               </div>
@@ -3375,7 +3375,7 @@ function App() {
               <button
                 type="button"
                 onClick={objectSpaceTaskCtx.onOpenReportModal}
-                className="flex items-center gap-1.5 h-[42px] px-4 rounded-full text-xs font-extrabold bg-[#2f8d4d] hover:bg-[#25733e] text-white shadow-[0_5px_0_#1e5e32,0_16px_34px_rgba(40,93,59,0.2)] active:translate-y-0.5 active:shadow-[0_2px_0_#1e5e32] transition-all cursor-pointer"
+                className="flex items-center gap-1.5 h-[42px] px-4 rounded-full text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/60 active:translate-y-0.5 transition-all cursor-pointer"
               >
                 <Send size={13} />
                 <span>Submit Task</span>
